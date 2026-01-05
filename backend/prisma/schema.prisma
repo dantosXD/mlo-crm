@@ -6,95 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-}
-
-// User roles for RBAC
-enum Role {
-  ADMIN
-  MANAGER
-  MLO
-  PROCESSOR
-  UNDERWRITER
-  VIEWER
-}
-
-// Client pipeline statuses
-enum ClientStatus {
-  LEAD
-  PRE_QUALIFIED
-  ACTIVE
-  PROCESSING
-  UNDERWRITING
-  CLEAR_TO_CLOSE
-  CLOSED
-  DENIED
-  INACTIVE
-}
-
-// Task status
-enum TaskStatus {
-  TODO
-  IN_PROGRESS
-  COMPLETE
-}
-
-// Task priority
-enum TaskPriority {
-  LOW
-  MEDIUM
-  HIGH
-}
-
-// Document status
-enum DocumentStatus {
-  REQUIRED
-  REQUESTED
-  UPLOADED
-  UNDER_REVIEW
-  APPROVED
-  REJECTED
-  EXPIRED
-}
-
-// Document category
-enum DocumentCategory {
-  INCOME
-  EMPLOYMENT
-  ASSETS
-  PROPERTY
-  INSURANCE
-  CREDIT
-  OTHER
-}
-
-// Loan type
-enum LoanType {
-  PURCHASE
-  REFINANCE
-}
-
-// Activity type
-enum ActivityType {
-  CLIENT_CREATED
-  CLIENT_UPDATED
-  CLIENT_DELETED
-  STATUS_CHANGED
-  NOTE_ADDED
-  NOTE_UPDATED
-  NOTE_DELETED
-  TASK_CREATED
-  TASK_COMPLETED
-  TASK_DELETED
-  DOCUMENT_UPLOADED
-  DOCUMENT_REQUESTED
-  DOCUMENT_APPROVED
-  DOCUMENT_REJECTED
-  LOAN_SCENARIO_CREATED
-  LOAN_SCENARIO_UPDATED
-  LOGIN
-  LOGOUT
 }
 
 // Users table
@@ -103,7 +16,7 @@ model User {
   email         String    @unique
   passwordHash  String    @map("password_hash")
   name          String
-  role          Role      @default(MLO)
+  role          String    @default("MLO") // ADMIN, MANAGER, MLO, PROCESSOR, UNDERWRITER, VIEWER
   isActive      Boolean   @default(true) @map("is_active")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -120,21 +33,21 @@ model User {
 
 // Clients table (with encrypted PII)
 model Client {
-  id              String        @id @default(uuid())
-  nameEncrypted   Json          @map("name_encrypted")
-  emailEncrypted  Json          @map("email_encrypted")
-  phoneEncrypted  Json          @map("phone_encrypted")
-  nameHash        String        @map("name_hash")
-  emailHash       String        @map("email_hash")
-  phoneHash       String        @map("phone_hash")
-  status          ClientStatus  @default(LEAD)
-  tags            String[]      @default([])
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
+  id              String    @id @default(uuid())
+  nameEncrypted   String    @map("name_encrypted") // JSON string
+  emailEncrypted  String    @map("email_encrypted") // JSON string
+  phoneEncrypted  String    @map("phone_encrypted") // JSON string
+  nameHash        String    @map("name_hash")
+  emailHash       String    @map("email_hash")
+  phoneHash       String    @map("phone_hash")
+  status          String    @default("LEAD") // LEAD, PRE_QUALIFIED, ACTIVE, PROCESSING, UNDERWRITING, CLEAR_TO_CLOSE, CLOSED, DENIED, INACTIVE
+  tags            String    @default("[]") // JSON array string
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  createdById     String        @map("created_by_id")
-  createdBy       User          @relation(fields: [createdById], references: [id])
+  createdById     String    @map("created_by_id")
+  createdBy       User      @relation(fields: [createdById], references: [id])
   notes           Note[]
   tasks           Task[]
   documents       Document[]
@@ -173,7 +86,7 @@ model Note {
   clientId    String    @map("client_id")
   client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   text        String
-  tags        String[]  @default([])
+  tags        String    @default("[]") // JSON array string
   isPinned    Boolean   @default(false) @map("is_pinned")
   createdById String    @map("created_by_id")
   createdBy   User      @relation(fields: [createdById], references: [id])
@@ -187,19 +100,19 @@ model Note {
 
 // Tasks table
 model Task {
-  id          String        @id @default(uuid())
-  clientId    String?       @map("client_id")
-  client      Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id          String    @id @default(uuid())
+  clientId    String?   @map("client_id")
+  client      Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   text        String
   description String?
-  status      TaskStatus    @default(TODO)
-  priority    TaskPriority  @default(MEDIUM)
-  dueDate     DateTime?     @map("due_date")
-  completedAt DateTime?     @map("completed_at")
-  assignedToId String?      @map("assigned_to_id")
-  assignedTo  User?         @relation(fields: [assignedToId], references: [id])
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  status      String    @default("TODO") // TODO, IN_PROGRESS, COMPLETE
+  priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH
+  dueDate     DateTime? @map("due_date")
+  completedAt DateTime? @map("completed_at")
+  assignedToId String?  @map("assigned_to_id")
+  assignedTo  User?     @relation(fields: [assignedToId], references: [id])
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   // Relations
   subtasks    TaskSubtask[]
@@ -226,21 +139,21 @@ model TaskSubtask {
 
 // Documents table
 model Document {
-  id          String          @id @default(uuid())
-  clientId    String          @map("client_id")
-  client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id          String    @id @default(uuid())
+  clientId    String    @map("client_id")
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   name        String
-  fileName    String          @map("file_name")
-  filePath    String          @map("file_path")
-  fileSize    Int             @map("file_size")
-  mimeType    String          @map("mime_type")
-  status      DocumentStatus  @default(UPLOADED)
-  category    DocumentCategory @default(OTHER)
-  dueDate     DateTime?       @map("due_date")
-  expiresAt   DateTime?       @map("expires_at")
+  fileName    String    @map("file_name")
+  filePath    String    @map("file_path")
+  fileSize    Int       @map("file_size")
+  mimeType    String    @map("mime_type")
+  status      String    @default("UPLOADED") // REQUIRED, REQUESTED, UPLOADED, UNDER_REVIEW, APPROVED, REJECTED, EXPIRED
+  category    String    @default("OTHER") // INCOME, EMPLOYMENT, ASSETS, PROPERTY, INSURANCE, CREDIT, OTHER
+  dueDate     DateTime? @map("due_date")
+  expiresAt   DateTime? @map("expires_at")
   notes       String?
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@index([clientId])
   @@index([status])
@@ -254,7 +167,7 @@ model LoanScenario {
   clientId            String    @map("client_id")
   client              Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   name                String
-  loanType            LoanType  @map("loan_type")
+  loanType            String    @map("loan_type") // PURCHASE, REFINANCE
   amount              Float
   interestRate        Float     @map("interest_rate")
   termYears           Int       @map("term_years")
@@ -279,17 +192,17 @@ model LoanScenario {
 
 // Activity log for audit trail
 model Activity {
-  id          String        @id @default(uuid())
-  clientId    String?       @map("client_id")
-  client      Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  userId      String        @map("user_id")
-  user        User          @relation(fields: [userId], references: [id])
-  type        ActivityType
+  id          String    @id @default(uuid())
+  clientId    String?   @map("client_id")
+  client      Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id])
+  type        String    // CLIENT_CREATED, CLIENT_UPDATED, STATUS_CHANGED, NOTE_ADDED, etc.
   description String
-  metadata    Json?
-  ipAddress   String?       @map("ip_address")
-  userAgent   String?       @map("user_agent")
-  createdAt   DateTime      @default(now()) @map("created_at")
+  metadata    String?   // JSON string
+  ipAddress   String?   @map("ip_address")
+  userAgent   String?   @map("user_agent")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   @@index([clientId])
   @@index([userId])
@@ -304,7 +217,7 @@ model DocumentPackage {
   name        String
   description String?
   isStandard  Boolean   @default(false) @map("is_standard")
-  documents   Json      // Array of document types
+  documents   String    // JSON array of document types
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
@@ -316,7 +229,7 @@ model NoteTemplate {
   id          String    @id @default(uuid())
   name        String
   content     String
-  tags        String[]  @default([])
+  tags        String    @default("[]") // JSON array string
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
@@ -328,11 +241,24 @@ model TaskTemplate {
   id          String    @id @default(uuid())
   name        String
   description String?
-  priority    TaskPriority @default(MEDIUM)
+  priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH
   dueDays     Int?      @map("due_days")
-  steps       Json?     // Array of subtask steps
+  steps       String?   // JSON array of subtask steps
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@map("task_templates")
+}
+
+// Refresh tokens for JWT authentication
+model RefreshToken {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  token       String    @unique
+  expiresAt   DateTime  @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
 }

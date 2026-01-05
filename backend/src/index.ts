@@ -2,6 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { config } from 'dotenv';
+import authRoutes from './routes/authRoutes.js';
+import clientRoutes from './routes/clientRoutes.js';
+import noteRoutes from './routes/noteRoutes.js';
+import taskRoutes from './routes/taskRoutes.js';
 
 // Load environment variables
 config();
@@ -45,11 +49,15 @@ app.get('/api', (_req, res) => {
   });
 });
 
-// TODO: Import and use route modules
-// app.use('/api/auth', authRoutes);
-// app.use('/api/clients', clientRoutes);
-// app.use('/api/notes', noteRoutes);
-// app.use('/api/tasks', taskRoutes);
+// Auth routes
+app.use('/api/auth', authRoutes);
+
+// Protected routes
+app.use('/api/clients', clientRoutes);
+app.use('/api/notes', noteRoutes);
+app.use('/api/tasks', taskRoutes);
+
+// TODO: Implement remaining route modules
 // app.use('/api/documents', documentRoutes);
 // app.use('/api/loan-scenarios', loanScenarioRoutes);
 // app.use('/api/activities', activityRoutes);
