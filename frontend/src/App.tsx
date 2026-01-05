@@ -10,9 +10,12 @@ import {
   IconLogout,
   IconChevronDown,
   IconLayoutKanban,
+  IconShield,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import Login from './pages/Login';
+import Admin from './pages/Admin';
+import AccessDenied from './pages/AccessDenied';
 
 // Placeholder components - to be implemented
 const Dashboard = () => (
@@ -78,24 +81,42 @@ const NotFound = () => (
   </Center>
 );
 
+// Role-protected route wrapper
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'ADMIN';
+
+  if (!isAdmin) {
+    return <AccessDenied />;
+  }
+
+  return <>{children}</>;
+}
+
 // Navigation items
 const navItems = [
-  { icon: IconDashboard, label: 'Dashboard', href: '/' },
-  { icon: IconUsers, label: 'Clients', href: '/clients' },
-  { icon: IconLayoutKanban, label: 'Pipeline', href: '/pipeline' },
-  { icon: IconFileText, label: 'Documents', href: '/documents' },
-  { icon: IconCalculator, label: 'Calculator', href: '/calculator' },
-  { icon: IconChartBar, label: 'Analytics', href: '/analytics' },
-  { icon: IconSettings, label: 'Settings', href: '/settings' },
+  { icon: IconDashboard, label: 'Dashboard', href: '/', adminOnly: false },
+  { icon: IconUsers, label: 'Clients', href: '/clients', adminOnly: false },
+  { icon: IconLayoutKanban, label: 'Pipeline', href: '/pipeline', adminOnly: false },
+  { icon: IconFileText, label: 'Documents', href: '/documents', adminOnly: false },
+  { icon: IconCalculator, label: 'Calculator', href: '/calculator', adminOnly: false },
+  { icon: IconChartBar, label: 'Analytics', href: '/analytics', adminOnly: false },
+  { icon: IconSettings, label: 'Settings', href: '/settings', adminOnly: false },
+  { icon: IconShield, label: 'Admin', href: '/admin', adminOnly: true },
 ];
 
 // Main navigation component
 function MainNav({ currentPath }: { currentPath: string }) {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'ADMIN';
+
+  // Filter out admin-only items for non-admin users
+  const visibleItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <Stack gap={4} p="xs">
-      {navItems.map((item) => (
+      {visibleItems.map((item) => (
         <NavLink
           key={item.href}
           label={item.label}
@@ -210,6 +231,8 @@ function ProtectedLayout() {
           <Route path="/calculator" element={<Calculator />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+          <Route path="/admin/*" element={<AdminRoute><Admin /></AdminRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </AppShell.Main>
