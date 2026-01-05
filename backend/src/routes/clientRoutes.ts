@@ -7,10 +7,14 @@ const router = Router();
 // All routes require authentication
 router.use(authenticateToken);
 
-// GET /api/clients - List all clients
+// GET /api/clients - List all clients for current user
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
+    const userId = req.user?.userId;
+
+    // Users can only see their own clients (data isolation)
     const clients = await prisma.client.findMany({
+      where: { createdById: userId },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
@@ -42,6 +46,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const userId = req.user?.userId;
 
     const client = await prisma.client.findUnique({
       where: { id },
@@ -57,6 +62,14 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({
         error: 'Not Found',
         message: 'Client not found',
+      });
+    }
+
+    // Data isolation: Users can only access their own clients
+    if (client.createdById !== userId) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You do not have access to this client',
       });
     }
 
@@ -155,6 +168,14 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
       });
     }
 
+    // Data isolation: Users can only update their own clients
+    if (existingClient.createdById !== userId) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You do not have access to this client',
+      });
+    }
+
     const client = await prisma.client.update({
       where: { id },
       data: {
@@ -206,6 +227,14 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({
         error: 'Not Found',
         message: 'Client not found',
+      });
+    }
+
+    // Data isolation: Users can only delete their own clients
+    if (existingClient.createdById !== userId) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You do not have access to this client',
       });
     }
 

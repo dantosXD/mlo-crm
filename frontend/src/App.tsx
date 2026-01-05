@@ -16,6 +16,8 @@ import { useAuthStore } from './stores/authStore';
 import Login from './pages/Login';
 import Admin from './pages/Admin';
 import AccessDenied from './pages/AccessDenied';
+import Clients from './pages/Clients';
+import ClientDetails from './pages/ClientDetails';
 
 // Placeholder components - to be implemented
 const Dashboard = () => (
@@ -24,18 +26,6 @@ const Dashboard = () => (
       <Text size="xl" fw={600}>Welcome to MLO Dashboard</Text>
       <Text c="dimmed">Your mortgage loan origination command center</Text>
     </Stack>
-  </Center>
-);
-
-const Clients = () => (
-  <Center h="100%">
-    <Text size="xl">Clients - Coming Soon</Text>
-  </Center>
-);
-
-const ClientDetails = () => (
-  <Center h="100%">
-    <Text size="xl">Client Details - Coming Soon</Text>
   </Center>
 );
 
