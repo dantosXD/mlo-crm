@@ -1,0 +1,338 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User roles for RBAC
+enum Role {
+  ADMIN
+  MANAGER
+  MLO
+  PROCESSOR
+  UNDERWRITER
+  VIEWER
+}
+
+// Client pipeline statuses
+enum ClientStatus {
+  LEAD
+  PRE_QUALIFIED
+  ACTIVE
+  PROCESSING
+  UNDERWRITING
+  CLEAR_TO_CLOSE
+  CLOSED
+  DENIED
+  INACTIVE
+}
+
+// Task status
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETE
+}
+
+// Task priority
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// Document status
+enum DocumentStatus {
+  REQUIRED
+  REQUESTED
+  UPLOADED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+// Document category
+enum DocumentCategory {
+  INCOME
+  EMPLOYMENT
+  ASSETS
+  PROPERTY
+  INSURANCE
+  CREDIT
+  OTHER
+}
+
+// Loan type
+enum LoanType {
+  PURCHASE
+  REFINANCE
+}
+
+// Activity type
+enum ActivityType {
+  CLIENT_CREATED
+  CLIENT_UPDATED
+  CLIENT_DELETED
+  STATUS_CHANGED
+  NOTE_ADDED
+  NOTE_UPDATED
+  NOTE_DELETED
+  TASK_CREATED
+  TASK_COMPLETED
+  TASK_DELETED
+  DOCUMENT_UPLOADED
+  DOCUMENT_REQUESTED
+  DOCUMENT_APPROVED
+  DOCUMENT_REJECTED
+  LOAN_SCENARIO_CREATED
+  LOAN_SCENARIO_UPDATED
+  LOGIN
+  LOGOUT
+}
+
+// Users table
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  name          String
+  role          Role      @default(MLO)
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastLoginAt   DateTime? @map("last_login_at")
+
+  // Relations
+  clients       Client[]
+  notes         Note[]
+  tasks         Task[]
+  activities    Activity[]
+
+  @@map("users")
+}
+
+// Clients table (with encrypted PII)
+model Client {
+  id              String        @id @default(uuid())
+  nameEncrypted   Json          @map("name_encrypted")
+  emailEncrypted  Json          @map("email_encrypted")
+  phoneEncrypted  Json          @map("phone_encrypted")
+  nameHash        String        @map("name_hash")
+  emailHash       String        @map("email_hash")
+  phoneHash       String        @map("phone_hash")
+  status          ClientStatus  @default(LEAD)
+  tags            String[]      @default([])
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  createdById     String        @map("created_by_id")
+  createdBy       User          @relation(fields: [createdById], references: [id])
+  notes           Note[]
+  tasks           Task[]
+  documents       Document[]
+  loanScenarios   LoanScenario[]
+  activities      Activity[]
+  financialProfile ClientFinancialProfile?
+
+  @@index([nameHash])
+  @@index([emailHash])
+  @@index([phoneHash])
+  @@index([status])
+  @@index([createdAt])
+  @@map("clients")
+}
+
+// Client financial profile
+model ClientFinancialProfile {
+  id              String    @id @default(uuid())
+  clientId        String    @unique @map("client_id")
+  client          Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  annualIncome    Float?    @map("annual_income")
+  monthlyDebts    Float?    @map("monthly_debts")
+  creditScore     Int?      @map("credit_score")
+  employmentType  String?   @map("employment_type")
+  employerName    String?   @map("employer_name")
+  yearsEmployed   Float?    @map("years_employed")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("client_financial_profiles")
+}
+
+// Notes table
+model Note {
+  id          String    @id @default(uuid())
+  clientId    String    @map("client_id")
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  text        String
+  tags        String[]  @default([])
+  isPinned    Boolean   @default(false) @map("is_pinned")
+  createdById String    @map("created_by_id")
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([clientId])
+  @@index([createdAt])
+  @@map("notes")
+}
+
+// Tasks table
+model Task {
+  id          String        @id @default(uuid())
+  clientId    String?       @map("client_id")
+  client      Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  text        String
+  description String?
+  status      TaskStatus    @default(TODO)
+  priority    TaskPriority  @default(MEDIUM)
+  dueDate     DateTime?     @map("due_date")
+  completedAt DateTime?     @map("completed_at")
+  assignedToId String?      @map("assigned_to_id")
+  assignedTo  User?         @relation(fields: [assignedToId], references: [id])
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  subtasks    TaskSubtask[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("tasks")
+}
+
+// Task subtasks
+model TaskSubtask {
+  id          String    @id @default(uuid())
+  taskId      String    @map("task_id")
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  text        String
+  isCompleted Boolean   @default(false) @map("is_completed")
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("task_subtasks")
+}
+
+// Documents table
+model Document {
+  id          String          @id @default(uuid())
+  clientId    String          @map("client_id")
+  client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name        String
+  fileName    String          @map("file_name")
+  filePath    String          @map("file_path")
+  fileSize    Int             @map("file_size")
+  mimeType    String          @map("mime_type")
+  status      DocumentStatus  @default(UPLOADED)
+  category    DocumentCategory @default(OTHER)
+  dueDate     DateTime?       @map("due_date")
+  expiresAt   DateTime?       @map("expires_at")
+  notes       String?
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  @@index([clientId])
+  @@index([status])
+  @@index([category])
+  @@map("documents")
+}
+
+// Loan scenarios table
+model LoanScenario {
+  id                  String    @id @default(uuid())
+  clientId            String    @map("client_id")
+  client              Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name                String
+  loanType            LoanType  @map("loan_type")
+  amount              Float
+  interestRate        Float     @map("interest_rate")
+  termYears           Int       @map("term_years")
+  downPayment         Float?    @map("down_payment")
+  propertyValue       Float?    @map("property_value")
+  propertyTaxes       Float?    @map("property_taxes")
+  homeInsurance       Float?    @map("home_insurance")
+  hoaFees             Float?    @map("hoa_fees")
+  pmiRate             Float?    @map("pmi_rate")
+  monthlyPayment      Float?    @map("monthly_payment")
+  totalMonthlyPayment Float?    @map("total_monthly_payment")
+  totalInterest       Float?    @map("total_interest")
+  loanToValue         Float?    @map("loan_to_value")
+  debtToIncome        Float?    @map("debt_to_income")
+  isPreferred         Boolean   @default(false) @map("is_preferred")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@index([clientId])
+  @@map("loan_scenarios")
+}
+
+// Activity log for audit trail
+model Activity {
+  id          String        @id @default(uuid())
+  clientId    String?       @map("client_id")
+  client      Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  userId      String        @map("user_id")
+  user        User          @relation(fields: [userId], references: [id])
+  type        ActivityType
+  description String
+  metadata    Json?
+  ipAddress   String?       @map("ip_address")
+  userAgent   String?       @map("user_agent")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  @@index([clientId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("activities")
+}
+
+// Document packages (templates)
+model DocumentPackage {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  isStandard  Boolean   @default(false) @map("is_standard")
+  documents   Json      // Array of document types
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("document_packages")
+}
+
+// Note templates
+model NoteTemplate {
+  id          String    @id @default(uuid())
+  name        String
+  content     String
+  tags        String[]  @default([])
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("note_templates")
+}
+
+// Task templates
+model TaskTemplate {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  priority    TaskPriority @default(MEDIUM)
+  dueDays     Int?      @map("due_days")
+  steps       Json?     // Array of subtask steps
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("task_templates")
+}

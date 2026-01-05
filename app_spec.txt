@@ -1,0 +1,472 @@
+# MLO Dashboard - Application Specification
+# Version: 1.0
+# Last Updated: January 5, 2026
+
+================================================================================
+## PROJECT OVERVIEW
+================================================================================
+
+MLO Dashboard is a comprehensive CRM and loan origination system for Mortgage
+Loan Officers (MLOs) that manages the entire mortgage lending workflow from
+lead capture through loan closing.
+
+### Key Value Propositions
+
+1. Unified Workspace: All client data, documents, tasks, and loan scenarios in one place
+2. Real-Time Sync: Multi-user collaboration with live updates across devices
+3. Intelligent Automation: AI-powered document management, workflow automation
+4. Compliance First: Built-in PII encryption, audit trails, regulatory compliance
+5. Offline Capable: Progressive Web App (PWA) functionality
+
+### Target Users
+
+1. Mortgage Loan Officer (MLO): Front-line loan originator
+2. Loan Processor: Supports MLOs with paperwork/compliance
+3. Underwriter: Reviews and approves/denies applications
+4. Branch Manager: Oversees team of MLOs
+
+================================================================================
+## TECHNOLOGY STACK
+================================================================================
+
+### Frontend
+- Framework: React 18+ with TypeScript
+- UI Library: Mantine UI v7
+- State Management: Zustand for global state, React Query for server state
+- Routing: React Router v6
+- Build Tool: Vite
+- Testing: Vitest + React Testing Library + Playwright
+
+### Backend
+- Runtime: Node.js 20+
+- Framework: Express.js with TypeScript
+- Database: PostgreSQL 15+
+- ORM: Prisma
+- Authentication: JWT with refresh tokens
+- Real-time: WebSocket (Socket.io)
+- File Storage: S3-compatible (MinIO for local dev)
+
+### Development
+- Package Manager: npm
+- Linting: ESLint + Prettier
+- Git hooks: Husky + lint-staged
+
+================================================================================
+## FEATURE MODULES (15 Major Features)
+================================================================================
+
+### Critical Priority (Must Have for MVP)
+
+1. CLIENT MANAGEMENT
+   - CRUD operations for clients with encrypted PII
+   - Hash-based fast search (<50ms for 100K+ clients)
+   - Status pipeline (Lead -> Pre-qualified -> Active -> Underwriting -> Closed)
+   - Tag-based organization
+   - Advanced filtering and search
+   - Bulk operations
+
+2. CLIENT DETAILS VIEW
+   - Comprehensive single client profile with 6 tabs
+   - Tab 1: Overview (recent notes, tasks, docs, timeline)
+   - Tab 2: Notes (all notes, templates, search)
+   - Tab 3: Documents (grid, upload, request, status)
+   - Tab 4: Tasks (kanban board)
+   - Tab 5: Loan Scenarios (comparison cards)
+   - Tab 6: Activities (full timeline)
+
+3. DOCUMENT MANAGEMENT
+   - Upload documents (drag-and-drop, file picker)
+   - Auto-categorization by file name/type
+   - Document requests (email/SMS to client)
+   - Status workflow: REQUIRED -> REQUESTED -> UPLOADED -> UNDER_REVIEW -> APPROVED/REJECTED
+   - Automated reminders
+   - Version control
+   - Document packages (pre-defined sets)
+
+4. LOAN SCENARIO PLANNER
+   - Interactive comparison of multiple loan options
+   - Calculate: monthly payment, total monthly, DTI, LTV, closing costs
+   - Visual comparisons (bar charts, amortization)
+   - Save scenarios to client
+   - Export to PDF
+   - Buydown calculator
+
+5. PIPELINE MANAGEMENT
+   - Kanban board with drag-and-drop between stages
+   - Table view (sortable, filterable)
+   - Pipeline stages: Lead -> Pre-Qualified -> Processing -> Underwriting -> Clear to Close -> Closed
+   - Auto-stage transitions on conditions
+   - Task creation per stage
+   - Metrics and forecasting
+
+### High Priority
+
+6. CUSTOMIZABLE DASHBOARD
+   - Drag-and-drop widget grid layout
+   - 8 widget types: Metrics, Recent Clients, Pending Tasks, Document Status,
+     Activity Feed, Quick Actions, Pipeline Overview, Calendar
+   - Resizable widgets
+   - Layout persistence per user
+
+7. DOCUMENT PACKAGE MANAGER
+   - Standard packages (Purchase, Refinance, Pre-Approval, Closing)
+   - Custom package creation
+   - Assign packages to clients
+   - Template management
+
+8. NOTES SYSTEM
+   - Rich text notes attached to clients
+   - Tag-based organization
+   - Note templates
+   - Pin important notes
+   - Universal search across all clients
+
+9. TASKS & REMINDERS
+   - Task management with subtasks
+   - Priority levels (Low, Medium, High)
+   - Due dates with reminders
+   - Assignment to team members
+   - Task templates
+
+10. LOAN APPLICATION TRACKER
+    - Formal application tracking through pipeline
+    - Integration with external APIs (credit, income verification)
+    - Stage transitions with audit trail
+
+### Essential High Priority
+
+11. QUICK CAPTURE BAR
+    - Universal command interface (Cmd/Ctrl+K)
+    - Natural language parsing
+    - Slash commands (/task, /note, /client, /doc)
+    - Voice input support
+    - Smart suggestions
+
+### Medium Priority
+
+12. LOAN CALCULATOR
+    - Payment calculator
+    - Affordability calculator
+    - Buydown calculator
+    - Refinance analysis
+    - Amortization schedule
+
+13. COMMUNICATIONS HUB
+    - Email templates
+    - SMS templates
+    - Message history
+    - A/B testing for templates
+
+14. ANALYTICS & REPORTING
+    - Pipeline metrics
+    - Conversion rates
+    - Activity trends
+    - Custom date ranges
+    - Export to CSV/Excel
+
+15. ADMIN PANEL
+    - User management (CRUD)
+    - Role-based access control (Admin, Manager, MLO, Processor, Underwriter, Viewer)
+    - System configuration
+    - Audit logs
+
+================================================================================
+## DATA MODELS
+================================================================================
+
+### Core Entities
+
+1. CLIENTS
+   - id (UUID)
+   - name_encrypted, email_encrypted, phone_encrypted (JSONB with AES-256)
+   - name_hash, email_hash, phone_hash (SHA-256 for search)
+   - status (enum: Lead, Pre-qualified, Active, Processing, Underwriting, Clear_to_Close, Closed, Denied)
+   - tags (string array)
+   - created_at, updated_at
+
+2. NOTES
+   - id, client_id
+   - text (rich text content)
+   - tags (string array)
+   - is_pinned (boolean)
+   - created_by (user_id)
+   - created_at, updated_at
+
+3. TASKS
+   - id, client_id
+   - text (description)
+   - status (Todo, In_Progress, Complete)
+   - priority (Low, Medium, High)
+   - due_date
+   - assigned_to (user_id)
+   - created_at, updated_at
+
+4. DOCUMENTS
+   - id, client_id
+   - name, file_path
+   - status (Required, Requested, Uploaded, Under_Review, Approved, Rejected)
+   - category (Income, Employment, Assets, Property, Insurance, Credit, Other)
+   - due_date
+   - created_at, updated_at
+
+5. LOAN_SCENARIOS
+   - id, client_id
+   - name
+   - loan_type (Purchase, Refinance)
+   - amount, interest_rate, term_years
+   - down_payment, property_value
+   - property_taxes, home_insurance, hoa_fees
+   - monthly_payment, total_monthly_payment
+   - is_preferred (boolean)
+   - created_at, updated_at
+
+6. ACTIVITIES
+   - id, client_id
+   - type (Note_Added, Task_Completed, Document_Uploaded, Status_Changed, etc.)
+   - description
+   - metadata (JSONB)
+   - created_at
+
+7. USERS
+   - id, email, password_hash
+   - name
+   - role (Admin, Manager, MLO, Processor, Underwriter, Viewer)
+   - is_active
+   - created_at, updated_at
+
+================================================================================
+## UI/UX REQUIREMENTS
+================================================================================
+
+### Design System
+
+- Color Scheme: Professional blue primary (#228be6), with status colors
+  - Lead: Gray (#868e96)
+  - Pre-qualified: Blue (#339af0)
+  - Active: Green (#40c057)
+  - Processing: Yellow (#fab005)
+  - Underwriting: Orange (#fd7e14)
+  - Clear to Close: Light Green (#69db7c)
+  - Closed: Dark Green (#2f9e44)
+  - Denied: Red (#fa5252)
+
+- Typography: Inter font family
+  - Headings: 600-700 weight
+  - Body: 400-500 weight
+
+- Spacing: 8px base unit (Mantine default)
+
+- Border Radius: 8px for cards, 4px for inputs
+
+### Layout
+
+- Sidebar: 250px width, collapsible to 60px
+- Header: 60px height
+- Main Content: Flexible, max-width 1400px
+- Mobile: Full-width, bottom navigation
+
+### Navigation Structure
+
+- Dashboard (/)
+- Clients (/clients)
+  - Client Details (/clients/:id)
+- Pipeline (/pipeline)
+- Documents (/documents)
+- Document Packages (/document-packages)
+- Loan Calculator (/calculator)
+- Analytics (/analytics)
+- Admin (/admin) - Admin only
+- Settings (/settings)
+
+### Component Library (Mantine UI)
+
+- Use Mantine components exclusively
+- Custom theme configuration for colors
+- Dark mode support
+- Responsive breakpoints: sm(768), md(992), lg(1200), xl(1400)
+
+================================================================================
+## SECURITY REQUIREMENTS
+================================================================================
+
+### Authentication
+
+- JWT access tokens (24h expiry)
+- Refresh tokens (30d expiry, rotation)
+- Secure httpOnly cookies
+- Multi-factor authentication support
+- Password hashing with bcrypt (12 rounds)
+
+### Authorization (RBAC)
+
+| Resource    | Admin | Manager | MLO  | Processor | Underwriter | Viewer |
+|-------------|-------|---------|------|-----------|-------------|--------|
+| Clients     | CRUD  | CRUD    | CRUD | R         | R           | R      |
+| Documents   | CRUD  | CRUD    | CRUD | CRUD      | R           | R      |
+| Loan Apps   | CRUD  | CRUD    | CR   | RU        | CRUD        | R      |
+| Users       | CRUD  | RU      | -    | -         | -           | -      |
+| Settings    | CRUD  | R       | R    | R         | R           | R      |
+
+### PII Encryption
+
+- All sensitive fields encrypted with AES-256
+- Encryption key stored in environment variables (not database)
+- SHA-256 hash stored separately for search
+- Decrypt only on authorized read
+
+### Audit Trail
+
+- Log all data access and modifications
+- Include: user_id, action, entity, timestamp, IP address
+- Immutable audit log table
+- 7-year retention for compliance
+
+================================================================================
+## PERFORMANCE REQUIREMENTS
+================================================================================
+
+### Response Times
+
+| Operation              | Target   | Maximum  |
+|------------------------|----------|----------|
+| Client list (100)      | <100ms   | <200ms   |
+| Client search          | <50ms    | <100ms   |
+| Client details page    | <200ms   | <500ms   |
+| Document upload        | <2s      | <5s      |
+| Loan calculation       | <500ms   | <1s      |
+| Real-time sync         | <1s      | <2s      |
+
+### Scalability
+
+- Support 100,000+ clients
+- Support 500+ concurrent users
+- Handle 1,000,000+ documents
+- API: 1,000+ requests/second
+
+### Optimization Strategies
+
+- Database: Strategic indexes, connection pooling
+- Caching: Redis for distributed cache
+- Frontend: Virtual scrolling, lazy loading, code splitting
+- CDN: Static assets cached globally
+
+================================================================================
+## API ENDPOINTS
+================================================================================
+
+### Authentication
+- POST /api/auth/login
+- POST /api/auth/register
+- POST /api/auth/refresh
+- POST /api/auth/logout
+- POST /api/auth/forgot-password
+- POST /api/auth/reset-password
+
+### Clients
+- GET /api/clients
+- GET /api/clients/:id
+- POST /api/clients
+- PUT /api/clients/:id
+- DELETE /api/clients/:id
+- GET /api/clients/search?q={query}
+
+### Notes
+- GET /api/notes?client_id={id}
+- POST /api/notes
+- PUT /api/notes/:id
+- DELETE /api/notes/:id
+
+### Tasks
+- GET /api/tasks?client_id={id}
+- POST /api/tasks
+- PUT /api/tasks/:id
+- DELETE /api/tasks/:id
+- PATCH /api/tasks/:id/status
+
+### Documents
+- GET /api/documents?client_id={id}
+- POST /api/documents/upload
+- GET /api/documents/:id/download
+- PUT /api/documents/:id
+- DELETE /api/documents/:id
+- POST /api/documents/request
+- POST /api/documents/bulk-request
+
+### Loan Scenarios
+- GET /api/loan-scenarios?client_id={id}
+- POST /api/loan-scenarios
+- PUT /api/loan-scenarios/:id
+- DELETE /api/loan-scenarios/:id
+- POST /api/loan-scenarios/calculate
+- POST /api/loan-scenarios/compare
+
+### Activities
+- GET /api/activities?client_id={id}
+- GET /api/activities/recent
+
+### Users (Admin)
+- GET /api/users
+- POST /api/users
+- PUT /api/users/:id
+- DELETE /api/users/:id
+
+### Analytics
+- GET /api/analytics/pipeline
+- GET /api/analytics/activity
+- GET /api/analytics/conversion
+
+================================================================================
+## FEATURE COUNT
+================================================================================
+
+feature_count: 250
+
+This is a MEDIUM complexity application requiring approximately 250 test features
+covering all 20 mandatory test categories.
+
+================================================================================
+## DEVELOPMENT ENVIRONMENT
+================================================================================
+
+### Prerequisites
+- Node.js 20+
+- PostgreSQL 15+
+- Redis (optional for caching)
+- MinIO or S3-compatible storage
+
+### Local Development
+1. Clone repository
+2. Run `./init.sh` to set up environment
+3. Frontend: http://localhost:5173
+4. Backend API: http://localhost:3000
+5. Database: localhost:5432
+
+### Environment Variables
+
+```bash
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/mlo_dashboard
+
+# Authentication
+JWT_SECRET=your-256-bit-secret
+JWT_EXPIRES_IN=24h
+REFRESH_TOKEN_EXPIRES_IN=30d
+
+# Encryption
+ENCRYPTION_KEY=your-32-byte-base64-key
+
+# File Storage
+S3_ENDPOINT=http://localhost:9000
+S3_BUCKET=mlo-documents
+S3_ACCESS_KEY=minio
+S3_SECRET_KEY=minio123
+
+# Application
+FRONTEND_URL=http://localhost:5173
+API_URL=http://localhost:3000
+NODE_ENV=development
+```
+
+================================================================================
+## END OF SPECIFICATION
+================================================================================
