@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Container,
   Title,
@@ -18,7 +18,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
 interface Client {
@@ -48,10 +48,14 @@ const API_URL = 'http://localhost:3000/api';
 
 export default function Clients() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { accessToken } = useAuthStore();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 10;
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [newClient, setNewClient] = useState({
     name: '',
@@ -61,10 +65,10 @@ export default function Clients() {
   });
   const [creating, setCreating] = useState(false);
 
-  // Fetch clients on mount
+  // Fetch clients on mount and when location changes (handles back navigation)
   useEffect(() => {
     fetchClients();
-  }, []);
+  }, [accessToken, location.key]);
 
   const fetchClients = async () => {
     setLoading(true);
@@ -173,11 +177,18 @@ export default function Clients() {
     }
   };
 
-  // Filter clients by search query
-  const filteredClients = clients.filter(client =>
-    client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter clients by search query and status
+  const filteredClients = clients.filter(client => {
+    const matchesSearch = client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      client.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = !statusFilter || client.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  // Paginate filtered clients
+  const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
+  const paginatedClients = filteredClients.slice(0, page * itemsPerPage);
+  const hasMore = page * itemsPerPage < filteredClients.length;
 
   return (
     <Container size="xl" py="md">
@@ -194,22 +205,63 @@ export default function Clients() {
         </Button>
       </Group>
 
-      {/* Search */}
-      <TextInput
-        placeholder="Search clients..."
-        leftSection={<IconSearch size={16} />}
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        mb="md"
-      />
+      {/* Search and Filters */}
+      <Group mb="md" gap="md">
+        <TextInput
+          placeholder="Search clients..."
+          leftSection={<IconSearch size={16} />}
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setPage(1); // Reset to first page when search changes
+          }}
+          style={{ flex: 1 }}
+        />
+        <Select
+          placeholder="Filter by status"
+          leftSection={<IconFilter size={16} />}
+          clearable
+          data={[
+            { value: 'LEAD', label: 'Lead' },
+            { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
+            { value: 'ACTIVE', label: 'Active' },
+            { value: 'PROCESSING', label: 'Processing' },
+            { value: 'UNDERWRITING', label: 'Underwriting' },
+            { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
+            { value: 'CLOSED', label: 'Closed' },
+            { value: 'DENIED', label: 'Denied' },
+          ]}
+          value={statusFilter}
+          onChange={(value) => {
+            setStatusFilter(value);
+            setPage(1); // Reset to first page when filter changes
+          }}
+          w={200}
+        />
+        {(searchQuery || statusFilter) && (
+          <Button
+            variant="subtle"
+            color="gray"
+            leftSection={<IconX size={16} />}
+            onClick={() => {
+              setSearchQuery('');
+              setStatusFilter(null);
+              setPage(1);
+            }}
+          >
+            Clear
+          </Button>
+        )}
+      </Group>
 
       {/* Clients Table */}
       <Paper shadow="xs" p="md" withBorder>
         {filteredClients.length === 0 ? (
           <Text c="dimmed" ta="center" py="xl">
-            {clients.length === 0 ? 'No clients yet. Click "Add Client" to create one.' : 'No clients match your search.'}
+            {clients.length === 0 ? 'No clients yet. Click "Add Client" to create one.' : 'No clients match your search or filter.'}
           </Text>
         ) : (
+          <>
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
@@ -222,7 +274,7 @@ export default function Clients() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {filteredClients.map((client) => (
+              {paginatedClients.map((client) => (
                 <Table.Tr key={client.id}>
                   <Table.Td>
                     <Text fw={500}>{client.name}</Text>
@@ -263,6 +315,23 @@ export default function Clients() {
               ))}
             </Table.Tbody>
           </Table>
+          {hasMore && (
+            <Group justify="center" mt="md">
+              <Button
+                variant="light"
+                onClick={() => setPage(p => p + 1)}
+              >
+                Load More ({filteredClients.length - paginatedClients.length} remaining)
+              </Button>
+            </Group>
+          )}
+          {filteredClients.length > 0 && (
+            <Text c="dimmed" size="sm" ta="center" mt="sm">
+              Showing {paginatedClients.length} of {filteredClients.length} clients
+              {statusFilter && ` (filtered by ${statusFilter.replace('_', ' ')})`}
+            </Text>
+          )}
+          </>
         )}
       </Paper>
 
