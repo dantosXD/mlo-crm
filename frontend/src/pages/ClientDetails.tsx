@@ -21,6 +21,7 @@ import {
   TextInput,
   Select,
   TagsInput,
+  Textarea,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -38,6 +39,7 @@ import {
   IconEdit,
   IconTrash,
   IconTag,
+  IconPlus,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -55,6 +57,17 @@ interface Client {
   documents: any[];
   loanScenarios: any[];
 }
+interface Note {
+  id: string;
+  clientId: string;
+  text: string;
+  tags: string[];
+  isPinned: boolean;
+  createdBy: { id: string; name: string };
+  createdAt: string;
+  updatedAt?: string;
+}
+
 
 const statusColors: Record<string, string> = {
   LEAD: 'gray',
@@ -90,6 +103,11 @@ export default function ClientDetails() {
   const [deleting, setDeleting] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [updatingTags, setUpdatingTags] = useState(false);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [addNoteModalOpen, setAddNoteModalOpen] = useState(false);
+  const [newNoteText, setNewNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
 
   const statusOptions = [
     { value: 'LEAD', label: 'Lead' },
@@ -105,6 +123,7 @@ export default function ClientDetails() {
   useEffect(() => {
     if (id) {
       fetchClient();
+      fetchNotes();
     }
   }, [id]);
 
@@ -327,6 +346,77 @@ export default function ClientDetails() {
     }
   };
 
+  const fetchNotes = async () => {
+    if (!id) return;
+    setLoadingNotes(true);
+    try {
+      const response = await fetch(`${API_URL}/notes?client_id=${id}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setNotes(data);
+      }
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+    } finally {
+      setLoadingNotes(false);
+    }
+  };
+
+  const handleCreateNote = async () => {
+    if (!newNoteText.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Note text is required',
+        color: 'red',
+      });
+      return;
+    }
+
+    setSavingNote(true);
+    try {
+      const response = await fetch(`${API_URL}/notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          clientId: id,
+          text: newNoteText,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create note');
+      }
+
+      const createdNote = await response.json();
+      setNotes([createdNote, ...notes]);
+      setAddNoteModalOpen(false);
+      setNewNoteText('');
+
+      notifications.show({
+        title: 'Success',
+        message: 'Note created successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error creating note:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to create note',
+        color: 'red',
+      });
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+
   if (loading) {
     return (
       <Container size="xl" py="md">
@@ -463,7 +553,7 @@ export default function ClientDetails() {
             Overview
           </Tabs.Tab>
           <Tabs.Tab value="notes" leftSection={<IconNotes size={16} />}>
-            Notes ({client.notes?.length || 0})
+            Notes ({notes.length})
           </Tabs.Tab>
           <Tabs.Tab value="documents" leftSection={<IconFiles size={16} />}>
             Documents ({client.documents?.length || 0})
@@ -522,7 +612,36 @@ export default function ClientDetails() {
         </Tabs.Panel>
 
         <Tabs.Panel value="notes" pt="md">
-          <Text c="dimmed">Notes management coming soon...</Text>
+          <Group justify="space-between" mb="md">
+            <Title order={4}>Notes</Title>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setAddNoteModalOpen(true)}
+            >
+              Add Note
+            </Button>
+          </Group>
+          {loadingNotes ? (
+            <Text c="dimmed">Loading notes...</Text>
+          ) : notes.length === 0 ? (
+            <Text c="dimmed">No notes yet. Click "Add Note" to create one.</Text>
+          ) : (
+            <Stack gap="md">
+              {notes.map((note) => (
+                <Paper key={note.id} p="md" withBorder>
+                  <Text style={{ whiteSpace: 'pre-wrap' }}>{note.text}</Text>
+                  <Group justify="space-between" mt="sm">
+                    <Text size="xs" c="dimmed">
+                      By {note.createdBy?.name || 'Unknown'}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {new Date(note.createdAt).toLocaleString()}
+                    </Text>
+                  </Group>
+                </Paper>
+              ))}
+            </Stack>
+          )}
         </Tabs.Panel>
 
         <Tabs.Panel value="documents" pt="md">
@@ -612,6 +731,31 @@ export default function ClientDetails() {
             </Button>
             <Button color="red" onClick={handleDeleteClient} loading={deleting}>
               Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+      {/* Add Note Modal */}
+      <Modal
+        opened={addNoteModalOpen}
+        onClose={() => setAddNoteModalOpen(false)}
+        title="Add Note"
+      >
+        <Stack>
+          <Textarea
+            label="Note"
+            placeholder="Enter your note..."
+            required
+            minRows={4}
+            value={newNoteText}
+            onChange={(e) => setNewNoteText(e.target.value)}
+          />
+          <Group justify="flex-end" mt="md">
+            <Button variant="subtle" onClick={() => setAddNoteModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateNote} loading={savingNote}>
+              Save
             </Button>
           </Group>
         </Stack>
