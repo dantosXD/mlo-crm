@@ -20,6 +20,7 @@ import AccessDenied from './pages/AccessDenied';
 import Clients from './pages/Clients';
 import ClientDetails from './pages/ClientDetails';
 import NotFound from './pages/NotFound';
+import Pipeline from './pages/Pipeline';
 
 // Placeholder components - to be implemented
 const Dashboard = () => (
@@ -28,12 +29,6 @@ const Dashboard = () => (
       <Text size="xl" fw={600}>Welcome to MLO Dashboard</Text>
       <Text c="dimmed">Your mortgage loan origination command center</Text>
     </Stack>
-  </Center>
-);
-
-const Pipeline = () => (
-  <Center h="100%">
-    <Text size="xl">Pipeline - Coming Soon</Text>
   </Center>
 );
 
