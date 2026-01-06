@@ -28,6 +28,7 @@ import {
   Grid,
   Divider,
   ThemeIcon,
+  Table,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
@@ -54,6 +55,7 @@ import {
   IconCurrencyDollar,
   IconPercentage,
   IconCalendar,
+  IconScale,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -199,6 +201,8 @@ export default function ClientDetails() {
     homeInsurance: 0,
     hoaFees: 0,
   });
+  const [selectedScenarios, setSelectedScenarios] = useState<string[]>([]);
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
 
   const statusOptions = [
     { value: 'LEAD', label: 'Lead' },
@@ -1000,6 +1004,19 @@ export default function ClientDetails() {
     return `${value.toFixed(2)}%`;
   };
 
+  const handleToggleScenarioSelection = (scenarioId: string) => {
+    setSelectedScenarios(prev => {
+      if (prev.includes(scenarioId)) {
+        return prev.filter(id => id !== scenarioId);
+      }
+      return [...prev, scenarioId];
+    });
+  };
+
+  const getSelectedScenariosData = () => {
+    return loanScenarios.filter(s => selectedScenarios.includes(s.id));
+  };
+
   if (loading) {
     return (
       <Container size="xl" py="md">
@@ -1312,34 +1329,64 @@ export default function ClientDetails() {
         <Tabs.Panel value="loans" pt="md">
           <Group justify="space-between" mb="md">
             <Title order={4}>Loan Scenarios</Title>
-            <Button
-              leftSection={<IconPlus size={16} />}
-              onClick={() => setAddScenarioModalOpen(true)}
-            >
-              Add Scenario
-            </Button>
+            <Group>
+              {selectedScenarios.length >= 2 && (
+                <Button
+                  leftSection={<IconScale size={16} />}
+                  variant="light"
+                  onClick={() => setCompareModalOpen(true)}
+                >
+                  Compare ({selectedScenarios.length})
+                </Button>
+              )}
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setAddScenarioModalOpen(true)}
+              >
+                Add Scenario
+              </Button>
+            </Group>
           </Group>
           {loadingScenarios ? (
             <Text c="dimmed">Loading loan scenarios...</Text>
           ) : loanScenarios.length === 0 ? (
             <Text c="dimmed">No loan scenarios yet. Click "Add Scenario" to create one.</Text>
           ) : (
-            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-              {loanScenarios.map((scenario) => (
-                <Card key={scenario.id} withBorder shadow="sm" padding="lg" style={scenario.isPreferred ? { borderColor: 'var(--mantine-color-yellow-5)', borderWidth: 2 } : {}}>
-                  <Group justify="space-between" mb="sm">
-                    <Group gap="xs">
-                      {scenario.isPreferred && (
-                        <ThemeIcon color="yellow" size="sm" variant="light">
-                          <IconStarFilled size={14} />
-                        </ThemeIcon>
-                      )}
-                      <Text fw={600} size="lg">{scenario.name}</Text>
+            <>
+              {loanScenarios.length > 1 && (
+                <Text size="sm" c="dimmed" mb="md">
+                  Select 2 or more scenarios to compare them side-by-side
+                </Text>
+              )}
+              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                {loanScenarios.map((scenario) => (
+                  <Card
+                    key={scenario.id}
+                    withBorder
+                    shadow="sm"
+                    padding="lg"
+                    style={{
+                      ...(scenario.isPreferred ? { borderColor: 'var(--mantine-color-yellow-5)', borderWidth: 2 } : {}),
+                      ...(selectedScenarios.includes(scenario.id) ? { borderColor: 'var(--mantine-color-blue-5)', borderWidth: 2, backgroundColor: 'var(--mantine-color-blue-0)' } : {}),
+                    }}
+                  >
+                    <Group justify="space-between" mb="sm">
+                      <Group gap="xs">
+                        <Checkbox
+                          checked={selectedScenarios.includes(scenario.id)}
+                          onChange={() => handleToggleScenarioSelection(scenario.id)}
+                        />
+                        {scenario.isPreferred && (
+                          <ThemeIcon color="yellow" size="sm" variant="light">
+                            <IconStarFilled size={14} />
+                          </ThemeIcon>
+                        )}
+                        <Text fw={600} size="lg">{scenario.name}</Text>
+                      </Group>
+                      <Badge color={scenario.loanType === 'PURCHASE' ? 'blue' : 'green'}>
+                        {scenario.loanType}
+                      </Badge>
                     </Group>
-                    <Badge color={scenario.loanType === 'PURCHASE' ? 'blue' : 'green'}>
-                      {scenario.loanType}
-                    </Badge>
-                  </Group>
 
                   <Divider mb="sm" />
 
@@ -1409,7 +1456,8 @@ export default function ClientDetails() {
                   </Group>
                 </Card>
               ))}
-            </SimpleGrid>
+              </SimpleGrid>
+            </>
           )}
         </Tabs.Panel>
 
@@ -1787,6 +1835,136 @@ export default function ClientDetails() {
                 Save
               </Button>
             </Group>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Compare Loan Scenarios Modal */}
+      <Modal
+        opened={compareModalOpen}
+        onClose={() => setCompareModalOpen(false)}
+        title="Compare Loan Scenarios"
+        size="xl"
+      >
+        <Stack>
+          {getSelectedScenariosData().length >= 2 && (() => {
+            const scenarios = getSelectedScenariosData();
+            const minPayment = Math.min(...scenarios.map(s => s.monthlyPayment || 0));
+            const maxPayment = Math.max(...scenarios.map(s => s.monthlyPayment || 0));
+            const minInterest = Math.min(...scenarios.map(s => s.totalInterest || 0));
+            const maxInterest = Math.max(...scenarios.map(s => s.totalInterest || 0));
+            const paymentDiff = maxPayment - minPayment;
+            const interestDiff = maxInterest - minInterest;
+
+            return (
+              <>
+                <Paper p="md" withBorder bg="blue.0" mb="md">
+                  <SimpleGrid cols={2}>
+                    <div>
+                      <Text size="sm" c="dimmed">Monthly Payment Difference</Text>
+                      <Text fw={700} size="xl" c="blue">{formatCurrency(paymentDiff)}/mo</Text>
+                    </div>
+                    <div>
+                      <Text size="sm" c="dimmed">Total Interest Difference</Text>
+                      <Text fw={700} size="xl" c="red">{formatCurrency(interestDiff)}</Text>
+                    </div>
+                  </SimpleGrid>
+                </Paper>
+
+                <Table striped highlightOnHover withTableBorder>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Metric</Table.Th>
+                      {scenarios.map(s => (
+                        <Table.Th key={s.id}>{s.name}</Table.Th>
+                      ))}
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    <Table.Tr>
+                      <Table.Td fw={500}>Loan Type</Table.Td>
+                      {scenarios.map(s => (
+                        <Table.Td key={s.id}>
+                          <Badge color={s.loanType === 'PURCHASE' ? 'blue' : 'green'}>{s.loanType}</Badge>
+                        </Table.Td>
+                      ))}
+                    </Table.Tr>
+                    <Table.Tr>
+                      <Table.Td fw={500}>Loan Amount</Table.Td>
+                      {scenarios.map(s => (
+                        <Table.Td key={s.id}>{formatCurrency(s.amount)}</Table.Td>
+                      ))}
+                    </Table.Tr>
+                    <Table.Tr>
+                      <Table.Td fw={500}>Interest Rate</Table.Td>
+                      {scenarios.map(s => (
+                        <Table.Td key={s.id}>{formatPercent(s.interestRate)}</Table.Td>
+                      ))}
+                    </Table.Tr>
+                    <Table.Tr>
+                      <Table.Td fw={500}>Term</Table.Td>
+                      {scenarios.map(s => (
+                        <Table.Td key={s.id}>{s.termYears} years</Table.Td>
+                      ))}
+                    </Table.Tr>
+                    <Table.Tr>
+                      <Table.Td fw={500}>Down Payment</Table.Td>
+                      {scenarios.map(s => (
+                        <Table.Td key={s.id}>{formatCurrency(s.downPayment)}</Table.Td>
+                      ))}
+                    </Table.Tr>
+                    <Table.Tr>
+                      <Table.Td fw={500}>Property Value</Table.Td>
+                      {scenarios.map(s => (
+                        <Table.Td key={s.id}>{formatCurrency(s.propertyValue)}</Table.Td>
+                      ))}
+                    </Table.Tr>
+                    <Table.Tr>
+                      <Table.Td fw={500}>LTV Ratio</Table.Td>
+                      {scenarios.map(s => (
+                        <Table.Td key={s.id}>{formatPercent(s.loanToValue)}</Table.Td>
+                      ))}
+                    </Table.Tr>
+                    <Table.Tr bg="blue.0">
+                      <Table.Td fw={700}>Monthly P&I</Table.Td>
+                      {scenarios.map(s => (
+                        <Table.Td key={s.id}>
+                          <Text fw={700} c={s.monthlyPayment === minPayment ? 'green' : s.monthlyPayment === maxPayment ? 'red' : undefined}>
+                            {formatCurrency(s.monthlyPayment)}
+                            {s.monthlyPayment === minPayment && <Badge ml="xs" size="xs" color="green">Lowest</Badge>}
+                          </Text>
+                        </Table.Td>
+                      ))}
+                    </Table.Tr>
+                    <Table.Tr bg="blue.0">
+                      <Table.Td fw={700}>Total Monthly (PITI)</Table.Td>
+                      {scenarios.map(s => (
+                        <Table.Td key={s.id}>
+                          <Text fw={700}>{formatCurrency(s.totalMonthlyPayment)}</Text>
+                        </Table.Td>
+                      ))}
+                    </Table.Tr>
+                    <Table.Tr bg="red.0">
+                      <Table.Td fw={700}>Total Interest</Table.Td>
+                      {scenarios.map(s => (
+                        <Table.Td key={s.id}>
+                          <Text fw={700} c={s.totalInterest === minInterest ? 'green' : s.totalInterest === maxInterest ? 'red' : undefined}>
+                            {formatCurrency(s.totalInterest)}
+                            {s.totalInterest === minInterest && <Badge ml="xs" size="xs" color="green">Lowest</Badge>}
+                          </Text>
+                        </Table.Td>
+                      ))}
+                    </Table.Tr>
+                  </Table.Tbody>
+                </Table>
+              </>
+            );
+          })()}
+
+          <Group justify="flex-end" mt="md">
+            <Button variant="subtle" onClick={() => setCompareModalOpen(false)}>
+              Close
+            </Button>
           </Group>
         </Stack>
       </Modal>
