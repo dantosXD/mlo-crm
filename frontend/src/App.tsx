@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { AppShell, Text, Center, NavLink, Group, Avatar, Menu, UnstyledButton, Stack, Divider } from '@mantine/core';
+import { AppShell, Text, Center, NavLink, Group, Avatar, Menu, UnstyledButton, Stack, Divider, Badge, Tooltip } from '@mantine/core';
 import {
   IconDashboard,
   IconUsers,
@@ -11,6 +11,7 @@ import {
   IconChevronDown,
   IconLayoutKanban,
   IconShield,
+  IconEye,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import Login from './pages/Login';
@@ -120,10 +121,16 @@ function MainNav({ currentPath }: { currentPath: string }) {
   );
 }
 
+// Helper function to check if user has read-only role
+function isReadOnlyRole(role: string | undefined): boolean {
+  return role === 'VIEWER' || role === 'PROCESSOR' || role === 'UNDERWRITER';
+}
+
 // User menu component
 function UserMenu() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const isReadOnly = isReadOnlyRole(user?.role);
 
   const handleLogout = async () => {
     await logout();
@@ -176,6 +183,7 @@ function UserMenu() {
 function ProtectedLayout() {
   const currentPath = window.location.pathname;
   const { user } = useAuthStore();
+  const isReadOnly = isReadOnlyRole(user?.role);
 
   return (
     <AppShell
@@ -185,9 +193,23 @@ function ProtectedLayout() {
     >
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
-          <Text fw={700} size="lg" style={{ color: '#228be6' }}>
-            MLO Dashboard
-          </Text>
+          <Group gap="md">
+            <Text fw={700} size="lg" style={{ color: '#228be6' }}>
+              MLO Dashboard
+            </Text>
+            {isReadOnly && (
+              <Tooltip label="You have read-only access. Some actions may be restricted.">
+                <Badge
+                  color="gray"
+                  variant="light"
+                  leftSection={<IconEye size={12} />}
+                  style={{ cursor: 'help' }}
+                >
+                  Read Only
+                </Badge>
+              </Tooltip>
+            )}
+          </Group>
           <UserMenu />
         </Group>
       </AppShell.Header>
