@@ -15,6 +15,11 @@ import {
   SimpleGrid,
   Center,
   Alert,
+  Breadcrumbs,
+  Anchor,
+  Modal,
+  TextInput,
+  Select,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -27,6 +32,10 @@ import {
   IconTimeline,
   IconAlertCircle,
   IconLock,
+  IconHome,
+  IconChevronRight,
+  IconEdit,
+  IconTrash,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -67,6 +76,16 @@ export default function ClientDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    status: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -107,6 +126,99 @@ export default function ClientDetails() {
       setError('Failed to load client details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openEditModal = () => {
+    if (client) {
+      setEditForm({
+        name: client.name,
+        email: client.email,
+        phone: client.phone || '',
+        status: client.status,
+      });
+      setEditModalOpen(true);
+    }
+  };
+
+  const handleSaveClient = async () => {
+    if (!editForm.name || !editForm.email) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Name and email are required',
+        color: 'red',
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_URL}/clients/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(editForm),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update client');
+      }
+
+      const updatedClient = await response.json();
+      setClient(updatedClient);
+      setEditModalOpen(false);
+
+      notifications.show({
+        title: 'Success',
+        message: 'Client updated successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error updating client:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update client',
+        color: 'red',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteClient = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch(`${API_URL}/clients/${id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete client');
+      }
+
+      notifications.show({
+        title: 'Success',
+        message: 'Client deleted successfully',
+        color: 'green',
+      });
+
+      // Navigate to clients list after successful deletion
+      navigate('/clients');
+    } catch (error) {
+      console.error('Error deleting client:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete client',
+        color: 'red',
+      });
+      setDeleteModalOpen(false);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -158,20 +270,44 @@ export default function ClientDetails() {
 
   return (
     <Container size="xl" py="md">
+      {/* Breadcrumb Navigation */}
+      <Breadcrumbs
+        separator={<IconChevronRight size={14} color="gray" />}
+        mb="md"
+      >
+        <Anchor onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
+          Dashboard
+        </Anchor>
+        <Anchor onClick={() => navigate('/clients')} style={{ cursor: 'pointer' }}>
+          Clients
+        </Anchor>
+        <Text>{client.name}</Text>
+      </Breadcrumbs>
+
       {/* Header */}
       <Group justify="space-between" mb="lg">
         <Group>
-          <Button
-            variant="subtle"
-            leftSection={<IconArrowLeft size={16} />}
-            onClick={() => navigate('/clients')}
-          >
-            Back
-          </Button>
           <Title order={2}>{client.name}</Title>
           <Badge color={statusColors[client.status] || 'gray'} size="lg">
             {client.status.replace('_', ' ')}
           </Badge>
+        </Group>
+        <Group>
+          <Button
+            leftSection={<IconEdit size={16} />}
+            variant="light"
+            onClick={openEditModal}
+          >
+            Edit
+          </Button>
+          <Button
+            leftSection={<IconTrash size={16} />}
+            variant="light"
+            color="red"
+            onClick={() => setDeleteModalOpen(true)}
+          >
+            Delete
+          </Button>
         </Group>
       </Group>
 
@@ -278,6 +414,81 @@ export default function ClientDetails() {
           <Text c="dimmed">Activity timeline coming soon...</Text>
         </Tabs.Panel>
       </Tabs>
+
+      {/* Edit Client Modal */}
+      <Modal
+        opened={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        title="Edit Client"
+      >
+        <Stack>
+          <TextInput
+            label="Name"
+            placeholder="Client name"
+            required
+            value={editForm.name}
+            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+          />
+          <TextInput
+            label="Email"
+            placeholder="client@example.com"
+            required
+            type="email"
+            value={editForm.email}
+            onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+          />
+          <TextInput
+            label="Phone"
+            placeholder="(555) 123-4567"
+            value={editForm.phone}
+            onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+          />
+          <Select
+            label="Status"
+            data={[
+              { value: 'LEAD', label: 'Lead' },
+              { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
+              { value: 'ACTIVE', label: 'Active' },
+              { value: 'PROCESSING', label: 'Processing' },
+              { value: 'UNDERWRITING', label: 'Underwriting' },
+              { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
+              { value: 'CLOSED', label: 'Closed' },
+            ]}
+            value={editForm.status}
+            onChange={(value) => setEditForm({ ...editForm, status: value || 'LEAD' })}
+          />
+          <Group justify="flex-end" mt="md">
+            <Button variant="subtle" onClick={() => setEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveClient} loading={saving}>
+              Save
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        opened={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        title="Delete Client"
+        centered
+      >
+        <Stack>
+          <Text>
+            Are you sure you want to delete <strong>{client.name}</strong>? This action cannot be undone.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button variant="subtle" onClick={() => setDeleteModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button color="red" onClick={handleDeleteClient} loading={deleting}>
+              Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Container>
   );
 }
