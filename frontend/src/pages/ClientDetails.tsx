@@ -23,7 +23,9 @@ import {
   TagsInput,
   Textarea,
   ActionIcon,
+  Checkbox,
 } from '@mantine/core';
+import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowLeft,
@@ -67,6 +69,20 @@ interface Note {
   tags: string[];
   isPinned: boolean;
   createdBy: { id: string; name: string };
+  createdAt: string;
+  updatedAt?: string;
+}
+
+interface Task {
+  id: string;
+  clientId: string;
+  text: string;
+  description?: string;
+  status: 'TODO' | 'IN_PROGRESS' | 'COMPLETE';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  dueDate?: string;
+  completedAt?: string;
+  assignedTo?: { id: string; name: string };
   createdAt: string;
   updatedAt?: string;
 }
@@ -115,6 +131,18 @@ export default function ClientDetails() {
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editNoteText, setEditNoteText] = useState('');
 
+  // Task state
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [addTaskModalOpen, setAddTaskModalOpen] = useState(false);
+  const [savingTask, setSavingTask] = useState(false);
+  const [newTaskForm, setNewTaskForm] = useState({
+    text: '',
+    description: '',
+    priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH',
+    dueDate: null as Date | null,
+  });
+
   const statusOptions = [
     { value: 'LEAD', label: 'Lead' },
     { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
@@ -130,6 +158,7 @@ export default function ClientDetails() {
     if (id) {
       fetchClient();
       fetchNotes();
+      fetchTasks();
     }
   }, [id]);
 
@@ -556,6 +585,160 @@ export default function ClientDetails() {
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
+  // Task functions
+  const fetchTasks = async () => {
+    if (!id) return;
+    setLoadingTasks(true);
+    try {
+      const response = await fetch(`${API_URL}/tasks?client_id=${id}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTasks(data);
+      }
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+
+  const handleCreateTask = async () => {
+    if (!newTaskForm.text.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Task text is required',
+        color: 'red',
+      });
+      return;
+    }
+
+    setSavingTask(true);
+    try {
+      const response = await fetch(`${API_URL}/tasks`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          clientId: id,
+          text: newTaskForm.text,
+          description: newTaskForm.description || undefined,
+          priority: newTaskForm.priority,
+          dueDate: newTaskForm.dueDate ? newTaskForm.dueDate.toISOString() : undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create task');
+      }
+
+      const createdTask = await response.json();
+      setTasks([createdTask, ...tasks]);
+      setAddTaskModalOpen(false);
+      setNewTaskForm({
+        text: '',
+        description: '',
+        priority: 'MEDIUM',
+        dueDate: null,
+      });
+
+      notifications.show({
+        title: 'Success',
+        message: 'Task created successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error creating task:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to create task',
+        color: 'red',
+      });
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
+  const handleToggleTaskStatus = async (task: Task) => {
+    const newStatus = task.status === 'COMPLETE' ? 'TODO' : 'COMPLETE';
+
+    try {
+      const response = await fetch(`${API_URL}/tasks/${task.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update task');
+      }
+
+      const updatedTask = await response.json();
+      setTasks(tasks.map(t => t.id === task.id ? { ...t, status: updatedTask.status, completedAt: updatedTask.completedAt } : t));
+
+      notifications.show({
+        title: 'Success',
+        message: newStatus === 'COMPLETE' ? 'Task completed' : 'Task reopened',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error updating task:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update task',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm('Are you sure you want to delete this task?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete task');
+      }
+
+      setTasks(tasks.filter(t => t.id !== taskId));
+
+      notifications.show({
+        title: 'Success',
+        message: 'Task deleted successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete task',
+        color: 'red',
+      });
+    }
+  };
+
+  const priorityColors: Record<string, string> = {
+    LOW: 'gray',
+    MEDIUM: 'blue',
+    HIGH: 'red',
+  };
+
 
   if (loading) {
     return (
@@ -699,7 +882,7 @@ export default function ClientDetails() {
             Documents ({client.documents?.length || 0})
           </Tabs.Tab>
           <Tabs.Tab value="tasks" leftSection={<IconChecklist size={16} />}>
-            Tasks ({client.tasks?.length || 0})
+            Tasks ({tasks.length})
           </Tabs.Tab>
           <Tabs.Tab value="loans" leftSection={<IconCalculator size={16} />}>
             Loan Scenarios ({client.loanScenarios?.length || 0})
@@ -810,7 +993,60 @@ export default function ClientDetails() {
         </Tabs.Panel>
 
         <Tabs.Panel value="tasks" pt="md">
-          <Text c="dimmed">Task management coming soon...</Text>
+          <Group justify="space-between" mb="md">
+            <Title order={4}>Tasks</Title>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setAddTaskModalOpen(true)}
+            >
+              Add Task
+            </Button>
+          </Group>
+          {loadingTasks ? (
+            <Text c="dimmed">Loading tasks...</Text>
+          ) : tasks.length === 0 ? (
+            <Text c="dimmed">No tasks yet. Click "Add Task" to create one.</Text>
+          ) : (
+            <Stack gap="md">
+              {tasks.map((task) => (
+                <Paper key={task.id} p="md" withBorder style={task.status === 'COMPLETE' ? { opacity: 0.7 } : {}}>
+                  <Group justify="space-between" align="flex-start">
+                    <Group gap="sm" style={{ flex: 1 }}>
+                      <Checkbox
+                        checked={task.status === 'COMPLETE'}
+                        onChange={() => handleToggleTaskStatus(task)}
+                        size="md"
+                      />
+                      <div style={{ flex: 1 }}>
+                        <Text style={{ textDecoration: task.status === 'COMPLETE' ? 'line-through' : 'none' }}>
+                          {task.text}
+                        </Text>
+                        {task.description && (
+                          <Text size="sm" c="dimmed" mt="xs">{task.description}</Text>
+                        )}
+                      </div>
+                    </Group>
+                    <Group gap="xs">
+                      <Badge color={priorityColors[task.priority]} size="sm">
+                        {task.priority}
+                      </Badge>
+                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteTask(task.id)}>
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Group>
+                  <Group justify="space-between" mt="sm">
+                    <Text size="xs" c="dimmed">
+                      {task.dueDate ? `Due: ${new Date(task.dueDate).toLocaleDateString()}` : 'No due date'}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Created: {new Date(task.createdAt).toLocaleDateString()}
+                    </Text>
+                  </Group>
+                </Paper>
+              ))}
+            </Stack>
+          )}
         </Tabs.Panel>
 
         <Tabs.Panel value="loans" pt="md">
@@ -941,6 +1177,65 @@ export default function ClientDetails() {
               Cancel
             </Button>
             <Button onClick={handleUpdateNote} loading={savingNote}>
+              Save
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Add Task Modal */}
+      <Modal
+        opened={addTaskModalOpen}
+        onClose={() => {
+          setAddTaskModalOpen(false);
+          setNewTaskForm({ text: '', description: '', priority: 'MEDIUM', dueDate: null });
+        }}
+        title="Add Task"
+      >
+        <Stack>
+          <TextInput
+            label="Task"
+            placeholder="Enter task description..."
+            required
+            value={newTaskForm.text}
+            onChange={(e) => setNewTaskForm({ ...newTaskForm, text: e.target.value })}
+          />
+          <Textarea
+            label="Description (optional)"
+            placeholder="Add more details..."
+            minRows={2}
+            value={newTaskForm.description}
+            onChange={(e) => setNewTaskForm({ ...newTaskForm, description: e.target.value })}
+          />
+          <Select
+            label="Priority"
+            data={[
+              { value: 'LOW', label: 'Low' },
+              { value: 'MEDIUM', label: 'Medium' },
+              { value: 'HIGH', label: 'High' },
+            ]}
+            value={newTaskForm.priority}
+            onChange={(value) => setNewTaskForm({ ...newTaskForm, priority: (value as 'LOW' | 'MEDIUM' | 'HIGH') || 'MEDIUM' })}
+          />
+          <DateInput
+            label="Due Date (optional)"
+            placeholder="Select due date"
+            value={newTaskForm.dueDate}
+            onChange={(date) => setNewTaskForm({ ...newTaskForm, dueDate: date })}
+            clearable
+            minDate={new Date()}
+          />
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="subtle"
+              onClick={() => {
+                setAddTaskModalOpen(false);
+                setNewTaskForm({ text: '', description: '', priority: 'MEDIUM', dueDate: null });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleCreateTask} loading={savingTask}>
               Save
             </Button>
           </Group>
