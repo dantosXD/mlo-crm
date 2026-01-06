@@ -1,11 +1,16 @@
 import { Router, Request, Response } from 'express';
-import { authenticateToken, AuthRequest } from '../middleware/auth.js';
+import { authenticateToken, authorizeRoles, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticateToken);
+
+// Roles that can create/update/delete clients (per RBAC spec)
+const CLIENT_WRITE_ROLES = ['ADMIN', 'MANAGER', 'MLO'];
+// Roles that can only read clients
+// const CLIENT_READ_ONLY_ROLES = ['PROCESSOR', 'UNDERWRITER', 'VIEWER'];
 
 // GET /api/clients - List all clients for current user
 router.get('/', async (req: AuthRequest, res: Response) => {
@@ -97,7 +102,8 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/clients - Create new client
-router.post('/', async (req: AuthRequest, res: Response) => {
+// Only ADMIN, MANAGER, MLO can create clients (per RBAC spec)
+router.post('/', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest, res: Response) => {
   try {
     const { name, email, phone, status, tags } = req.body;
     const userId = req.user?.userId;
@@ -153,7 +159,8 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 });
 
 // PUT /api/clients/:id - Update client
-router.put('/:id', async (req: AuthRequest, res: Response) => {
+// Only ADMIN, MANAGER, MLO can update clients (per RBAC spec)
+router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { name, email, phone, status, tags } = req.body;
@@ -216,7 +223,8 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
 });
 
 // DELETE /api/clients/:id - Delete client
-router.delete('/:id', async (req: AuthRequest, res: Response) => {
+// Only ADMIN, MANAGER, MLO can delete clients (per RBAC spec)
+router.delete('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const userId = req.user?.userId;
