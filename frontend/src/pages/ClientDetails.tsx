@@ -86,6 +86,18 @@ export default function ClientDetails() {
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  const statusOptions = [
+    { value: 'LEAD', label: 'Lead' },
+    { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
+    { value: 'ACTIVE', label: 'Active' },
+    { value: 'PROCESSING', label: 'Processing' },
+    { value: 'UNDERWRITING', label: 'Underwriting' },
+    { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
+    { value: 'CLOSED', label: 'Closed' },
+    { value: 'DENIED', label: 'Denied' },
+  ];
 
   useEffect(() => {
     if (id) {
@@ -222,6 +234,51 @@ export default function ClientDetails() {
     }
   };
 
+  const handleStatusChange = async (newStatus: string | null) => {
+    if (!newStatus || !client || newStatus === client.status) return;
+
+    const oldStatus = client.status;
+    setUpdatingStatus(true);
+
+    try {
+      const response = await fetch(`${API_URL}/clients/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          name: client.name,
+          email: client.email,
+          phone: client.phone,
+          status: newStatus,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update status');
+      }
+
+      const updatedClient = await response.json();
+      setClient(updatedClient);
+
+      notifications.show({
+        title: 'Status Updated',
+        message: `Status changed from ${oldStatus.replace('_', ' ')} to ${newStatus.replace('_', ' ')}`,
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error updating status:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update status',
+        color: 'red',
+      });
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
   if (loading) {
     return (
       <Container size="xl" py="md">
@@ -288,9 +345,22 @@ export default function ClientDetails() {
       <Group justify="space-between" mb="lg">
         <Group>
           <Title order={2}>{client.name}</Title>
-          <Badge color={statusColors[client.status] || 'gray'} size="lg">
-            {client.status.replace('_', ' ')}
-          </Badge>
+          <Select
+            value={client.status}
+            onChange={handleStatusChange}
+            data={statusOptions}
+            disabled={updatingStatus}
+            size="sm"
+            w={160}
+            styles={{
+              input: {
+                backgroundColor: `var(--mantine-color-${statusColors[client.status] || 'gray'}-light)`,
+                color: `var(--mantine-color-${statusColors[client.status] || 'gray'}-filled)`,
+                fontWeight: 600,
+                border: `1px solid var(--mantine-color-${statusColors[client.status] || 'gray'}-outline)`,
+              },
+            }}
+          />
         </Group>
         <Group>
           <Button
