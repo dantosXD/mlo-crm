@@ -20,6 +20,7 @@ import {
   Modal,
   TextInput,
   Select,
+  TagsInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -36,6 +37,7 @@ import {
   IconChevronRight,
   IconEdit,
   IconTrash,
+  IconTag,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -87,6 +89,7 @@ export default function ClientDetails() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [updatingTags, setUpdatingTags] = useState(false);
 
   const statusOptions = [
     { value: 'LEAD', label: 'Lead' },
@@ -279,6 +282,51 @@ export default function ClientDetails() {
     }
   };
 
+  const handleTagsChange = async (newTags: string[]) => {
+    if (!client) return;
+
+    setUpdatingTags(true);
+
+    try {
+      const response = await fetch(`${API_URL}/clients/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          name: client.name,
+          email: client.email,
+          phone: client.phone,
+          status: client.status,
+          tags: newTags,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update tags');
+      }
+
+      const updatedClient = await response.json();
+      setClient(updatedClient);
+
+      notifications.show({
+        title: 'Tags Updated',
+        message: `Tags updated successfully`,
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error updating tags:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update tags',
+        color: 'red',
+      });
+    } finally {
+      setUpdatingTags(false);
+    }
+  };
+
   if (loading) {
     return (
       <Container size="xl" py="md">
@@ -383,7 +431,7 @@ export default function ClientDetails() {
 
       {/* Client Info Card */}
       <Paper shadow="xs" p="md" withBorder mb="lg">
-        <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        <SimpleGrid cols={{ base: 1, sm: 3 }} mb="md">
           <div>
             <Text size="sm" c="dimmed">Email</Text>
             <Text>{client.email}</Text>
@@ -397,6 +445,15 @@ export default function ClientDetails() {
             <Text>{new Date(client.createdAt).toLocaleDateString()}</Text>
           </div>
         </SimpleGrid>
+        <TagsInput
+          label="Tags"
+          placeholder="Add tags (press Enter to add)"
+          value={client.tags || []}
+          onChange={handleTagsChange}
+          disabled={updatingTags}
+          leftSection={<IconTag size={16} />}
+          clearable
+        />
       </Paper>
 
       {/* Tabs */}

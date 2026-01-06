@@ -269,6 +269,7 @@ export default function Clients() {
                 <Table.Th>Email</Table.Th>
                 <Table.Th>Phone</Table.Th>
                 <Table.Th>Status</Table.Th>
+                <Table.Th>Tags</Table.Th>
                 <Table.Th>Created</Table.Th>
                 <Table.Th>Actions</Table.Th>
               </Table.Tr>
@@ -285,6 +286,19 @@ export default function Clients() {
                     <Badge color={statusColors[client.status] || 'gray'}>
                       {client.status.replace('_', ' ')}
                     </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap={4}>
+                      {client.tags && client.tags.length > 0 ? (
+                        client.tags.map((tag, index) => (
+                          <Badge key={index} size="sm" variant="outline" color="violet">
+                            {tag}
+                          </Badge>
+                        ))
+                      ) : (
+                        <Text c="dimmed" size="sm">-</Text>
+                      )}
+                    </Group>
                   </Table.Td>
                   <Table.Td>
                     {new Date(client.createdAt).toLocaleDateString()}
