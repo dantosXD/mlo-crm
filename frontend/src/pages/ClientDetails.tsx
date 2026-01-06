@@ -22,6 +22,7 @@ import {
   Select,
   TagsInput,
   Textarea,
+  ActionIcon,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -40,6 +41,8 @@ import {
   IconTrash,
   IconTag,
   IconPlus,
+  IconPin,
+  IconPinnedOff,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -108,6 +111,9 @@ export default function ClientDetails() {
   const [addNoteModalOpen, setAddNoteModalOpen] = useState(false);
   const [newNoteText, setNewNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [editNoteModalOpen, setEditNoteModalOpen] = useState(false);
+  const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [editNoteText, setEditNoteText] = useState('');
 
   const statusOptions = [
     { value: 'LEAD', label: 'Lead' },
@@ -416,6 +422,140 @@ export default function ClientDetails() {
     }
   };
 
+  const handleEditNote = (note: Note) => {
+    setEditingNote(note);
+    setEditNoteText(note.text);
+    setEditNoteModalOpen(true);
+  };
+
+  const handleUpdateNote = async () => {
+    if (!editingNote || !editNoteText.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Note text is required',
+        color: 'red',
+      });
+      return;
+    }
+
+    setSavingNote(true);
+    try {
+      const response = await fetch(`${API_URL}/notes/${editingNote.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          text: editNoteText,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update note');
+      }
+
+      const updatedNote = await response.json();
+      setNotes(notes.map(n => n.id === updatedNote.id ? { ...n, text: updatedNote.text, updatedAt: updatedNote.updatedAt } : n));
+      setEditNoteModalOpen(false);
+      setEditingNote(null);
+      setEditNoteText('');
+
+      notifications.show({
+        title: 'Success',
+        message: 'Note updated successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error updating note:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update note',
+        color: 'red',
+      });
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!confirm('Are you sure you want to delete this note?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/notes/${noteId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete note');
+      }
+
+      setNotes(notes.filter(n => n.id !== noteId));
+
+      notifications.show({
+        title: 'Success',
+        message: 'Note deleted successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete note',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleTogglePin = async (note: Note) => {
+    const newPinnedState = !note.isPinned;
+
+    try {
+      const response = await fetch(`${API_URL}/notes/${note.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          isPinned: newPinnedState,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update note');
+      }
+
+      const updatedNote = await response.json();
+      setNotes(notes.map(n => n.id === note.id ? { ...n, isPinned: updatedNote.isPinned } : n));
+
+      notifications.show({
+        title: 'Success',
+        message: newPinnedState ? 'Note pinned to top' : 'Note unpinned',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error toggling pin:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update note',
+        color: 'red',
+      });
+    }
+  };
+
+  // Sort notes: pinned first, then by date
+  const sortedNotes = [...notes].sort((a, b) => {
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
 
   if (loading) {
     return (
@@ -627,9 +767,30 @@ export default function ClientDetails() {
             <Text c="dimmed">No notes yet. Click "Add Note" to create one.</Text>
           ) : (
             <Stack gap="md">
-              {notes.map((note) => (
-                <Paper key={note.id} p="md" withBorder>
-                  <Text style={{ whiteSpace: 'pre-wrap' }}>{note.text}</Text>
+              {sortedNotes.map((note) => (
+                <Paper key={note.id} p="md" withBorder style={note.isPinned ? { borderColor: 'var(--mantine-color-blue-5)', borderWidth: 2 } : {}}>
+                  <Group justify="space-between" align="flex-start">
+                    <Group gap="xs" style={{ flex: 1 }}>
+                      {note.isPinned && <IconPin size={16} color="var(--mantine-color-blue-6)" />}
+                      <Text style={{ whiteSpace: 'pre-wrap', flex: 1 }}>{note.text}</Text>
+                    </Group>
+                    <Group gap="xs">
+                      <ActionIcon
+                        variant="subtle"
+                        color={note.isPinned ? 'blue' : 'gray'}
+                        onClick={() => handleTogglePin(note)}
+                        title={note.isPinned ? 'Unpin note' : 'Pin to top'}
+                      >
+                        {note.isPinned ? <IconPinnedOff size={16} /> : <IconPin size={16} />}
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" color="blue" onClick={() => handleEditNote(note)}>
+                        <IconEdit size={16} />
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteNote(note.id)}>
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Group>
                   <Group justify="space-between" mt="sm">
                     <Text size="xs" c="dimmed">
                       By {note.createdBy?.name || 'Unknown'}
@@ -760,6 +921,32 @@ export default function ClientDetails() {
           </Group>
         </Stack>
       </Modal>
+      {/* Edit Note Modal */}
+      <Modal
+        opened={editNoteModalOpen}
+        onClose={() => { setEditNoteModalOpen(false); setEditingNote(null); setEditNoteText(''); }}
+        title="Edit Note"
+      >
+        <Stack>
+          <Textarea
+            label="Note"
+            placeholder="Enter your note..."
+            required
+            minRows={4}
+            value={editNoteText}
+            onChange={(e) => setEditNoteText(e.target.value)}
+          />
+          <Group justify="flex-end" mt="md">
+            <Button variant="subtle" onClick={() => { setEditNoteModalOpen(false); setEditingNote(null); setEditNoteText(''); }}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateNote} loading={savingNote}>
+              Save
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
     </Container>
   );
 }
