@@ -21,6 +21,7 @@ import Clients from './pages/Clients';
 import ClientDetails from './pages/ClientDetails';
 import NotFound from './pages/NotFound';
 import Pipeline from './pages/Pipeline';
+import Documents from './pages/Documents';
 
 // Placeholder components - to be implemented
 const Dashboard = () => (
@@ -29,12 +30,6 @@ const Dashboard = () => (
       <Text size="xl" fw={600}>Welcome to MLO Dashboard</Text>
       <Text c="dimmed">Your mortgage loan origination command center</Text>
     </Stack>
-  </Center>
-);
-
-const Documents = () => (
-  <Center h="100%">
-    <Text size="xl">Documents - Coming Soon</Text>
   </Center>
 );
 

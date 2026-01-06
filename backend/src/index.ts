@@ -7,6 +7,7 @@ import clientRoutes from './routes/clientRoutes.js';
 import noteRoutes from './routes/noteRoutes.js';
 import taskRoutes from './routes/taskRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import documentRoutes from './routes/documentRoutes.js';
 
 // Load environment variables
 config();
@@ -78,9 +79,9 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/documents', documentRoutes);
 
 // TODO: Implement remaining route modules
-// app.use('/api/documents', documentRoutes);
 // app.use('/api/loan-scenarios', loanScenarioRoutes);
 // app.use('/api/activities', activityRoutes);
 // app.use('/api/analytics', analyticsRoutes);
