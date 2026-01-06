@@ -24,6 +24,10 @@ import {
   Textarea,
   ActionIcon,
   Checkbox,
+  NumberInput,
+  Grid,
+  Divider,
+  ThemeIcon,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
@@ -45,6 +49,11 @@ import {
   IconPlus,
   IconPin,
   IconPinnedOff,
+  IconStar,
+  IconStarFilled,
+  IconCurrencyDollar,
+  IconPercentage,
+  IconCalendar,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -83,6 +92,30 @@ interface Task {
   dueDate?: string;
   completedAt?: string;
   assignedTo?: { id: string; name: string };
+  createdAt: string;
+  updatedAt?: string;
+}
+
+interface LoanScenario {
+  id: string;
+  clientId: string;
+  name: string;
+  loanType: 'PURCHASE' | 'REFINANCE';
+  amount: number;
+  interestRate: number;
+  termYears: number;
+  downPayment?: number;
+  propertyValue?: number;
+  propertyTaxes?: number;
+  homeInsurance?: number;
+  hoaFees?: number;
+  pmiRate?: number;
+  monthlyPayment?: number;
+  totalMonthlyPayment?: number;
+  totalInterest?: number;
+  loanToValue?: number;
+  debtToIncome?: number;
+  isPreferred: boolean;
   createdAt: string;
   updatedAt?: string;
 }
@@ -143,6 +176,30 @@ export default function ClientDetails() {
     dueDate: null as Date | null,
   });
 
+  // Loan scenario state
+  const [loanScenarios, setLoanScenarios] = useState<LoanScenario[]>([]);
+  const [loadingScenarios, setLoadingScenarios] = useState(false);
+  const [addScenarioModalOpen, setAddScenarioModalOpen] = useState(false);
+  const [savingScenario, setSavingScenario] = useState(false);
+  const [calculatedValues, setCalculatedValues] = useState<{
+    monthlyPayment?: number;
+    totalMonthlyPayment?: number;
+    totalInterest?: number;
+    loanToValue?: number;
+  } | null>(null);
+  const [newScenarioForm, setNewScenarioForm] = useState({
+    name: '',
+    loanType: 'PURCHASE' as 'PURCHASE' | 'REFINANCE',
+    amount: 400000,
+    interestRate: 6.5,
+    termYears: 30,
+    downPayment: 80000,
+    propertyValue: 500000,
+    propertyTaxes: 0,
+    homeInsurance: 0,
+    hoaFees: 0,
+  });
+
   const statusOptions = [
     { value: 'LEAD', label: 'Lead' },
     { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
@@ -159,6 +216,7 @@ export default function ClientDetails() {
       fetchClient();
       fetchNotes();
       fetchTasks();
+      fetchLoanScenarios();
     }
   }, [id]);
 
@@ -739,6 +797,208 @@ export default function ClientDetails() {
     HIGH: 'red',
   };
 
+  // Loan Scenario functions
+  const fetchLoanScenarios = async () => {
+    if (!id) return;
+    setLoadingScenarios(true);
+    try {
+      const response = await fetch(`${API_URL}/loan-scenarios?client_id=${id}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setLoanScenarios(data);
+      }
+    } catch (error) {
+      console.error('Error fetching loan scenarios:', error);
+    } finally {
+      setLoadingScenarios(false);
+    }
+  };
+
+  const handleCalculateScenario = async () => {
+    try {
+      const response = await fetch(`${API_URL}/loan-scenarios/calculate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          amount: newScenarioForm.amount,
+          interestRate: newScenarioForm.interestRate,
+          termYears: newScenarioForm.termYears,
+          downPayment: newScenarioForm.downPayment,
+          propertyValue: newScenarioForm.propertyValue,
+          propertyTaxes: newScenarioForm.propertyTaxes,
+          homeInsurance: newScenarioForm.homeInsurance,
+          hoaFees: newScenarioForm.hoaFees,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to calculate');
+      }
+
+      const result = await response.json();
+      setCalculatedValues(result);
+
+      notifications.show({
+        title: 'Calculated',
+        message: `Monthly Payment: $${result.monthlyPayment?.toLocaleString()}`,
+        color: 'blue',
+      });
+    } catch (error) {
+      console.error('Error calculating scenario:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to calculate loan scenario',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleCreateScenario = async () => {
+    if (!newScenarioForm.name.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Scenario name is required',
+        color: 'red',
+      });
+      return;
+    }
+
+    setSavingScenario(true);
+    try {
+      const response = await fetch(`${API_URL}/loan-scenarios`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          clientId: id,
+          ...newScenarioForm,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create loan scenario');
+      }
+
+      const createdScenario = await response.json();
+      setLoanScenarios([createdScenario, ...loanScenarios]);
+      setAddScenarioModalOpen(false);
+      setNewScenarioForm({
+        name: '',
+        loanType: 'PURCHASE',
+        amount: 400000,
+        interestRate: 6.5,
+        termYears: 30,
+        downPayment: 80000,
+        propertyValue: 500000,
+        propertyTaxes: 0,
+        homeInsurance: 0,
+        hoaFees: 0,
+      });
+      setCalculatedValues(null);
+
+      notifications.show({
+        title: 'Success',
+        message: 'Loan scenario created successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error creating loan scenario:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to create loan scenario',
+        color: 'red',
+      });
+    } finally {
+      setSavingScenario(false);
+    }
+  };
+
+  const handleSetPreferred = async (scenarioId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/loan-scenarios/${scenarioId}/preferred`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to set preferred');
+      }
+
+      // Update local state
+      setLoanScenarios(loanScenarios.map(s => ({
+        ...s,
+        isPreferred: s.id === scenarioId,
+      })));
+
+      notifications.show({
+        title: 'Success',
+        message: 'Preferred scenario updated',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error setting preferred:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to set preferred scenario',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleDeleteScenario = async (scenarioId: string) => {
+    if (!confirm('Are you sure you want to delete this loan scenario?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/loan-scenarios/${scenarioId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete loan scenario');
+      }
+
+      setLoanScenarios(loanScenarios.filter(s => s.id !== scenarioId));
+
+      notifications.show({
+        title: 'Success',
+        message: 'Loan scenario deleted successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error deleting loan scenario:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete loan scenario',
+        color: 'red',
+      });
+    }
+  };
+
+  const formatCurrency = (value: number | undefined | null) => {
+    if (value === undefined || value === null) return '-';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+  };
+
+  const formatPercent = (value: number | undefined | null) => {
+    if (value === undefined || value === null) return '-';
+    return `${value.toFixed(2)}%`;
+  };
 
   if (loading) {
     return (
@@ -885,7 +1145,7 @@ export default function ClientDetails() {
             Tasks ({tasks.length})
           </Tabs.Tab>
           <Tabs.Tab value="loans" leftSection={<IconCalculator size={16} />}>
-            Loan Scenarios ({client.loanScenarios?.length || 0})
+            Loan Scenarios ({loanScenarios.length})
           </Tabs.Tab>
           <Tabs.Tab value="activity" leftSection={<IconTimeline size={16} />}>
             Activity
@@ -1050,7 +1310,107 @@ export default function ClientDetails() {
         </Tabs.Panel>
 
         <Tabs.Panel value="loans" pt="md">
-          <Text c="dimmed">Loan scenario management coming soon...</Text>
+          <Group justify="space-between" mb="md">
+            <Title order={4}>Loan Scenarios</Title>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setAddScenarioModalOpen(true)}
+            >
+              Add Scenario
+            </Button>
+          </Group>
+          {loadingScenarios ? (
+            <Text c="dimmed">Loading loan scenarios...</Text>
+          ) : loanScenarios.length === 0 ? (
+            <Text c="dimmed">No loan scenarios yet. Click "Add Scenario" to create one.</Text>
+          ) : (
+            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+              {loanScenarios.map((scenario) => (
+                <Card key={scenario.id} withBorder shadow="sm" padding="lg" style={scenario.isPreferred ? { borderColor: 'var(--mantine-color-yellow-5)', borderWidth: 2 } : {}}>
+                  <Group justify="space-between" mb="sm">
+                    <Group gap="xs">
+                      {scenario.isPreferred && (
+                        <ThemeIcon color="yellow" size="sm" variant="light">
+                          <IconStarFilled size={14} />
+                        </ThemeIcon>
+                      )}
+                      <Text fw={600} size="lg">{scenario.name}</Text>
+                    </Group>
+                    <Badge color={scenario.loanType === 'PURCHASE' ? 'blue' : 'green'}>
+                      {scenario.loanType}
+                    </Badge>
+                  </Group>
+
+                  <Divider mb="sm" />
+
+                  <SimpleGrid cols={2} spacing="xs" mb="md">
+                    <div>
+                      <Text size="xs" c="dimmed">Loan Amount</Text>
+                      <Text fw={500}>{formatCurrency(scenario.amount)}</Text>
+                    </div>
+                    <div>
+                      <Text size="xs" c="dimmed">Property Value</Text>
+                      <Text fw={500}>{formatCurrency(scenario.propertyValue)}</Text>
+                    </div>
+                    <div>
+                      <Text size="xs" c="dimmed">Interest Rate</Text>
+                      <Text fw={500}>{formatPercent(scenario.interestRate)}</Text>
+                    </div>
+                    <div>
+                      <Text size="xs" c="dimmed">Term</Text>
+                      <Text fw={500}>{scenario.termYears} years</Text>
+                    </div>
+                    <div>
+                      <Text size="xs" c="dimmed">Down Payment</Text>
+                      <Text fw={500}>{formatCurrency(scenario.downPayment)}</Text>
+                    </div>
+                    <div>
+                      <Text size="xs" c="dimmed">LTV Ratio</Text>
+                      <Text fw={500}>{formatPercent(scenario.loanToValue)}</Text>
+                    </div>
+                  </SimpleGrid>
+
+                  <Divider mb="sm" />
+
+                  <SimpleGrid cols={2} spacing="xs" mb="md">
+                    <div>
+                      <Text size="xs" c="dimmed">Monthly P&I</Text>
+                      <Text fw={600} c="blue" size="lg">{formatCurrency(scenario.monthlyPayment)}</Text>
+                    </div>
+                    <div>
+                      <Text size="xs" c="dimmed">Total Monthly (PITI)</Text>
+                      <Text fw={600} c="green" size="lg">{formatCurrency(scenario.totalMonthlyPayment)}</Text>
+                    </div>
+                  </SimpleGrid>
+
+                  <Text size="xs" c="dimmed" mb="md">
+                    Total Interest: {formatCurrency(scenario.totalInterest)} over {scenario.termYears} years
+                  </Text>
+
+                  <Group justify="flex-end" gap="xs">
+                    {!scenario.isPreferred && (
+                      <ActionIcon
+                        variant="subtle"
+                        color="yellow"
+                        onClick={() => handleSetPreferred(scenario.id)}
+                        title="Set as preferred"
+                      >
+                        <IconStar size={16} />
+                      </ActionIcon>
+                    )}
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      onClick={() => handleDeleteScenario(scenario.id)}
+                      title="Delete scenario"
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Group>
+                </Card>
+              ))}
+            </SimpleGrid>
+          )}
         </Tabs.Panel>
 
         <Tabs.Panel value="activity" pt="md">
@@ -1238,6 +1598,195 @@ export default function ClientDetails() {
             <Button onClick={handleCreateTask} loading={savingTask}>
               Save
             </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Add Loan Scenario Modal */}
+      <Modal
+        opened={addScenarioModalOpen}
+        onClose={() => {
+          setAddScenarioModalOpen(false);
+          setNewScenarioForm({
+            name: '',
+            loanType: 'PURCHASE',
+            amount: 400000,
+            interestRate: 6.5,
+            termYears: 30,
+            downPayment: 80000,
+            propertyValue: 500000,
+            propertyTaxes: 0,
+            homeInsurance: 0,
+            hoaFees: 0,
+          });
+          setCalculatedValues(null);
+        }}
+        title="Add Loan Scenario"
+        size="lg"
+      >
+        <Stack>
+          <TextInput
+            label="Scenario Name"
+            placeholder="e.g., 30-Year Fixed 6.5%"
+            required
+            value={newScenarioForm.name}
+            onChange={(e) => setNewScenarioForm({ ...newScenarioForm, name: e.target.value })}
+          />
+
+          <Select
+            label="Loan Type"
+            data={[
+              { value: 'PURCHASE', label: 'Purchase' },
+              { value: 'REFINANCE', label: 'Refinance' },
+            ]}
+            value={newScenarioForm.loanType}
+            onChange={(value) => setNewScenarioForm({ ...newScenarioForm, loanType: (value as 'PURCHASE' | 'REFINANCE') || 'PURCHASE' })}
+          />
+
+          <SimpleGrid cols={2}>
+            <NumberInput
+              label="Loan Amount"
+              placeholder="400000"
+              required
+              min={0}
+              value={newScenarioForm.amount}
+              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, amount: Number(value) || 0 })}
+              leftSection={<IconCurrencyDollar size={16} />}
+              thousandSeparator=","
+            />
+            <NumberInput
+              label="Property Value"
+              placeholder="500000"
+              min={0}
+              value={newScenarioForm.propertyValue}
+              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, propertyValue: Number(value) || 0 })}
+              leftSection={<IconCurrencyDollar size={16} />}
+              thousandSeparator=","
+            />
+          </SimpleGrid>
+
+          <SimpleGrid cols={3}>
+            <NumberInput
+              label="Interest Rate (%)"
+              placeholder="6.5"
+              required
+              min={0}
+              max={30}
+              step={0.125}
+              decimalScale={3}
+              value={newScenarioForm.interestRate}
+              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, interestRate: Number(value) || 0 })}
+              leftSection={<IconPercentage size={16} />}
+            />
+            <NumberInput
+              label="Term (Years)"
+              placeholder="30"
+              required
+              min={1}
+              max={40}
+              value={newScenarioForm.termYears}
+              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, termYears: Number(value) || 30 })}
+              leftSection={<IconCalendar size={16} />}
+            />
+            <NumberInput
+              label="Down Payment"
+              placeholder="80000"
+              min={0}
+              value={newScenarioForm.downPayment}
+              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, downPayment: Number(value) || 0 })}
+              leftSection={<IconCurrencyDollar size={16} />}
+              thousandSeparator=","
+            />
+          </SimpleGrid>
+
+          <Divider label="Additional Costs (Annual)" labelPosition="center" />
+
+          <SimpleGrid cols={3}>
+            <NumberInput
+              label="Property Taxes"
+              placeholder="0"
+              min={0}
+              value={newScenarioForm.propertyTaxes}
+              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, propertyTaxes: Number(value) || 0 })}
+              leftSection={<IconCurrencyDollar size={16} />}
+              thousandSeparator=","
+            />
+            <NumberInput
+              label="Home Insurance"
+              placeholder="0"
+              min={0}
+              value={newScenarioForm.homeInsurance}
+              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, homeInsurance: Number(value) || 0 })}
+              leftSection={<IconCurrencyDollar size={16} />}
+              thousandSeparator=","
+            />
+            <NumberInput
+              label="HOA Fees (Monthly)"
+              placeholder="0"
+              min={0}
+              value={newScenarioForm.hoaFees}
+              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, hoaFees: Number(value) || 0 })}
+              leftSection={<IconCurrencyDollar size={16} />}
+              thousandSeparator=","
+            />
+          </SimpleGrid>
+
+          {calculatedValues && (
+            <>
+              <Divider label="Calculated Values" labelPosition="center" />
+              <Paper p="md" withBorder bg="gray.0">
+                <SimpleGrid cols={2}>
+                  <div>
+                    <Text size="xs" c="dimmed">Monthly P&I</Text>
+                    <Text fw={600} size="lg" c="blue">{formatCurrency(calculatedValues.monthlyPayment)}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed">Total Monthly (PITI)</Text>
+                    <Text fw={600} size="lg" c="green">{formatCurrency(calculatedValues.totalMonthlyPayment)}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed">Total Interest</Text>
+                    <Text fw={500}>{formatCurrency(calculatedValues.totalInterest)}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed">LTV Ratio</Text>
+                    <Text fw={500}>{formatPercent(calculatedValues.loanToValue)}</Text>
+                  </div>
+                </SimpleGrid>
+              </Paper>
+            </>
+          )}
+
+          <Group justify="space-between" mt="md">
+            <Button variant="light" onClick={handleCalculateScenario}>
+              Calculate
+            </Button>
+            <Group>
+              <Button
+                variant="subtle"
+                onClick={() => {
+                  setAddScenarioModalOpen(false);
+                  setNewScenarioForm({
+                    name: '',
+                    loanType: 'PURCHASE',
+                    amount: 400000,
+                    interestRate: 6.5,
+                    termYears: 30,
+                    downPayment: 80000,
+                    propertyValue: 500000,
+                    propertyTaxes: 0,
+                    homeInsurance: 0,
+                    hoaFees: 0,
+                  });
+                  setCalculatedValues(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleCreateScenario} loading={savingScenario}>
+                Save
+              </Button>
+            </Group>
           </Group>
         </Stack>
       </Modal>

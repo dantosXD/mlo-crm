@@ -8,6 +8,7 @@ import noteRoutes from './routes/noteRoutes.js';
 import taskRoutes from './routes/taskRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import documentRoutes from './routes/documentRoutes.js';
+import loanScenarioRoutes from './routes/loanScenarioRoutes.js';
 
 // Load environment variables
 config();
@@ -80,9 +81,9 @@ app.use('/api/notes', noteRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/loan-scenarios', loanScenarioRoutes);
 
 // TODO: Implement remaining route modules
-// app.use('/api/loan-scenarios', loanScenarioRoutes);
 // app.use('/api/activities', activityRoutes);
 // app.use('/api/analytics', analyticsRoutes);
 
