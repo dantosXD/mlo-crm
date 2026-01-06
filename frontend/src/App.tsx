@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AppShell, Text, Center, NavLink, Group, Avatar, Menu, UnstyledButton, Stack, Divider, Badge, Tooltip } from '@mantine/core';
 import {
   IconDashboard,
@@ -19,6 +19,7 @@ import Admin from './pages/Admin';
 import AccessDenied from './pages/AccessDenied';
 import Clients from './pages/Clients';
 import ClientDetails from './pages/ClientDetails';
+import NotFound from './pages/NotFound';
 
 // Placeholder components - to be implemented
 const Dashboard = () => (
@@ -63,12 +64,6 @@ const Settings = () => (
 const ForgotPassword = () => (
   <Center h="100vh">
     <Text size="xl">Forgot Password - Coming Soon</Text>
-  </Center>
-);
-
-const NotFound = () => (
-  <Center h="100%">
-    <Text size="xl">404 - Page Not Found</Text>
   </Center>
 );
 
@@ -252,6 +247,12 @@ function ProtectedLayout() {
   );
 }
 
+// Component to handle redirect with state
+function RequireAuth() {
+  const location = useLocation();
+  return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+}
+
 function App() {
   const { isAuthenticated } = useAuthStore();
 
@@ -260,7 +261,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<RequireAuth />} />
       </Routes>
     );
   }
