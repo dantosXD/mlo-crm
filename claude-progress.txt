@@ -1,5 +1,63 @@
 # MLO Dashboard - Development Progress
 
+## Session 5 Summary
+Date: January 6, 2026
+
+### What Was Accomplished
+
+#### 1. Feature #38: Delete Client with Confirmation (PASSED)
+- Added Delete button to ClientDetails page header
+- Implemented proper confirmation modal dialog (not browser confirm)
+- Cancel button in modal keeps client intact
+- Confirm button deletes client and redirects to clients list
+- Success notification shown on deletion
+- Verified client removed from list and search returns no results
+
+#### 2. Feature #39: Change Client Status via Dropdown (PASSED)
+- Replaced static Badge with Select dropdown for status in ClientDetails
+- Status dropdown shows all 8 pipeline stages with color coding
+- Status changes immediately update the client via API
+- Success notification shows old and new status
+- Status persists after page refresh
+- Note: Activity logging UI is "coming soon" - will be implemented later
+
+### Features Passing (36/250 = 14.4%)
+
+New features passed this session:
+- #38: Delete client with confirmation
+- #39: Change client status via dropdown
+
+### Files Modified This Session
+
+```
+frontend/
+└── src/
+    └── pages/
+        └── ClientDetails.tsx    # Added Delete button, confirmation modal, status dropdown
+```
+
+### Technical Notes
+
+- Delete functionality uses a Mantine Modal for confirmation (better UX than browser confirm)
+- Status dropdown uses Mantine Select component with dynamic styling based on status color
+- handleStatusChange function updates status via PUT API and shows success notification
+- Both features verified with browser automation and screenshots
+
+### Current State
+- 4 clients in database
+- EDIT_TEST_AFTER client status changed from LEAD to PRE_QUALIFIED during testing
+- Backend and frontend servers running
+
+### Next Steps for Future Sessions
+
+1. Feature #40: Add tags to client (needs tag input UI)
+2. Implement Activity timeline in client details
+3. Continue with remaining functional features
+4. Build Notes CRUD in client details
+5. Build Tasks CRUD in client details
+
+---
+
 ## Session 4 Summary
 Date: January 6, 2026
 
