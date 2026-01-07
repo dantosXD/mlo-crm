@@ -211,6 +211,7 @@ router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReques
       phone: client.phoneEncrypted,
       status: client.status,
       tags: JSON.parse(client.tags),
+      createdAt: client.createdAt,
       updatedAt: client.updatedAt,
     });
   } catch (error) {
