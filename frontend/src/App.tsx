@@ -23,16 +23,7 @@ import NotFound from './pages/NotFound';
 import Pipeline from './pages/Pipeline';
 import Documents from './pages/Documents';
 import Settings from './pages/Settings';
-
-// Placeholder components - to be implemented
-const Dashboard = () => (
-  <Center h="100%">
-    <Stack align="center" gap="md">
-      <Text size="xl" fw={600}>Welcome to MLO Dashboard</Text>
-      <Text c="dimmed">Your mortgage loan origination command center</Text>
-    </Stack>
-  </Center>
-);
+import Dashboard from './pages/Dashboard';
 
 const Calculator = () => (
   <Center h="100%">
