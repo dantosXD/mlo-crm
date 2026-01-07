@@ -22,6 +22,7 @@ import ClientDetails from './pages/ClientDetails';
 import NotFound from './pages/NotFound';
 import Pipeline from './pages/Pipeline';
 import Documents from './pages/Documents';
+import Settings from './pages/Settings';
 
 // Placeholder components - to be implemented
 const Dashboard = () => (
@@ -42,12 +43,6 @@ const Calculator = () => (
 const Analytics = () => (
   <Center h="100%">
     <Text size="xl">Analytics - Coming Soon</Text>
-  </Center>
-);
-
-const Settings = () => (
-  <Center h="100%">
-    <Text size="xl">Settings - Coming Soon</Text>
   </Center>
 );
 

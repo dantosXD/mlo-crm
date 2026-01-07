@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Paper,
   TextInput,
@@ -18,15 +18,19 @@ import { useAuthStore } from '../stores/authStore';
 
 export function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, isAuthenticated, isLoading, error, clearError } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  // Get the intended destination from location state or URL params
+  const from = (location.state as { from?: string })?.from || '/';
+
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/');
+      navigate(from, { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, from]);
 
   useEffect(() => {
     // Clear any previous errors when component mounts
@@ -37,7 +41,7 @@ export function Login() {
     e.preventDefault();
     const success = await login(email, password);
     if (success) {
-      navigate('/');
+      navigate(from, { replace: true });
     } else {
       // Clear password field on failed login for security
       setPassword('');

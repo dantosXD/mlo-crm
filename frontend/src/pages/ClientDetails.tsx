@@ -122,6 +122,39 @@ interface LoanScenario {
   updatedAt?: string;
 }
 
+interface Document {
+  id: string;
+  clientId: string;
+  name: string;
+  fileName: string;
+  fileSize?: number;
+  mimeType?: string;
+  status: 'REQUIRED' | 'REQUESTED' | 'UPLOADED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED';
+  category: 'INCOME' | 'EMPLOYMENT' | 'ASSETS' | 'PROPERTY' | 'INSURANCE' | 'CREDIT' | 'OTHER';
+  dueDate?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+const documentStatusColors: Record<string, string> = {
+  REQUIRED: 'gray',
+  REQUESTED: 'yellow',
+  UPLOADED: 'blue',
+  UNDER_REVIEW: 'orange',
+  APPROVED: 'green',
+  REJECTED: 'red',
+};
+
+const documentCategoryLabels: Record<string, string> = {
+  INCOME: 'Income',
+  EMPLOYMENT: 'Employment',
+  ASSETS: 'Assets',
+  PROPERTY: 'Property',
+  INSURANCE: 'Insurance',
+  CREDIT: 'Credit',
+  OTHER: 'Other',
+};
 
 const statusColors: Record<string, string> = {
   LEAD: 'gray',
@@ -204,6 +237,19 @@ export default function ClientDetails() {
   const [selectedScenarios, setSelectedScenarios] = useState<string[]>([]);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
 
+  // Document state
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [addDocumentModalOpen, setAddDocumentModalOpen] = useState(false);
+  const [savingDocument, setSavingDocument] = useState(false);
+  const [newDocumentForm, setNewDocumentForm] = useState({
+    name: '',
+    fileName: '',
+    category: 'OTHER' as Document['category'],
+    status: 'UPLOADED' as Document['status'],
+    notes: '',
+  });
+
   const statusOptions = [
     { value: 'LEAD', label: 'Lead' },
     { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
@@ -221,6 +267,7 @@ export default function ClientDetails() {
       fetchNotes();
       fetchTasks();
       fetchLoanScenarios();
+      fetchDocuments();
     }
   }, [id]);
 
@@ -1017,6 +1064,155 @@ export default function ClientDetails() {
     return loanScenarios.filter(s => selectedScenarios.includes(s.id));
   };
 
+  // Document functions
+  const fetchDocuments = async () => {
+    if (!id) return;
+    setLoadingDocuments(true);
+    try {
+      const response = await fetch(`${API_URL}/documents?client_id=${id}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDocuments(data);
+      }
+    } catch (error) {
+      console.error('Error fetching documents:', error);
+    } finally {
+      setLoadingDocuments(false);
+    }
+  };
+
+  const handleCreateDocument = async () => {
+    if (!newDocumentForm.name.trim() || !newDocumentForm.fileName.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Document name and file name are required',
+        color: 'red',
+      });
+      return;
+    }
+
+    setSavingDocument(true);
+    try {
+      const response = await fetch(`${API_URL}/documents`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          clientId: id,
+          name: newDocumentForm.name,
+          fileName: newDocumentForm.fileName,
+          category: newDocumentForm.category,
+          status: newDocumentForm.status,
+          notes: newDocumentForm.notes || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create document');
+      }
+
+      const newDocument = await response.json();
+      setDocuments([newDocument, ...documents]);
+      setAddDocumentModalOpen(false);
+      setNewDocumentForm({
+        name: '',
+        fileName: '',
+        category: 'OTHER',
+        status: 'UPLOADED',
+        notes: '',
+      });
+
+      notifications.show({
+        title: 'Success',
+        message: 'Document created successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error creating document:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to create document',
+        color: 'red',
+      });
+    } finally {
+      setSavingDocument(false);
+    }
+  };
+
+  const handleUpdateDocumentStatus = async (documentId: string, newStatus: Document['status']) => {
+    try {
+      const response = await fetch(`${API_URL}/documents/${documentId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update document status');
+      }
+
+      setDocuments(documents.map(doc =>
+        doc.id === documentId ? { ...doc, status: newStatus } : doc
+      ));
+
+      notifications.show({
+        title: 'Success',
+        message: `Document status updated to ${newStatus.replace('_', ' ')}`,
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error updating document status:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update document status',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleDeleteDocument = async (documentId: string) => {
+    if (!confirm('Are you sure you want to delete this document?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/documents/${documentId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete document');
+      }
+
+      setDocuments(documents.filter(d => d.id !== documentId));
+
+      notifications.show({
+        title: 'Success',
+        message: 'Document deleted successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete document',
+        color: 'red',
+      });
+    }
+  };
+
   if (loading) {
     return (
       <Container size="xl" py="md">
@@ -1156,7 +1352,7 @@ export default function ClientDetails() {
             Notes ({notes.length})
           </Tabs.Tab>
           <Tabs.Tab value="documents" leftSection={<IconFiles size={16} />}>
-            Documents ({client.documents?.length || 0})
+            Documents ({documents.length})
           </Tabs.Tab>
           <Tabs.Tab value="tasks" leftSection={<IconChecklist size={16} />}>
             Tasks ({tasks.length})
@@ -1266,7 +1462,75 @@ export default function ClientDetails() {
         </Tabs.Panel>
 
         <Tabs.Panel value="documents" pt="md">
-          <Text c="dimmed">Document management coming soon...</Text>
+          <Group justify="space-between" mb="md">
+            <Title order={4}>Documents</Title>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setAddDocumentModalOpen(true)}
+            >
+              Add Document
+            </Button>
+          </Group>
+          {loadingDocuments ? (
+            <Text c="dimmed">Loading documents...</Text>
+          ) : documents.length === 0 ? (
+            <Text c="dimmed">No documents yet. Click "Add Document" to create one.</Text>
+          ) : (
+            <Stack gap="md">
+              {documents.map((doc) => (
+                <Paper key={doc.id} p="md" withBorder>
+                  <Group justify="space-between" align="flex-start">
+                    <div style={{ flex: 1 }}>
+                      <Group gap="sm" mb="xs">
+                        <IconFiles size={20} />
+                        <Text fw={500}>{doc.name}</Text>
+                      </Group>
+                      <Text size="sm" c="dimmed">{doc.fileName}</Text>
+                      {doc.notes && (
+                        <Text size="sm" c="dimmed" mt="xs">{doc.notes}</Text>
+                      )}
+                    </div>
+                    <Group gap="xs">
+                      <Badge color={documentCategoryLabels[doc.category] ? 'blue' : 'gray'} variant="light" size="sm">
+                        {documentCategoryLabels[doc.category] || doc.category}
+                      </Badge>
+                      <Select
+                        size="xs"
+                        value={doc.status}
+                        data={[
+                          { value: 'REQUIRED', label: 'Required' },
+                          { value: 'REQUESTED', label: 'Requested' },
+                          { value: 'UPLOADED', label: 'Uploaded' },
+                          { value: 'UNDER_REVIEW', label: 'Under Review' },
+                          { value: 'APPROVED', label: 'Approved' },
+                          { value: 'REJECTED', label: 'Rejected' },
+                        ]}
+                        onChange={(value) => value && handleUpdateDocumentStatus(doc.id, value as Document['status'])}
+                        styles={{
+                          input: {
+                            backgroundColor: `var(--mantine-color-${documentStatusColors[doc.status]}-1)`,
+                            color: `var(--mantine-color-${documentStatusColors[doc.status]}-9)`,
+                            fontWeight: 500,
+                          },
+                        }}
+                      />
+                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteDocument(doc.id)}>
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Group>
+                  <Group justify="space-between" mt="sm">
+                    <Text size="xs" c="dimmed">
+                      {doc.dueDate ? `Due: ${new Date(doc.dueDate).toLocaleDateString()}` : ''}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Created: {new Date(doc.createdAt).toLocaleDateString()}
+                    </Text>
+                  </Group>
+                </Paper>
+              ))}
+            </Stack>
+          )}
         </Tabs.Panel>
 
         <Tabs.Panel value="tasks" pt="md">
@@ -1585,6 +1849,81 @@ export default function ClientDetails() {
               Cancel
             </Button>
             <Button onClick={handleUpdateNote} loading={savingNote}>
+              Save
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Add Document Modal */}
+      <Modal
+        opened={addDocumentModalOpen}
+        onClose={() => {
+          setAddDocumentModalOpen(false);
+          setNewDocumentForm({ name: '', fileName: '', category: 'OTHER', status: 'UPLOADED', notes: '' });
+        }}
+        title="Add Document"
+      >
+        <Stack>
+          <TextInput
+            label="Document Name"
+            placeholder="e.g., W-2 Tax Form 2025"
+            required
+            value={newDocumentForm.name}
+            onChange={(e) => setNewDocumentForm({ ...newDocumentForm, name: e.target.value })}
+          />
+          <TextInput
+            label="File Name"
+            placeholder="e.g., w2_2025.pdf"
+            required
+            value={newDocumentForm.fileName}
+            onChange={(e) => setNewDocumentForm({ ...newDocumentForm, fileName: e.target.value })}
+          />
+          <Select
+            label="Category"
+            data={[
+              { value: 'INCOME', label: 'Income' },
+              { value: 'EMPLOYMENT', label: 'Employment' },
+              { value: 'ASSETS', label: 'Assets' },
+              { value: 'PROPERTY', label: 'Property' },
+              { value: 'INSURANCE', label: 'Insurance' },
+              { value: 'CREDIT', label: 'Credit' },
+              { value: 'OTHER', label: 'Other' },
+            ]}
+            value={newDocumentForm.category}
+            onChange={(value) => setNewDocumentForm({ ...newDocumentForm, category: (value as Document['category']) || 'OTHER' })}
+          />
+          <Select
+            label="Status"
+            data={[
+              { value: 'REQUIRED', label: 'Required' },
+              { value: 'REQUESTED', label: 'Requested' },
+              { value: 'UPLOADED', label: 'Uploaded' },
+              { value: 'UNDER_REVIEW', label: 'Under Review' },
+              { value: 'APPROVED', label: 'Approved' },
+              { value: 'REJECTED', label: 'Rejected' },
+            ]}
+            value={newDocumentForm.status}
+            onChange={(value) => setNewDocumentForm({ ...newDocumentForm, status: (value as Document['status']) || 'UPLOADED' })}
+          />
+          <Textarea
+            label="Notes (optional)"
+            placeholder="Add any notes about this document..."
+            minRows={2}
+            value={newDocumentForm.notes}
+            onChange={(e) => setNewDocumentForm({ ...newDocumentForm, notes: e.target.value })}
+          />
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="subtle"
+              onClick={() => {
+                setAddDocumentModalOpen(false);
+                setNewDocumentForm({ name: '', fileName: '', category: 'OTHER', status: 'UPLOADED', notes: '' });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleCreateDocument} loading={savingDocument}>
               Save
             </Button>
           </Group>
