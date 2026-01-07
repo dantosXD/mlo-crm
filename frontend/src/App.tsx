@@ -1,5 +1,6 @@
+import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { AppShell, Text, Center, NavLink, Group, Avatar, Menu, UnstyledButton, Stack, Divider, Badge, Tooltip } from '@mantine/core';
+import { AppShell, Text, Center, NavLink, Group, Avatar, Menu, UnstyledButton, Stack, Divider, Badge, Tooltip, ActionIcon } from '@mantine/core';
 import {
   IconDashboard,
   IconUsers,
@@ -12,6 +13,8 @@ import {
   IconLayoutKanban,
   IconShield,
   IconEye,
+  IconChevronLeft,
+  IconChevronRight,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import Login from './pages/Login';
@@ -68,7 +71,7 @@ const navItems = [
 ];
 
 // Main navigation component
-function MainNav({ currentPath }: { currentPath: string }) {
+function MainNav({ currentPath, collapsed }: { currentPath: string; collapsed: boolean }) {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
@@ -79,14 +82,28 @@ function MainNav({ currentPath }: { currentPath: string }) {
   return (
     <Stack gap={4} p="xs">
       {visibleItems.map((item) => (
-        <NavLink
-          key={item.href}
-          label={item.label}
-          leftSection={<item.icon size={20} stroke={1.5} />}
-          active={currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href))}
-          onClick={() => navigate(item.href)}
-          style={{ borderRadius: 8 }}
-        />
+        collapsed ? (
+          <Tooltip key={item.href} label={item.label} position="right" withArrow>
+            <ActionIcon
+              variant={currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href)) ? 'filled' : 'subtle'}
+              color={currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href)) ? 'blue' : 'gray'}
+              size="lg"
+              onClick={() => navigate(item.href)}
+              style={{ width: '100%' }}
+            >
+              <item.icon size={20} stroke={1.5} />
+            </ActionIcon>
+          </Tooltip>
+        ) : (
+          <NavLink
+            key={item.href}
+            label={item.label}
+            leftSection={<item.icon size={20} stroke={1.5} />}
+            active={currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href))}
+            onClick={() => navigate(item.href)}
+            style={{ borderRadius: 8 }}
+          />
+        )
       ))}
     </Stack>
   );
@@ -156,10 +173,25 @@ function ProtectedLayout() {
   const { user } = useAuthStore();
   const isReadOnly = isReadOnlyRole(user?.role);
 
+  // Sidebar collapsed state with localStorage persistence
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    return saved === 'true';
+  });
+
+  // Persist collapsed state to localStorage
+  useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => !prev);
+  };
+
   return (
     <AppShell
       header={{ height: 60 }}
-      navbar={{ width: 250, breakpoint: 'sm' }}
+      navbar={{ width: sidebarCollapsed ? 70 : 250, breakpoint: 'sm' }}
       padding="md"
     >
       <AppShell.Header>
@@ -187,18 +219,41 @@ function ProtectedLayout() {
 
       <AppShell.Navbar>
         <AppShell.Section grow>
-          <MainNav currentPath={currentPath} />
+          <MainNav currentPath={currentPath} collapsed={sidebarCollapsed} />
         </AppShell.Section>
         <AppShell.Section>
           <Divider my="sm" />
-          <Group p="md" gap="xs">
-            <Avatar color="blue" radius="xl" size="sm">
-              {user?.name?.charAt(0).toUpperCase() || 'U'}
-            </Avatar>
-            <div>
-              <Text size="sm" fw={500}>{user?.name}</Text>
-              <Text size="xs" c="dimmed">{user?.email}</Text>
-            </div>
+          {sidebarCollapsed ? (
+            <Group justify="center" p="xs">
+              <Tooltip label={user?.name} position="right" withArrow>
+                <Avatar color="blue" radius="xl" size="sm">
+                  {user?.name?.charAt(0).toUpperCase() || 'U'}
+                </Avatar>
+              </Tooltip>
+            </Group>
+          ) : (
+            <Group p="md" gap="xs">
+              <Avatar color="blue" radius="xl" size="sm">
+                {user?.name?.charAt(0).toUpperCase() || 'U'}
+              </Avatar>
+              <div>
+                <Text size="sm" fw={500}>{user?.name}</Text>
+                <Text size="xs" c="dimmed">{user?.email}</Text>
+              </div>
+            </Group>
+          )}
+          <Divider my="sm" />
+          <Group justify="center" p="xs">
+            <Tooltip label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} position="right" withArrow>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                onClick={toggleSidebar}
+                aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                {sidebarCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
+              </ActionIcon>
+            </Tooltip>
           </Group>
         </AppShell.Section>
       </AppShell.Navbar>

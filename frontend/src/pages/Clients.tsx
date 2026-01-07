@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Container,
   Title,
@@ -50,13 +50,16 @@ const API_URL = 'http://localhost:3000/api';
 export default function Clients() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { accessToken } = useAuthStore();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+
+  // Initialize filter state from URL search params for persistence on navigation
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
+  const [statusFilter, setStatusFilter] = useState<string | null>(searchParams.get('status') || null);
+  const [tagFilter, setTagFilter] = useState<string | null>(searchParams.get('tag') || null);
+  const [page, setPage] = useState(parseInt(searchParams.get('page') || '1', 10));
   const itemsPerPage = 10;
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [newClient, setNewClient] = useState({
@@ -67,6 +70,18 @@ export default function Clients() {
     tags: [] as string[],
   });
   const [creating, setCreating] = useState(false);
+
+  // Sync filter state to URL search params for persistence on navigation
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (searchQuery) params.set('q', searchQuery);
+    if (statusFilter) params.set('status', statusFilter);
+    if (tagFilter) params.set('tag', tagFilter);
+    if (page > 1) params.set('page', page.toString());
+
+    // Update URL without adding to history (replace instead of push)
+    setSearchParams(params, { replace: true });
+  }, [searchQuery, statusFilter, tagFilter, page, setSearchParams]);
 
   // Fetch clients on mount and when location changes (handles back navigation)
   useEffect(() => {
