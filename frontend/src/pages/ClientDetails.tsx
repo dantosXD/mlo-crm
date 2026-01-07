@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Container,
   Title,
@@ -214,10 +214,35 @@ const statusColors: Record<string, string> = {
 
 const API_URL = 'http://localhost:3000/api';
 
+// Define valid tab values
+const validTabs = ['overview', 'notes', 'documents', 'tasks', 'loans', 'activity'];
+
 export default function ClientDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { accessToken } = useAuthStore();
+
+  // Get initial tab from URL or default to 'overview'
+  const tabFromUrl = searchParams.get('tab');
+  const initialTab = tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'overview';
+  const [activeTab, setActiveTab] = useState<string | null>(initialTab);
+
+  // Handle tab change - update URL when tab changes
+  const handleTabChange = (value: string | null) => {
+    setActiveTab(value);
+    if (value) {
+      setSearchParams({ tab: value }, { replace: true });
+    }
+  };
+
+  // Sync activeTab with URL changes (e.g., when navigating with browser back/forward)
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab');
+    if (tabFromUrl && validTabs.includes(tabFromUrl) && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [searchParams]);
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -232,6 +257,8 @@ export default function ClientDetails() {
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [unsavedChangesModalOpen, setUnsavedChangesModalOpen] = useState(false);
+  const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [updatingTags, setUpdatingTags] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -319,6 +346,88 @@ export default function ClientDetails() {
       fetchActivities();
     }
   }, [id]);
+
+  // Track pending navigation path when warning dialog is shown
+  const pendingNavigation = useRef<(() => void) | null>(null);
+
+  // Check if edit form has unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    if (!editModalOpen || !client) return false;
+    return (
+      editForm.name !== client.name ||
+      editForm.email !== client.email ||
+      editForm.phone !== (client.phone || '') ||
+      editForm.status !== client.status
+    );
+  }, [editModalOpen, client, editForm]);
+
+  // Handle browser back/forward and tab close with beforeunload
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+
+    if (hasUnsavedChanges) {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    }
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
+  // Custom navigation function that checks for unsaved changes
+  const safeNavigate = useCallback((path: string | number) => {
+    if (hasUnsavedChanges) {
+      pendingNavigation.current = () => {
+        if (typeof path === 'number') {
+          navigate(path);
+        } else {
+          navigate(path);
+        }
+      };
+      setUnsavedChangesModalOpen(true);
+    } else {
+      if (typeof path === 'number') {
+        navigate(path);
+      } else {
+        navigate(path);
+      }
+    }
+  }, [hasUnsavedChanges, navigate]);
+
+  // Handle "Stay" button in unsaved changes modal
+  const handleStayOnPage = () => {
+    setUnsavedChangesModalOpen(false);
+    pendingNavigation.current = null;
+  };
+
+  // Handle "Leave" button in unsaved changes modal
+  const handleLeavePage = () => {
+    setUnsavedChangesModalOpen(false);
+    setEditModalOpen(false);
+    if (pendingNavigation.current) {
+      pendingNavigation.current();
+      pendingNavigation.current = null;
+    }
+  };
+
+  // Handle closing the edit modal with unsaved changes check
+  const handleCloseEditModal = useCallback(() => {
+    if (hasUnsavedChanges) {
+      // Set a flag to close modal after confirming
+      pendingNavigation.current = () => {
+        // No navigation needed, just close the modal
+      };
+      setUnsavedChangesModalOpen(true);
+    } else {
+      setEditModalOpen(false);
+    }
+  }, [hasUnsavedChanges]);
 
   const fetchActivities = async () => {
     if (!id) return;
@@ -1338,10 +1447,10 @@ export default function ClientDetails() {
         separator={<IconChevronRight size={14} color="gray" />}
         mb="md"
       >
-        <Anchor onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
+        <Anchor onClick={() => safeNavigate('/')} style={{ cursor: 'pointer' }}>
           Dashboard
         </Anchor>
-        <Anchor onClick={() => navigate('/clients')} style={{ cursor: 'pointer' }}>
+        <Anchor onClick={() => safeNavigate('/clients')} style={{ cursor: 'pointer' }}>
           Clients
         </Anchor>
         <Text>{client.name}</Text>
@@ -1415,7 +1524,7 @@ export default function ClientDetails() {
       </Paper>
 
       {/* Tabs */}
-      <Tabs defaultValue="overview">
+      <Tabs value={activeTab} onChange={handleTabChange}>
         <Tabs.List>
           <Tabs.Tab value="overview" leftSection={<IconUser size={16} />}>
             Overview
@@ -1833,7 +1942,7 @@ export default function ClientDetails() {
       {/* Edit Client Modal */}
       <Modal
         opened={editModalOpen}
-        onClose={() => setEditModalOpen(false)}
+        onClose={handleCloseEditModal}
         title="Edit Client"
       >
         <Stack>
@@ -1873,7 +1982,7 @@ export default function ClientDetails() {
             onChange={(value) => setEditForm({ ...editForm, status: value || 'LEAD' })}
           />
           <Group justify="flex-end" mt="md">
-            <Button variant="subtle" onClick={() => setEditModalOpen(false)}>
+            <Button variant="subtle" onClick={handleCloseEditModal}>
               Cancel
             </Button>
             <Button onClick={handleSaveClient} loading={saving}>
@@ -2403,6 +2512,28 @@ export default function ClientDetails() {
           <Group justify="flex-end" mt="md">
             <Button variant="subtle" onClick={() => setCompareModalOpen(false)}>
               Close
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Unsaved Changes Warning Modal */}
+      <Modal
+        opened={unsavedChangesModalOpen}
+        onClose={handleStayOnPage}
+        title="Unsaved Changes"
+        centered
+      >
+        <Stack>
+          <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+            You have unsaved changes in the edit form. Are you sure you want to leave? Your changes will be lost.
+          </Alert>
+          <Group justify="flex-end" mt="md">
+            <Button variant="subtle" onClick={handleStayOnPage}>
+              Stay
+            </Button>
+            <Button color="red" onClick={handleLeavePage}>
+              Leave
             </Button>
           </Group>
         </Stack>
