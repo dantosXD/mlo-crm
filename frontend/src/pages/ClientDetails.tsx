@@ -137,6 +137,50 @@ interface Document {
   updatedAt?: string;
 }
 
+interface Activity {
+  id: string;
+  clientId: string;
+  type: string;
+  description: string;
+  metadata?: Record<string, any>;
+  user: { id: string; name: string };
+  createdAt: string;
+}
+
+const activityTypeLabels: Record<string, string> = {
+  NOTE_ADDED: 'Note Added',
+  NOTE_UPDATED: 'Note Updated',
+  NOTE_DELETED: 'Note Deleted',
+  TASK_CREATED: 'Task Created',
+  TASK_COMPLETED: 'Task Completed',
+  TASK_DELETED: 'Task Deleted',
+  DOCUMENT_UPLOADED: 'Document Uploaded',
+  DOCUMENT_STATUS_CHANGED: 'Document Status Changed',
+  DOCUMENT_DELETED: 'Document Deleted',
+  STATUS_CHANGED: 'Status Changed',
+  CLIENT_CREATED: 'Client Created',
+  CLIENT_UPDATED: 'Client Updated',
+  LOAN_SCENARIO_CREATED: 'Loan Scenario Created',
+  LOAN_SCENARIO_DELETED: 'Loan Scenario Deleted',
+};
+
+const activityTypeColors: Record<string, string> = {
+  NOTE_ADDED: 'blue',
+  NOTE_UPDATED: 'cyan',
+  NOTE_DELETED: 'gray',
+  TASK_CREATED: 'green',
+  TASK_COMPLETED: 'teal',
+  TASK_DELETED: 'gray',
+  DOCUMENT_UPLOADED: 'violet',
+  DOCUMENT_STATUS_CHANGED: 'orange',
+  DOCUMENT_DELETED: 'gray',
+  STATUS_CHANGED: 'yellow',
+  CLIENT_CREATED: 'green',
+  CLIENT_UPDATED: 'blue',
+  LOAN_SCENARIO_CREATED: 'pink',
+  LOAN_SCENARIO_DELETED: 'gray',
+};
+
 const documentStatusColors: Record<string, string> = {
   REQUIRED: 'gray',
   REQUESTED: 'yellow',
@@ -250,6 +294,10 @@ export default function ClientDetails() {
     notes: '',
   });
 
+  // Activity state
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
+
   const statusOptions = [
     { value: 'LEAD', label: 'Lead' },
     { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
@@ -268,8 +316,29 @@ export default function ClientDetails() {
       fetchTasks();
       fetchLoanScenarios();
       fetchDocuments();
+      fetchActivities();
     }
   }, [id]);
+
+  const fetchActivities = async () => {
+    if (!id) return;
+    setLoadingActivities(true);
+    try {
+      const response = await fetch(`${API_URL}/activities?client_id=${id}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setActivities(data);
+      }
+    } catch (error) {
+      console.error('Error fetching activities:', error);
+    } finally {
+      setLoadingActivities(false);
+    }
+  };
 
   const fetchClient = async () => {
     setLoading(true);
@@ -542,6 +611,9 @@ export default function ClientDetails() {
       setNotes([createdNote, ...notes]);
       setAddNoteModalOpen(false);
       setNewNoteText('');
+
+      // Refresh activities to show the new note activity
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
@@ -1726,7 +1798,35 @@ export default function ClientDetails() {
         </Tabs.Panel>
 
         <Tabs.Panel value="activity" pt="md">
-          <Text c="dimmed">Activity timeline coming soon...</Text>
+          <Title order={4} mb="md">Activity Timeline</Title>
+          {loadingActivities ? (
+            <Text c="dimmed">Loading activities...</Text>
+          ) : activities.length === 0 ? (
+            <Text c="dimmed">No activity recorded yet.</Text>
+          ) : (
+            <Stack gap="md">
+              {activities.map((activity) => (
+                <Paper key={activity.id} p="md" withBorder>
+                  <Group justify="space-between" align="flex-start">
+                    <Group gap="sm">
+                      <Badge color={activityTypeColors[activity.type] || 'gray'} variant="light">
+                        {activityTypeLabels[activity.type] || activity.type}
+                      </Badge>
+                      <Text size="sm">{activity.description}</Text>
+                    </Group>
+                  </Group>
+                  <Group justify="space-between" mt="sm">
+                    <Text size="xs" c="dimmed">
+                      By {activity.user?.name || 'Unknown'}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {new Date(activity.createdAt).toLocaleString()}
+                    </Text>
+                  </Group>
+                </Paper>
+              ))}
+            </Stack>
+          )}
         </Tabs.Panel>
       </Tabs>
 

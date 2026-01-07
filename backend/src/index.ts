@@ -9,6 +9,7 @@ import taskRoutes from './routes/taskRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import documentRoutes from './routes/documentRoutes.js';
 import loanScenarioRoutes from './routes/loanScenarioRoutes.js';
+import activityRoutes from './routes/activityRoutes.js';
 
 // Load environment variables
 config();
@@ -83,8 +84,10 @@ app.use('/api/users', userRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/loan-scenarios', loanScenarioRoutes);
 
+// Activity routes
+app.use('/api/activities', activityRoutes);
+
 // TODO: Implement remaining route modules
-// app.use('/api/activities', activityRoutes);
 // app.use('/api/analytics', analyticsRoutes);
 
 // 404 handler

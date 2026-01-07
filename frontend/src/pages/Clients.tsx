@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Container,
@@ -16,9 +16,10 @@ import {
   Paper,
   ActionIcon,
   Tooltip,
+  TagsInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
 interface Client {
@@ -54,6 +55,7 @@ export default function Clients() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -62,6 +64,7 @@ export default function Clients() {
     email: '',
     phone: '',
     status: 'LEAD',
+    tags: [] as string[],
   });
   const [creating, setCreating] = useState(false);
 
@@ -125,7 +128,7 @@ export default function Clients() {
       const createdClient = await response.json();
       setClients([createdClient, ...clients]);
       setCreateModalOpen(false);
-      setNewClient({ name: '', email: '', phone: '', status: 'LEAD' });
+      setNewClient({ name: '', email: '', phone: '', status: 'LEAD', tags: [] });
 
       notifications.show({
         title: 'Success',
@@ -177,12 +180,24 @@ export default function Clients() {
     }
   };
 
-  // Filter clients by search query and status
+  // Get unique tags from all clients for the filter dropdown
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    clients.forEach(client => {
+      if (client.tags && Array.isArray(client.tags)) {
+        client.tags.forEach(tag => tagSet.add(tag));
+      }
+    });
+    return Array.from(tagSet).sort();
+  }, [clients]);
+
+  // Filter clients by search query, status, and tag
   const filteredClients = clients.filter(client => {
     const matchesSearch = client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       client.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = !statusFilter || client.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesTag = !tagFilter || (client.tags && client.tags.includes(tagFilter));
+    return matchesSearch && matchesStatus && matchesTag;
   });
 
   // Paginate filtered clients
@@ -238,7 +253,19 @@ export default function Clients() {
           }}
           w={200}
         />
-        {(searchQuery || statusFilter) && (
+        <Select
+          placeholder="Filter by tag"
+          leftSection={<IconTag size={16} />}
+          clearable
+          data={allTags.map(tag => ({ value: tag, label: tag }))}
+          value={tagFilter}
+          onChange={(value) => {
+            setTagFilter(value);
+            setPage(1); // Reset to first page when filter changes
+          }}
+          w={180}
+        />
+        {(searchQuery || statusFilter || tagFilter) && (
           <Button
             variant="subtle"
             color="gray"
@@ -246,6 +273,7 @@ export default function Clients() {
             onClick={() => {
               setSearchQuery('');
               setStatusFilter(null);
+              setTagFilter(null);
               setPage(1);
             }}
           >
@@ -343,6 +371,7 @@ export default function Clients() {
             <Text c="dimmed" size="sm" ta="center" mt="sm">
               Showing {paginatedClients.length} of {filteredClients.length} clients
               {statusFilter && ` (filtered by ${statusFilter.replace('_', ' ')})`}
+              {tagFilter && ` (tagged: ${tagFilter})`}
             </Text>
           )}
           </>
@@ -390,6 +419,12 @@ export default function Clients() {
             ]}
             value={newClient.status}
             onChange={(value) => setNewClient({ ...newClient, status: value || 'LEAD' })}
+          />
+          <TagsInput
+            label="Tags"
+            placeholder="Type tag and press Enter"
+            value={newClient.tags}
+            onChange={(value) => setNewClient({ ...newClient, tags: value })}
           />
           <Group justify="flex-end" mt="md">
             <Button variant="subtle" onClick={() => setCreateModalOpen(false)}>
