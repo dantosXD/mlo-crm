@@ -275,6 +275,7 @@ export default function ClientDetails() {
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [addTaskModalOpen, setAddTaskModalOpen] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
+  const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
   const [newTaskForm, setNewTaskForm] = useState({
     text: '',
     description: '',
@@ -955,7 +956,13 @@ export default function ClientDetails() {
   };
 
   const handleToggleTaskStatus = async (task: Task) => {
+    // Prevent rapid clicks - ignore if already toggling this task
+    if (togglingTaskId === task.id) {
+      return;
+    }
+
     const newStatus = task.status === 'COMPLETE' ? 'TODO' : 'COMPLETE';
+    setTogglingTaskId(task.id);
 
     try {
       const response = await fetch(`${API_URL}/tasks/${task.id}/status`, {
@@ -986,6 +993,8 @@ export default function ClientDetails() {
         message: 'Failed to update task',
         color: 'red',
       });
+    } finally {
+      setTogglingTaskId(null);
     }
   };
 
@@ -1738,6 +1747,7 @@ export default function ClientDetails() {
                         checked={task.status === 'COMPLETE'}
                         onChange={() => handleToggleTaskStatus(task)}
                         size="md"
+                        disabled={togglingTaskId === task.id}
                       />
                       <div style={{ flex: 1 }}>
                         <Text style={{ textDecoration: task.status === 'COMPLETE' ? 'line-through' : 'none' }}>
