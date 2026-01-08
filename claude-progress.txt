@@ -1,5 +1,81 @@
 # MLO Dashboard - Development Progress
 
+## Session 9 Summary
+Date: January 7, 2026
+
+### What Was Accomplished
+
+#### Regression Test: Feature #38 (Delete Client with Confirmation) - VERIFIED
+- Created test client "DELETE_ME_REGRESSION_TEST"
+- Delete button shows confirmation modal
+- Cancel button keeps client intact
+- Confirm delete removes client and redirects to clients list
+- Search returns "No clients match" for deleted client
+
+#### Feature #116: Deleted client notes are removed (PASSED)
+- Created client "CASCADE_NOTES_TEST_116" with 3 notes
+- Each note named CASCADE_TEST_NOTE_1/2/3
+- Deleted the client
+- Verified notes not accessible (client page shows "Client Not Found")
+- Database verification confirms 0 orphaned notes
+- Prisma schema has `onDelete: Cascade` for notes relation
+
+#### Feature #117: Deleted client tasks are removed (PASSED)
+- Created client "CASCADE_TASKS_TEST_117" with 2 tasks
+- Each task named CASCADE_TEST_TASK_1/2
+- Deleted the client
+- Database verification confirms 0 orphaned tasks
+- Prisma schema has `onDelete: Cascade` for tasks relation
+
+#### Feature #118: Deleted client documents cleaned up (PASSED)
+- Tested via database script (created client with 2 documents)
+- Deleted client via Prisma
+- Verified 0 documents remain for deleted client
+- Prisma schema has `onDelete: Cascade` for documents relation
+
+#### Feature #119: Deleted client removed from pipeline (PASSED)
+- Created client "PIPELINE_DELETE_TEST_119" (LEAD status)
+- Verified client appeared in Pipeline view (5 clients in Lead column)
+- Deleted the client
+- Verified Pipeline shows 4 clients (removed from Lead column)
+- No errors in pipeline view
+
+### Features Passing (95/250 = 38.0%)
+
+New features passed this session:
+- #116: Deleted client notes are removed
+- #117: Deleted client tasks are removed
+- #118: Deleted client documents cleaned up
+- #119: Deleted client removed from pipeline
+
+### Files Modified This Session
+
+```
+check-notes.js    # Test script for cascade delete verification
+```
+
+### Technical Notes
+
+- All cascade delete functionality relies on Prisma schema `onDelete: Cascade` settings
+- Notes, Tasks, Documents, LoanScenarios, ClientFinancialProfile all cascade delete
+- Activity uses `onDelete: SetNull` (preserves audit trail with null clientId)
+- Pipeline view fetches from same /api/clients endpoint as Clients page
+- Pipeline view has async loading (may show 0 clients initially)
+
+### Current State
+- 4 clients in database (MLO user)
+- 2 documents
+- Backend: localhost:3000, Frontend: localhost:5173
+- Logged in as John Smith (MLO)
+
+### Next Steps for Future Sessions
+
+1. Continue with next pending cleanup/validation features
+2. Implement remaining cascade delete tests (loan scenarios, activities)
+3. Continue with functional features
+
+---
+
 ## Session 8 Summary
 Date: January 7, 2026
 
