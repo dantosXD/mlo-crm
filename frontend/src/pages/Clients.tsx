@@ -19,7 +19,7 @@ import {
   TagsInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
 interface Client {
@@ -59,6 +59,7 @@ export default function Clients() {
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [statusFilter, setStatusFilter] = useState<string | null>(searchParams.get('status') || null);
   const [tagFilter, setTagFilter] = useState<string | null>(searchParams.get('tag') || null);
+  const [dateFilter, setDateFilter] = useState<string | null>(searchParams.get('dateRange') || null);
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1', 10));
   const itemsPerPage = 10;
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -71,17 +72,31 @@ export default function Clients() {
   });
   const [creating, setCreating] = useState(false);
 
+  // Sorting state
+  type SortColumn = 'name' | 'email' | 'status' | 'createdAt' | null;
+  type SortDirection = 'asc' | 'desc';
+  const [sortColumn, setSortColumn] = useState<SortColumn>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  // Navigate to client details while storing current filter state
+  const navigateToClient = (clientId: string) => {
+    // Store current URL (with search params) in sessionStorage so we can return to it
+    sessionStorage.setItem('clientsListReferrer', location.pathname + location.search);
+    navigate(`/clients/${clientId}`);
+  };
+
   // Sync filter state to URL search params for persistence on navigation
   useEffect(() => {
     const params = new URLSearchParams();
     if (searchQuery) params.set('q', searchQuery);
     if (statusFilter) params.set('status', statusFilter);
     if (tagFilter) params.set('tag', tagFilter);
+    if (dateFilter) params.set('dateRange', dateFilter);
     if (page > 1) params.set('page', page.toString());
 
     // Update URL without adding to history (replace instead of push)
     setSearchParams(params, { replace: true });
-  }, [searchQuery, statusFilter, tagFilter, page, setSearchParams]);
+  }, [searchQuery, statusFilter, tagFilter, dateFilter, page, setSearchParams]);
 
   // Fetch clients on mount and when location changes (handles back navigation)
   useEffect(() => {
@@ -206,19 +221,98 @@ export default function Clients() {
     return Array.from(tagSet).sort();
   }, [clients]);
 
-  // Filter clients by search query, status, and tag
+  // Handle column header click for sorting
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      // Toggle direction if clicking the same column
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New column, default to ascending
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  // Get sort icon for a column
+  const getSortIcon = (column: SortColumn) => {
+    if (sortColumn !== column) {
+      return <IconArrowsSort size={14} style={{ opacity: 0.3 }} />;
+    }
+    return sortDirection === 'asc'
+      ? <IconArrowUp size={14} />
+      : <IconArrowDown size={14} />;
+  };
+
+  // Helper function to check if client matches date filter
+  const matchesDateFilter = (clientDate: string, filter: string | null): boolean => {
+    if (!filter) return true;
+
+    const now = new Date();
+    const clientCreatedAt = new Date(clientDate);
+    const diffTime = now.getTime() - clientCreatedAt.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    switch (filter) {
+      case 'last7days':
+        return diffDays <= 7;
+      case 'last30days':
+        return diffDays <= 30;
+      case 'last90days':
+        return diffDays <= 90;
+      default:
+        return true;
+    }
+  };
+
+  // Filter clients by search query, status, tag, and date range
   const filteredClients = clients.filter(client => {
     const matchesSearch = client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       client.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = !statusFilter || client.status === statusFilter;
     const matchesTag = !tagFilter || (client.tags && client.tags.includes(tagFilter));
-    return matchesSearch && matchesStatus && matchesTag;
+    const matchesDate = matchesDateFilter(client.createdAt, dateFilter);
+    return matchesSearch && matchesStatus && matchesTag && matchesDate;
   });
 
-  // Paginate filtered clients
-  const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
-  const paginatedClients = filteredClients.slice(0, page * itemsPerPage);
-  const hasMore = page * itemsPerPage < filteredClients.length;
+  // Sort filtered clients
+  const sortedClients = useMemo(() => {
+    if (!sortColumn) return filteredClients;
+
+    return [...filteredClients].sort((a, b) => {
+      let aValue: string | number;
+      let bValue: string | number;
+
+      switch (sortColumn) {
+        case 'name':
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+          break;
+        case 'email':
+          aValue = a.email.toLowerCase();
+          bValue = b.email.toLowerCase();
+          break;
+        case 'status':
+          aValue = a.status;
+          bValue = b.status;
+          break;
+        case 'createdAt':
+          aValue = new Date(a.createdAt).getTime();
+          bValue = new Date(b.createdAt).getTime();
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredClients, sortColumn, sortDirection]);
+
+  // Paginate sorted clients
+  const totalPages = Math.ceil(sortedClients.length / itemsPerPage);
+  const paginatedClients = sortedClients.slice(0, page * itemsPerPage);
+  const hasMore = page * itemsPerPage < sortedClients.length;
 
   return (
     <Container size="xl" py="md">
@@ -280,7 +374,23 @@ export default function Clients() {
           }}
           w={180}
         />
-        {(searchQuery || statusFilter || tagFilter) && (
+        <Select
+          placeholder="Date range"
+          leftSection={<IconCalendar size={16} />}
+          clearable
+          data={[
+            { value: 'last7days', label: 'Last 7 days' },
+            { value: 'last30days', label: 'Last 30 days' },
+            { value: 'last90days', label: 'Last 90 days' },
+          ]}
+          value={dateFilter}
+          onChange={(value) => {
+            setDateFilter(value);
+            setPage(1); // Reset to first page when filter changes
+          }}
+          w={160}
+        />
+        {(searchQuery || statusFilter || tagFilter || dateFilter) && (
           <Button
             variant="subtle"
             color="gray"
@@ -289,6 +399,7 @@ export default function Clients() {
               setSearchQuery('');
               setStatusFilter(null);
               setTagFilter(null);
+              setDateFilter(null);
               setPage(1);
             }}
           >
@@ -308,12 +419,40 @@ export default function Clients() {
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Email</Table.Th>
+                <Table.Th
+                  onClick={() => handleSort('name')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                >
+                  <Group gap={4} wrap="nowrap">
+                    Name {getSortIcon('name')}
+                  </Group>
+                </Table.Th>
+                <Table.Th
+                  onClick={() => handleSort('email')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                >
+                  <Group gap={4} wrap="nowrap">
+                    Email {getSortIcon('email')}
+                  </Group>
+                </Table.Th>
                 <Table.Th>Phone</Table.Th>
-                <Table.Th>Status</Table.Th>
+                <Table.Th
+                  onClick={() => handleSort('status')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                >
+                  <Group gap={4} wrap="nowrap">
+                    Status {getSortIcon('status')}
+                  </Group>
+                </Table.Th>
                 <Table.Th>Tags</Table.Th>
-                <Table.Th>Created</Table.Th>
+                <Table.Th
+                  onClick={() => handleSort('createdAt')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                >
+                  <Group gap={4} wrap="nowrap">
+                    Created {getSortIcon('createdAt')}
+                  </Group>
+                </Table.Th>
                 <Table.Th>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -352,7 +491,7 @@ export default function Clients() {
                         <ActionIcon
                           variant="subtle"
                           color="blue"
-                          onClick={() => navigate(`/clients/${client.id}`)}
+                          onClick={() => navigateToClient(client.id)}
                         >
                           <IconEye size={16} />
                         </ActionIcon>
@@ -378,15 +517,17 @@ export default function Clients() {
                 variant="light"
                 onClick={() => setPage(p => p + 1)}
               >
-                Load More ({filteredClients.length - paginatedClients.length} remaining)
+                Load More ({sortedClients.length - paginatedClients.length} remaining)
               </Button>
             </Group>
           )}
-          {filteredClients.length > 0 && (
+          {sortedClients.length > 0 && (
             <Text c="dimmed" size="sm" ta="center" mt="sm">
-              Showing {paginatedClients.length} of {filteredClients.length} clients
+              Showing {paginatedClients.length} of {sortedClients.length} clients
               {statusFilter && ` (filtered by ${statusFilter.replace('_', ' ')})`}
               {tagFilter && ` (tagged: ${tagFilter})`}
+              {dateFilter && ` (${dateFilter === 'last7days' ? 'Last 7 days' : dateFilter === 'last30days' ? 'Last 30 days' : 'Last 90 days'})`}
+              {sortColumn && ` (sorted by ${sortColumn}${sortDirection === 'desc' ? ' desc' : ''})`}
             </Text>
           )}
           </>

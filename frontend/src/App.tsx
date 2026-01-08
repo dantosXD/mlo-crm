@@ -15,6 +15,7 @@ import {
   IconEye,
   IconChevronLeft,
   IconChevronRight,
+  IconNotes,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import Login from './pages/Login';
@@ -27,6 +28,7 @@ import Pipeline from './pages/Pipeline';
 import Documents from './pages/Documents';
 import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
+import Notes from './pages/Notes';
 
 const Calculator = () => (
   <Center h="100%">
@@ -63,6 +65,7 @@ const navItems = [
   { icon: IconDashboard, label: 'Dashboard', href: '/', adminOnly: false },
   { icon: IconUsers, label: 'Clients', href: '/clients', adminOnly: false },
   { icon: IconLayoutKanban, label: 'Pipeline', href: '/pipeline', adminOnly: false },
+  { icon: IconNotes, label: 'Notes', href: '/notes', adminOnly: false },
   { icon: IconFileText, label: 'Documents', href: '/documents', adminOnly: false },
   { icon: IconCalculator, label: 'Calculator', href: '/calculator', adminOnly: false },
   { icon: IconChartBar, label: 'Analytics', href: '/analytics', adminOnly: false },
@@ -265,6 +268,7 @@ function ProtectedLayout() {
           <Route path="/clients" element={<Clients />} />
           <Route path="/clients/:id" element={<ClientDetails />} />
           <Route path="/pipeline" element={<Pipeline />} />
+          <Route path="/notes" element={<Notes />} />
           <Route path="/documents" element={<Documents />} />
           <Route path="/calculator" element={<Calculator />} />
           <Route path="/analytics" element={<Analytics />} />

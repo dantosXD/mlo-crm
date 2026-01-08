@@ -10,22 +10,44 @@ router.use(authenticateToken);
 // GET /api/notes - List notes (optionally filtered by client_id)
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { client_id } = req.query;
+    const { client_id, search } = req.query;
 
     const notes = await prisma.note.findMany({
-      where: client_id ? { clientId: client_id as string } : undefined,
+      where: {
+        ...(client_id ? { clientId: client_id as string } : {}),
+        ...(search ? {
+          text: {
+            contains: search as string,
+          }
+        } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: 100,
       include: {
         createdBy: {
           select: { id: true, name: true },
         },
+        client: {
+          select: { id: true, nameEncrypted: true },
+        },
       },
     });
+
+    // Helper to decrypt client name
+    const decryptName = (encrypted: string | null): string => {
+      if (!encrypted) return 'Unknown';
+      try {
+        const parsed = JSON.parse(encrypted);
+        return parsed.data || 'Unknown';
+      } catch {
+        return encrypted;
+      }
+    };
 
     const formattedNotes = notes.map(note => ({
       id: note.id,
       clientId: note.clientId,
+      clientName: note.client ? decryptName(note.client.nameEncrypted) : 'Unknown',
       text: note.text,
       tags: JSON.parse(note.tags),
       isPinned: note.isPinned,
@@ -231,6 +253,64 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to delete note',
+    });
+  }
+});
+
+// GET /api/notes/templates - Get all note templates
+router.get('/templates/list', async (req: AuthRequest, res: Response) => {
+  try {
+    let templates = await prisma.noteTemplate.findMany({
+      orderBy: { name: 'asc' },
+    });
+
+    // Create default templates if none exist
+    if (templates.length === 0) {
+      const defaultTemplates = [
+        {
+          name: 'Initial Contact',
+          content: 'Initial contact with client on [DATE].\n\nDiscussion points:\n- [TOPIC 1]\n- [TOPIC 2]\n\nNext steps:\n- [ACTION ITEM]',
+        },
+        {
+          name: 'Follow-up Call',
+          content: 'Follow-up call with client.\n\nStatus update:\n- [STATUS]\n\nClient questions:\n- [QUESTION]\n\nResolution:\n- [RESOLUTION]',
+        },
+        {
+          name: 'Document Received',
+          content: 'Received [DOCUMENT TYPE] from client.\n\nDocument status: [PENDING REVIEW / APPROVED / NEEDS REVISION]\n\nNotes:\n- [NOTES]',
+        },
+        {
+          name: 'Rate Quote',
+          content: 'Rate quote provided to client:\n\nLoan Amount: $[AMOUNT]\nRate: [RATE]%\nTerm: [YEARS] years\nMonthly Payment: $[PAYMENT]\n\nClient response: [RESPONSE]',
+        },
+      ];
+
+      for (const template of defaultTemplates) {
+        await prisma.noteTemplate.create({
+          data: template,
+        });
+      }
+
+      templates = await prisma.noteTemplate.findMany({
+        orderBy: { name: 'asc' },
+      });
+    }
+
+    const formattedTemplates = templates.map(t => ({
+      id: t.id,
+      name: t.name,
+      content: t.content,
+      tags: JSON.parse(t.tags),
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+    }));
+
+    res.json(formattedTemplates);
+  } catch (error) {
+    console.error('Error fetching note templates:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch note templates',
     });
   }
 });
