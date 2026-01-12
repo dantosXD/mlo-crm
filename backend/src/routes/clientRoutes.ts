@@ -108,22 +108,37 @@ router.post('/', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest,
     const { name, email, phone, status, tags } = req.body;
     const userId = req.user?.userId;
 
-    if (!name || !email || !userId) {
+    // Trim input values
+    const trimmedName = name?.trim();
+    const trimmedEmail = email?.trim();
+    const trimmedPhone = phone?.trim();
+
+    // Validate required fields
+    if (!trimmedName || !trimmedEmail || !userId) {
       return res.status(400).json({
         error: 'Validation Error',
         message: 'Name and email are required',
       });
     }
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Please enter a valid email address',
+      });
+    }
+
     // In production, encrypt these values
     const client = await prisma.client.create({
       data: {
-        nameEncrypted: name,
-        emailEncrypted: email,
-        phoneEncrypted: phone || '',
-        nameHash: name.toLowerCase(),
-        emailHash: email.toLowerCase(),
-        phoneHash: phone || '',
+        nameEncrypted: trimmedName,
+        emailEncrypted: trimmedEmail,
+        phoneEncrypted: trimmedPhone || '',
+        nameHash: trimmedName.toLowerCase(),
+        emailHash: trimmedEmail.toLowerCase(),
+        phoneHash: trimmedPhone || '',
         status: status || 'LEAD',
         tags: JSON.stringify(tags || []),
         createdById: userId,
@@ -136,7 +151,7 @@ router.post('/', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest,
         clientId: client.id,
         userId,
         type: 'CLIENT_CREATED',
-        description: `Client ${name} created`,
+        description: `Client ${trimmedName} created`,
       },
     });
 
