@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { AppShell, Text, Center, NavLink, Group, Avatar, Menu, UnstyledButton, Stack, Divider, Badge, Tooltip, ActionIcon } from '@mantine/core';
+import { AppShell, Text, Center, NavLink, Group, Avatar, Menu, UnstyledButton, Stack, Divider, Badge, Tooltip, ActionIcon, Burger } from '@mantine/core';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
   IconDashboard,
   IconUsers,
@@ -176,7 +177,13 @@ function ProtectedLayout() {
   const { user } = useAuthStore();
   const isReadOnly = isReadOnlyRole(user?.role);
 
-  // Sidebar collapsed state with localStorage persistence
+  // Mobile/tablet detection
+  const isMobile = useMediaQuery('(max-width: 768px)');
+
+  // Mobile nav opened state
+  const [mobileOpened, { toggle: toggleMobile, close: closeMobile }] = useDisclosure();
+
+  // Sidebar collapsed state with localStorage persistence (for desktop only)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem('sidebarCollapsed');
     return saved === 'true';
@@ -191,15 +198,30 @@ function ProtectedLayout() {
     setSidebarCollapsed(prev => !prev);
   };
 
+  // Close mobile nav when navigating
+  useEffect(() => {
+    closeMobile();
+  }, [currentPath, closeMobile]);
+
   return (
     <AppShell
       header={{ height: 60 }}
-      navbar={{ width: sidebarCollapsed ? 70 : 250, breakpoint: 'sm' }}
+      navbar={{
+        width: sidebarCollapsed ? 70 : 250,
+        breakpoint: 'sm',
+        collapsed: { mobile: !mobileOpened }
+      }}
       padding="md"
     >
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Group gap="md">
+            <Burger
+              opened={mobileOpened}
+              onClick={toggleMobile}
+              hiddenFrom="sm"
+              size="sm"
+            />
             <Text fw={700} size="lg" style={{ color: '#228be6' }}>
               MLO Dashboard
             </Text>
