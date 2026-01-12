@@ -484,10 +484,12 @@ export default function Clients() {
                 <Table.Tbody>
                   {paginatedClients.map((client) => (
                     <Table.Tr key={client.id}>
-                      <Table.Td>
-                        <Text fw={500}>{client.name}</Text>
+                      <Table.Td style={{ maxWidth: '200px' }}>
+                        <Text fw={500} truncate="end" title={client.name}>{client.name}</Text>
                       </Table.Td>
-                      <Table.Td>{client.email}</Table.Td>
+                      <Table.Td style={{ maxWidth: '200px' }}>
+                        <Text truncate="end" title={client.email}>{client.email}</Text>
+                      </Table.Td>
                       <Table.Td>{client.phone || '-'}</Table.Td>
                       <Table.Td>
                         <Badge color={statusColors[client.status] || 'gray'}>
