@@ -56,6 +56,7 @@ import {
   IconPercentage,
   IconCalendar,
   IconScale,
+  IconCheck,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -272,6 +273,7 @@ export default function ClientDetails() {
   const [unsavedChangesModalOpen, setUnsavedChangesModalOpen] = useState(false);
   const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [statusUpdateSuccess, setStatusUpdateSuccess] = useState(false);
   const [updatingTags, setUpdatingTags] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
@@ -599,6 +601,7 @@ export default function ClientDetails() {
 
     const oldStatus = client.status;
     setUpdatingStatus(true);
+    setStatusUpdateSuccess(false);
 
     try {
       const response = await fetch(`${API_URL}/clients/${id}`, {
@@ -620,13 +623,15 @@ export default function ClientDetails() {
       }
 
       const updatedClient = await response.json();
+
+      // Show inline success indicator - set before updating client to ensure it renders
+      setStatusUpdateSuccess(true);
       setClient(updatedClient);
 
-      notifications.show({
-        title: 'Status Updated',
-        message: `Status changed from ${oldStatus.replace('_', ' ')} to ${newStatus.replace('_', ' ')}`,
-        color: 'green',
-      });
+      // Auto-hide the success indicator after 2.5 seconds
+      setTimeout(() => {
+        setStatusUpdateSuccess(false);
+      }, 2500);
     } catch (error) {
       console.error('Error updating status:', error);
       notifications.show({
@@ -1525,22 +1530,29 @@ export default function ClientDetails() {
       <Group justify="space-between" mb="lg">
         <Group>
           <Title order={2}>{client.name}</Title>
-          <Select
-            value={client.status}
-            onChange={handleStatusChange}
-            data={statusOptions}
-            disabled={updatingStatus}
-            size="sm"
-            w={160}
-            styles={{
-              input: {
-                backgroundColor: `var(--mantine-color-${statusColors[client.status] || 'gray'}-light)`,
-                color: `var(--mantine-color-${statusColors[client.status] || 'gray'}-filled)`,
-                fontWeight: 600,
-                border: `1px solid var(--mantine-color-${statusColors[client.status] || 'gray'}-outline)`,
-              },
-            }}
-          />
+          <Group gap="xs">
+            <Select
+              value={client.status}
+              onChange={handleStatusChange}
+              data={statusOptions}
+              disabled={updatingStatus}
+              size="sm"
+              w={160}
+              styles={{
+                input: {
+                  backgroundColor: `var(--mantine-color-${statusColors[client.status] || 'gray'}-light)`,
+                  color: `var(--mantine-color-${statusColors[client.status] || 'gray'}-filled)`,
+                  fontWeight: 600,
+                  border: `1px solid var(--mantine-color-${statusColors[client.status] || 'gray'}-outline)`,
+                },
+              }}
+            />
+            {statusUpdateSuccess && (
+              <ThemeIcon color="green" size="md" radius="xl" variant="filled">
+                <IconCheck size={16} />
+              </ThemeIcon>
+            )}
+          </Group>
         </Group>
         <Group>
           <Button
