@@ -18,7 +18,9 @@ import {
   Tooltip,
   TagsInput,
   Box,
+  ScrollArea,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
@@ -55,6 +57,7 @@ export default function Clients() {
   const { accessToken } = useAuthStore();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const isMobile = useMediaQuery('(max-width: 576px)');
 
   // Initialize filter state from URL search params for persistence on navigation
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
@@ -565,6 +568,13 @@ export default function Clients() {
             setFormErrors({});
           }}
           title="Add New Client"
+          fullScreen={isMobile}
+          styles={{
+            body: {
+              maxHeight: isMobile ? 'calc(100vh - 60px)' : undefined,
+              overflowY: 'auto',
+            },
+          }}
         >
           <Stack>
             <TextInput
