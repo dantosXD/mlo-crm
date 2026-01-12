@@ -1697,13 +1697,14 @@ export default function ClientDetails() {
                         color={note.isPinned ? 'blue' : 'gray'}
                         onClick={() => handleTogglePin(note)}
                         title={note.isPinned ? 'Unpin note' : 'Pin to top'}
+                        aria-label={note.isPinned ? 'Unpin note' : 'Pin note to top'}
                       >
                         {note.isPinned ? <IconPinnedOff size={16} /> : <IconPin size={16} />}
                       </ActionIcon>
-                      <ActionIcon variant="subtle" color="blue" onClick={() => handleEditNote(note)}>
+                      <ActionIcon variant="subtle" color="blue" onClick={() => handleEditNote(note)} aria-label="Edit note">
                         <IconEdit size={16} />
                       </ActionIcon>
-                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteNote(note.id)}>
+                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteNote(note.id)} aria-label="Delete note">
                         <IconTrash size={16} />
                       </ActionIcon>
                     </Group>
@@ -1775,7 +1776,7 @@ export default function ClientDetails() {
                           },
                         }}
                       />
-                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteDocument(doc.id)}>
+                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteDocument(doc.id)} aria-label={`Delete document ${doc.name}`}>
                         <IconTrash size={16} />
                       </ActionIcon>
                     </Group>
@@ -1833,7 +1834,7 @@ export default function ClientDetails() {
                       <Badge color={priorityColors[task.priority]} size="sm">
                         {task.priority}
                       </Badge>
-                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteTask(task.id)}>
+                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteTask(task.id)} aria-label={`Delete task: ${task.text}`}>
                         <IconTrash size={16} />
                       </ActionIcon>
                     </Group>
@@ -1967,6 +1968,7 @@ export default function ClientDetails() {
                         color="yellow"
                         onClick={() => handleSetPreferred(scenario.id)}
                         title="Set as preferred"
+                        aria-label={`Set ${scenario.name} as preferred scenario`}
                       >
                         <IconStar size={16} />
                       </ActionIcon>
@@ -1976,6 +1978,7 @@ export default function ClientDetails() {
                       color="red"
                       onClick={() => handleDeleteScenario(scenario.id)}
                       title="Delete scenario"
+                      aria-label={`Delete scenario: ${scenario.name}`}
                     >
                       <IconTrash size={16} />
                     </ActionIcon>

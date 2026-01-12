@@ -519,6 +519,7 @@ export default function Clients() {
                               variant="subtle"
                               color="blue"
                               onClick={() => navigateToClient(client.id)}
+                              aria-label={`View details for ${client.name}`}
                             >
                               <IconEye size={16} />
                             </ActionIcon>
@@ -528,6 +529,7 @@ export default function Clients() {
                               variant="subtle"
                               color="red"
                               onClick={() => handleDeleteClient(client.id)}
+                              aria-label={`Delete ${client.name}`}
                             >
                               <IconTrash size={16} />
                             </ActionIcon>

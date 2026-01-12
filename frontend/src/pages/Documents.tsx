@@ -268,6 +268,7 @@ export default function Documents() {
                           variant="subtle"
                           color="blue"
                           onClick={() => handleClientClick(doc.clientId)}
+                          aria-label={`View client for document ${doc.name}`}
                         >
                           <IconEye size={16} />
                         </ActionIcon>
