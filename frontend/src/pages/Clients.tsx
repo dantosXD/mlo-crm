@@ -71,6 +71,7 @@ export default function Clients() {
     tags: [] as string[],
   });
   const [creating, setCreating] = useState(false);
+  const [formErrors, setFormErrors] = useState<{ name?: string; email?: string; phone?: string }>({});
 
   // Sorting state
   type SortColumn = 'name' | 'email' | 'status' | 'createdAt' | null;
@@ -131,14 +132,28 @@ export default function Clients() {
   };
 
   const handleCreateClient = async () => {
-    if (!newClient.name || !newClient.email) {
-      notifications.show({
-        title: 'Validation Error',
-        message: 'Name and email are required',
-        color: 'red',
-      });
+    // Validate required fields with specific error messages
+    const errors: { name?: string; email?: string; phone?: string } = {};
+    if (!newClient.name.trim()) {
+      errors.name = 'Name is required';
+    }
+    if (!newClient.email.trim()) {
+      errors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newClient.email)) {
+      errors.email = 'Please enter a valid email address';
+    }
+    // Phone is optional, but if provided, validate format
+    if (newClient.phone.trim() && !/^[\d\s\-\(\)\+\.]+$/.test(newClient.phone)) {
+      errors.phone = 'Please enter a valid phone number';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
       return;
     }
+
+    // Clear any previous errors
+    setFormErrors({});
 
     setCreating(true);
     try {
@@ -159,6 +174,7 @@ export default function Clients() {
       setClients([createdClient, ...clients]);
       setCreateModalOpen(false);
       setNewClient({ name: '', email: '', phone: '', status: 'LEAD', tags: [] });
+      setFormErrors({});
 
       notifications.show({
         title: 'Success',
@@ -537,7 +553,10 @@ export default function Clients() {
       {/* Create Client Modal */}
       <Modal
         opened={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
+        onClose={() => {
+          setCreateModalOpen(false);
+          setFormErrors({});
+        }}
         title="Add New Client"
       >
         <Stack>
@@ -546,7 +565,11 @@ export default function Clients() {
             placeholder="Client name"
             required
             value={newClient.name}
-            onChange={(e) => setNewClient({ ...newClient, name: e.target.value })}
+            onChange={(e) => {
+              setNewClient({ ...newClient, name: e.target.value });
+              if (formErrors.name) setFormErrors({ ...formErrors, name: undefined });
+            }}
+            error={formErrors.name}
           />
           <TextInput
             label="Email"
@@ -554,13 +577,21 @@ export default function Clients() {
             required
             type="email"
             value={newClient.email}
-            onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
+            onChange={(e) => {
+              setNewClient({ ...newClient, email: e.target.value });
+              if (formErrors.email) setFormErrors({ ...formErrors, email: undefined });
+            }}
+            error={formErrors.email}
           />
           <TextInput
             label="Phone"
             placeholder="(555) 123-4567"
             value={newClient.phone}
-            onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
+            onChange={(e) => {
+              setNewClient({ ...newClient, phone: e.target.value });
+              if (formErrors.phone) setFormErrors({ ...formErrors, phone: undefined });
+            }}
+            error={formErrors.phone}
           />
           <Select
             label="Status"
