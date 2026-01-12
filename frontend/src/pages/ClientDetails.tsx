@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Container,
   Title,
@@ -220,8 +220,20 @@ const validTabs = ['overview', 'notes', 'documents', 'tasks', 'loans', 'activity
 export default function ClientDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { accessToken } = useAuthStore();
+
+  // Store the referrer URL when coming from clients list with filters
+  const clientsListUrl = useMemo(() => {
+    // Check if we have a stored referrer in sessionStorage
+    const storedReferrer = sessionStorage.getItem('clientsListReferrer');
+    // If we came from /clients with params, use that; otherwise default to /clients
+    if (storedReferrer && storedReferrer.startsWith('/clients')) {
+      return storedReferrer;
+    }
+    return '/clients';
+  }, []);
 
   // Get initial tab from URL or default to 'overview'
   const tabFromUrl = searchParams.get('tab');
@@ -269,6 +281,8 @@ export default function ClientDetails() {
   const [editNoteModalOpen, setEditNoteModalOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editNoteText, setEditNoteText] = useState('');
+  const [noteTemplates, setNoteTemplates] = useState<{ id: string; name: string; content: string }[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
 
   // Task state
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -308,6 +322,7 @@ export default function ClientDetails() {
   });
   const [selectedScenarios, setSelectedScenarios] = useState<string[]>([]);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [scenarioFormErrors, setScenarioFormErrors] = useState<{ amount?: string; interestRate?: string }>({});
 
   // Document state
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -686,6 +701,25 @@ export default function ClientDetails() {
       console.error('Error fetching notes:', error);
     } finally {
       setLoadingNotes(false);
+    }
+  };
+
+  const fetchNoteTemplates = async () => {
+    setLoadingTemplates(true);
+    try {
+      const response = await fetch(`${API_URL}/notes/templates/list`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setNoteTemplates(data);
+      }
+    } catch (error) {
+      console.error('Error fetching note templates:', error);
+    } finally {
+      setLoadingTemplates(false);
     }
   };
 
@@ -1102,6 +1136,9 @@ export default function ClientDetails() {
   };
 
   const handleCreateScenario = async () => {
+    // Validate required fields
+    const errors: { amount?: string; interestRate?: string } = {};
+
     if (!newScenarioForm.name.trim()) {
       notifications.show({
         title: 'Validation Error',
@@ -1111,6 +1148,25 @@ export default function ClientDetails() {
       return;
     }
 
+    // Validate loan amount - must be positive
+    if (newScenarioForm.amount <= 0) {
+      errors.amount = 'Loan amount must be greater than 0';
+    }
+
+    // Validate interest rate - must be between 0 and 30%
+    if (newScenarioForm.interestRate <= 0) {
+      errors.interestRate = 'Interest rate must be greater than 0%';
+    } else if (newScenarioForm.interestRate > 30) {
+      errors.interestRate = 'Interest rate cannot exceed 30%';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setScenarioFormErrors(errors);
+      return;
+    }
+
+    // Clear errors
+    setScenarioFormErrors({});
     setSavingScenario(true);
     try {
       const response = await fetch(`${API_URL}/loan-scenarios`, {
@@ -1459,7 +1515,7 @@ export default function ClientDetails() {
         <Anchor onClick={() => safeNavigate('/')} style={{ cursor: 'pointer' }}>
           Dashboard
         </Anchor>
-        <Anchor onClick={() => safeNavigate('/clients')} style={{ cursor: 'pointer' }}>
+        <Anchor onClick={() => safeNavigate(clientsListUrl)} style={{ cursor: 'pointer' }}>
           Clients
         </Anchor>
         <Text>{client.name}</Text>
@@ -1602,7 +1658,10 @@ export default function ClientDetails() {
             <Title order={4}>Notes</Title>
             <Button
               leftSection={<IconPlus size={16} />}
-              onClick={() => setAddNoteModalOpen(true)}
+              onClick={() => {
+                fetchNoteTemplates();
+                setAddNoteModalOpen(true);
+              }}
             >
               Add Note
             </Button>
@@ -2026,10 +2085,23 @@ export default function ClientDetails() {
       {/* Add Note Modal */}
       <Modal
         opened={addNoteModalOpen}
-        onClose={() => setAddNoteModalOpen(false)}
+        onClose={() => { setAddNoteModalOpen(false); setNewNoteText(''); }}
         title="Add Note"
       >
         <Stack>
+          <Select
+            label="Use Template (optional)"
+            placeholder={loadingTemplates ? "Loading templates..." : "Select a template to start with"}
+            data={noteTemplates.map(t => ({ value: t.id, label: t.name }))}
+            clearable
+            disabled={loadingTemplates}
+            onChange={(value) => {
+              const template = noteTemplates.find(t => t.id === value);
+              if (template) {
+                setNewNoteText(template.content);
+              }
+            }}
+          />
           <Textarea
             label="Note"
             placeholder="Enter your note..."
@@ -2039,7 +2111,7 @@ export default function ClientDetails() {
             onChange={(e) => setNewNoteText(e.target.value)}
           />
           <Group justify="flex-end" mt="md">
-            <Button variant="subtle" onClick={() => setAddNoteModalOpen(false)}>
+            <Button variant="subtle" onClick={() => { setAddNoteModalOpen(false); setNewNoteText(''); }}>
               Cancel
             </Button>
             <Button onClick={handleCreateNote} loading={savingNote}>
@@ -2226,6 +2298,7 @@ export default function ClientDetails() {
             hoaFees: 0,
           });
           setCalculatedValues(null);
+          setScenarioFormErrors({});
         }}
         title="Add Loan Scenario"
         size="lg"
@@ -2254,11 +2327,14 @@ export default function ClientDetails() {
               label="Loan Amount"
               placeholder="400000"
               required
-              min={0}
               value={newScenarioForm.amount}
-              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, amount: Number(value) || 0 })}
+              onChange={(value) => {
+                setNewScenarioForm({ ...newScenarioForm, amount: Number(value) || 0 });
+                if (scenarioFormErrors.amount) setScenarioFormErrors({ ...scenarioFormErrors, amount: undefined });
+              }}
               leftSection={<IconCurrencyDollar size={16} />}
               thousandSeparator=","
+              error={scenarioFormErrors.amount}
             />
             <NumberInput
               label="Property Value"
@@ -2277,12 +2353,15 @@ export default function ClientDetails() {
               placeholder="6.5"
               required
               min={0}
-              max={30}
               step={0.125}
               decimalScale={3}
               value={newScenarioForm.interestRate}
-              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, interestRate: Number(value) || 0 })}
+              onChange={(value) => {
+                setNewScenarioForm({ ...newScenarioForm, interestRate: Number(value) || 0 });
+                if (scenarioFormErrors.interestRate) setScenarioFormErrors({ ...scenarioFormErrors, interestRate: undefined });
+              }}
               leftSection={<IconPercentage size={16} />}
+              error={scenarioFormErrors.interestRate}
             />
             <NumberInput
               label="Term (Years)"
