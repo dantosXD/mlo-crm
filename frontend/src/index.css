@@ -33,3 +33,73 @@ html, body {
     width: 100% !important;
   }
 }
+
+/* Touch target minimum size for mobile (44x44px) */
+@media (max-width: 768px) {
+  /* Action icons and icon buttons - ensure minimum touch target */
+  .mantine-ActionIcon-root {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+
+  /* Regular buttons - ensure minimum height */
+  .mantine-Button-root {
+    min-height: 44px !important;
+  }
+
+  /* Burger menu button */
+  .mantine-Burger-root {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+
+  /* Input fields - ensure minimum height for touch */
+  .mantine-Input-wrapper,
+  .mantine-TextInput-input,
+  .mantine-Select-input,
+  .mantine-TagsInput-input,
+  .mantine-MultiSelect-input,
+  .mantine-Textarea-input {
+    min-height: 44px !important;
+  }
+
+  /* TagsInput wrapper */
+  .mantine-TagsInput-wrapper {
+    min-height: 44px !important;
+  }
+
+  /* Tabs - ensure touch-friendly size */
+  .mantine-Tabs-tab {
+    min-height: 44px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* NavLink items in sidebar */
+  .mantine-NavLink-root {
+    min-height: 44px !important;
+  }
+
+  /* Table action buttons - add padding for touch */
+  td .mantine-ActionIcon-root {
+    padding: 8px !important;
+  }
+
+  /* Ensure adequate spacing between touch targets */
+  .mantine-Group-root {
+    gap: 8px !important;
+  }
+
+  /* Checkbox and radio - ensure touch target size */
+  .mantine-Checkbox-root,
+  .mantine-Radio-root {
+    min-height: 44px !important;
+  }
+
+  .mantine-Checkbox-body,
+  .mantine-Radio-body {
+    min-height: 44px !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+}
