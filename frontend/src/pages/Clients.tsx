@@ -17,6 +17,7 @@ import {
   ActionIcon,
   Tooltip,
   TagsInput,
+  Box,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar } from '@tabler/icons-react';
@@ -331,298 +332,305 @@ export default function Clients() {
   const hasMore = page * itemsPerPage < sortedClients.length;
 
   return (
-    <Container size="xl" py="md">
-      <LoadingOverlay visible={loading} />
+    <Box style={{ maxWidth: '100%', overflow: 'hidden' }}>
+      <Container size="xl" py="md" style={{ maxWidth: '100%' }}>
+        <LoadingOverlay visible={loading} />
 
-      {/* Header */}
-      <Group justify="space-between" mb="lg">
-        <Title order={2}>Clients</Title>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => setCreateModalOpen(true)}
-        >
-          Add Client
-        </Button>
-      </Group>
-
-      {/* Search and Filters */}
-      <Group mb="md" gap="md">
-        <TextInput
-          placeholder="Search clients..."
-          leftSection={<IconSearch size={16} />}
-          value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value);
-            setPage(1); // Reset to first page when search changes
-          }}
-          style={{ flex: 1 }}
-        />
-        <Select
-          placeholder="Filter by status"
-          leftSection={<IconFilter size={16} />}
-          clearable
-          data={[
-            { value: 'LEAD', label: 'Lead' },
-            { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
-            { value: 'ACTIVE', label: 'Active' },
-            { value: 'PROCESSING', label: 'Processing' },
-            { value: 'UNDERWRITING', label: 'Underwriting' },
-            { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
-            { value: 'CLOSED', label: 'Closed' },
-            { value: 'DENIED', label: 'Denied' },
-          ]}
-          value={statusFilter}
-          onChange={(value) => {
-            setStatusFilter(value);
-            setPage(1); // Reset to first page when filter changes
-          }}
-          w={200}
-        />
-        <Select
-          placeholder="Filter by tag"
-          leftSection={<IconTag size={16} />}
-          clearable
-          data={allTags.map(tag => ({ value: tag, label: tag }))}
-          value={tagFilter}
-          onChange={(value) => {
-            setTagFilter(value);
-            setPage(1); // Reset to first page when filter changes
-          }}
-          w={180}
-        />
-        <Select
-          placeholder="Date range"
-          leftSection={<IconCalendar size={16} />}
-          clearable
-          data={[
-            { value: 'last7days', label: 'Last 7 days' },
-            { value: 'last30days', label: 'Last 30 days' },
-            { value: 'last90days', label: 'Last 90 days' },
-          ]}
-          value={dateFilter}
-          onChange={(value) => {
-            setDateFilter(value);
-            setPage(1); // Reset to first page when filter changes
-          }}
-          w={160}
-        />
-        {(searchQuery || statusFilter || tagFilter || dateFilter) && (
+        {/* Header */}
+        <Group justify="space-between" mb="lg" wrap="wrap" gap="sm">
+          <Title order={2}>Clients</Title>
           <Button
-            variant="subtle"
-            color="gray"
-            leftSection={<IconX size={16} />}
-            onClick={() => {
-              setSearchQuery('');
-              setStatusFilter(null);
-              setTagFilter(null);
-              setDateFilter(null);
-              setPage(1);
-            }}
+            leftSection={<IconPlus size={16} />}
+            onClick={() => setCreateModalOpen(true)}
           >
-            Clear
+            Add Client
           </Button>
-        )}
-      </Group>
+        </Group>
 
-      {/* Clients Table */}
-      <Paper shadow="xs" p="md" withBorder>
-        {filteredClients.length === 0 ? (
-          <Text c="dimmed" ta="center" py="xl">
-            {clients.length === 0 ? 'No clients yet. Click "Add Client" to create one.' : 'No clients match your search or filter.'}
-          </Text>
-        ) : (
-          <>
-          <Table striped highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th
-                  onClick={() => handleSort('name')}
-                  style={{ cursor: 'pointer', userSelect: 'none' }}
-                >
-                  <Group gap={4} wrap="nowrap">
-                    Name {getSortIcon('name')}
-                  </Group>
-                </Table.Th>
-                <Table.Th
-                  onClick={() => handleSort('email')}
-                  style={{ cursor: 'pointer', userSelect: 'none' }}
-                >
-                  <Group gap={4} wrap="nowrap">
-                    Email {getSortIcon('email')}
-                  </Group>
-                </Table.Th>
-                <Table.Th>Phone</Table.Th>
-                <Table.Th
-                  onClick={() => handleSort('status')}
-                  style={{ cursor: 'pointer', userSelect: 'none' }}
-                >
-                  <Group gap={4} wrap="nowrap">
-                    Status {getSortIcon('status')}
-                  </Group>
-                </Table.Th>
-                <Table.Th>Tags</Table.Th>
-                <Table.Th
-                  onClick={() => handleSort('createdAt')}
-                  style={{ cursor: 'pointer', userSelect: 'none' }}
-                >
-                  <Group gap={4} wrap="nowrap">
-                    Created {getSortIcon('createdAt')}
-                  </Group>
-                </Table.Th>
-                <Table.Th>Actions</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {paginatedClients.map((client) => (
-                <Table.Tr key={client.id}>
-                  <Table.Td>
-                    <Text fw={500}>{client.name}</Text>
-                  </Table.Td>
-                  <Table.Td>{client.email}</Table.Td>
-                  <Table.Td>{client.phone || '-'}</Table.Td>
-                  <Table.Td>
-                    <Badge color={statusColors[client.status] || 'gray'}>
-                      {client.status.replace('_', ' ')}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap={4}>
-                      {client.tags && client.tags.length > 0 ? (
-                        client.tags.map((tag, index) => (
-                          <Badge key={index} size="sm" variant="outline" color="violet">
-                            {tag}
-                          </Badge>
-                        ))
-                      ) : (
-                        <Text c="dimmed" size="sm">-</Text>
-                      )}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    {new Date(client.createdAt).toLocaleDateString()}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs">
-                      <Tooltip label="View Details">
-                        <ActionIcon
-                          variant="subtle"
-                          color="blue"
-                          onClick={() => navigateToClient(client.id)}
-                        >
-                          <IconEye size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                      <Tooltip label="Delete">
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={() => handleDeleteClient(client.id)}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-          {hasMore && (
-            <Group justify="center" mt="md">
+        {/* Search and Filters - responsive wrap */}
+        <Stack gap="sm" mb="md">
+          <TextInput
+            placeholder="Search clients..."
+            leftSection={<IconSearch size={16} />}
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1); // Reset to first page when search changes
+            }}
+            style={{ width: '100%' }}
+          />
+          <Group gap="sm" wrap="wrap">
+            <Select
+              placeholder="Filter by status"
+              leftSection={<IconFilter size={16} />}
+              clearable
+              data={[
+                { value: 'LEAD', label: 'Lead' },
+                { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
+                { value: 'ACTIVE', label: 'Active' },
+                { value: 'PROCESSING', label: 'Processing' },
+                { value: 'UNDERWRITING', label: 'Underwriting' },
+                { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
+                { value: 'CLOSED', label: 'Closed' },
+                { value: 'DENIED', label: 'Denied' },
+              ]}
+              value={statusFilter}
+              onChange={(value) => {
+                setStatusFilter(value);
+                setPage(1); // Reset to first page when filter changes
+              }}
+              style={{ flex: '1 1 150px', minWidth: '140px' }}
+            />
+            <Select
+              placeholder="Filter by tag"
+              leftSection={<IconTag size={16} />}
+              clearable
+              data={allTags.map(tag => ({ value: tag, label: tag }))}
+              value={tagFilter}
+              onChange={(value) => {
+                setTagFilter(value);
+                setPage(1); // Reset to first page when filter changes
+              }}
+              style={{ flex: '1 1 140px', minWidth: '120px' }}
+            />
+            <Select
+              placeholder="Date range"
+              leftSection={<IconCalendar size={16} />}
+              clearable
+              data={[
+                { value: 'last7days', label: 'Last 7 days' },
+                { value: 'last30days', label: 'Last 30 days' },
+                { value: 'last90days', label: 'Last 90 days' },
+              ]}
+              value={dateFilter}
+              onChange={(value) => {
+                setDateFilter(value);
+                setPage(1); // Reset to first page when filter changes
+              }}
+              style={{ flex: '1 1 130px', minWidth: '120px' }}
+            />
+            {(searchQuery || statusFilter || tagFilter || dateFilter) && (
               <Button
-                variant="light"
-                onClick={() => setPage(p => p + 1)}
+                variant="subtle"
+                color="gray"
+                leftSection={<IconX size={16} />}
+                onClick={() => {
+                  setSearchQuery('');
+                  setStatusFilter(null);
+                  setTagFilter(null);
+                  setDateFilter(null);
+                  setPage(1);
+                }}
+                style={{ flex: '0 0 auto' }}
               >
-                Load More ({sortedClients.length - paginatedClients.length} remaining)
+                Clear
               </Button>
-            </Group>
-          )}
-          {sortedClients.length > 0 && (
-            <Text c="dimmed" size="sm" ta="center" mt="sm">
-              Showing {paginatedClients.length} of {sortedClients.length} clients
-              {statusFilter && ` (filtered by ${statusFilter.replace('_', ' ')})`}
-              {tagFilter && ` (tagged: ${tagFilter})`}
-              {dateFilter && ` (${dateFilter === 'last7days' ? 'Last 7 days' : dateFilter === 'last30days' ? 'Last 30 days' : 'Last 90 days'})`}
-              {sortColumn && ` (sorted by ${sortColumn}${sortDirection === 'desc' ? ' desc' : ''})`}
-            </Text>
-          )}
-          </>
-        )}
-      </Paper>
-
-      {/* Create Client Modal */}
-      <Modal
-        opened={createModalOpen}
-        onClose={() => {
-          setCreateModalOpen(false);
-          setFormErrors({});
-        }}
-        title="Add New Client"
-      >
-        <Stack>
-          <TextInput
-            label="Name"
-            placeholder="Client name"
-            required
-            value={newClient.name}
-            onChange={(e) => {
-              setNewClient({ ...newClient, name: e.target.value });
-              if (formErrors.name) setFormErrors({ ...formErrors, name: undefined });
-            }}
-            error={formErrors.name}
-          />
-          <TextInput
-            label="Email"
-            placeholder="client@example.com"
-            required
-            type="email"
-            value={newClient.email}
-            onChange={(e) => {
-              setNewClient({ ...newClient, email: e.target.value });
-              if (formErrors.email) setFormErrors({ ...formErrors, email: undefined });
-            }}
-            error={formErrors.email}
-          />
-          <TextInput
-            label="Phone"
-            placeholder="(555) 123-4567"
-            value={newClient.phone}
-            onChange={(e) => {
-              setNewClient({ ...newClient, phone: e.target.value });
-              if (formErrors.phone) setFormErrors({ ...formErrors, phone: undefined });
-            }}
-            error={formErrors.phone}
-          />
-          <Select
-            label="Status"
-            data={[
-              { value: 'LEAD', label: 'Lead' },
-              { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
-              { value: 'ACTIVE', label: 'Active' },
-              { value: 'PROCESSING', label: 'Processing' },
-              { value: 'UNDERWRITING', label: 'Underwriting' },
-              { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
-              { value: 'CLOSED', label: 'Closed' },
-            ]}
-            value={newClient.status}
-            onChange={(value) => setNewClient({ ...newClient, status: value || 'LEAD' })}
-          />
-          <TagsInput
-            label="Tags"
-            placeholder="Type tag and press Enter"
-            value={newClient.tags}
-            onChange={(value) => setNewClient({ ...newClient, tags: value })}
-          />
-          <Group justify="flex-end" mt="md">
-            <Button variant="subtle" onClick={() => setCreateModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateClient} loading={creating}>
-              Create Client
-            </Button>
+            )}
           </Group>
         </Stack>
-      </Modal>
-    </Container>
+
+        {/* Clients Table - scrollable on mobile */}
+        <Paper shadow="xs" p="md" withBorder style={{ overflow: 'hidden' }}>
+          {filteredClients.length === 0 ? (
+            <Text c="dimmed" ta="center" py="xl">
+              {clients.length === 0 ? 'No clients yet. Click "Add Client" to create one.' : 'No clients match your search or filter.'}
+            </Text>
+          ) : (
+            <>
+            <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <Table striped highlightOnHover style={{ minWidth: '700px' }}>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th
+                      onClick={() => handleSort('name')}
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <Group gap={4} wrap="nowrap">
+                        Name {getSortIcon('name')}
+                      </Group>
+                    </Table.Th>
+                    <Table.Th
+                      onClick={() => handleSort('email')}
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <Group gap={4} wrap="nowrap">
+                        Email {getSortIcon('email')}
+                      </Group>
+                    </Table.Th>
+                    <Table.Th>Phone</Table.Th>
+                    <Table.Th
+                      onClick={() => handleSort('status')}
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <Group gap={4} wrap="nowrap">
+                        Status {getSortIcon('status')}
+                      </Group>
+                    </Table.Th>
+                    <Table.Th>Tags</Table.Th>
+                    <Table.Th
+                      onClick={() => handleSort('createdAt')}
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <Group gap={4} wrap="nowrap">
+                        Created {getSortIcon('createdAt')}
+                      </Group>
+                    </Table.Th>
+                    <Table.Th>Actions</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {paginatedClients.map((client) => (
+                    <Table.Tr key={client.id}>
+                      <Table.Td>
+                        <Text fw={500}>{client.name}</Text>
+                      </Table.Td>
+                      <Table.Td>{client.email}</Table.Td>
+                      <Table.Td>{client.phone || '-'}</Table.Td>
+                      <Table.Td>
+                        <Badge color={statusColors[client.status] || 'gray'}>
+                          {client.status.replace('_', ' ')}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={4}>
+                          {client.tags && client.tags.length > 0 ? (
+                            client.tags.map((tag, index) => (
+                              <Badge key={index} size="sm" variant="outline" color="violet">
+                                {tag}
+                              </Badge>
+                            ))
+                          ) : (
+                            <Text c="dimmed" size="sm">-</Text>
+                          )}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        {new Date(client.createdAt).toLocaleDateString()}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs" wrap="nowrap">
+                          <Tooltip label="View Details">
+                            <ActionIcon
+                              variant="subtle"
+                              color="blue"
+                              onClick={() => navigateToClient(client.id)}
+                            >
+                              <IconEye size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Delete">
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              onClick={() => handleDeleteClient(client.id)}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Box>
+            {hasMore && (
+              <Group justify="center" mt="md">
+                <Button
+                  variant="light"
+                  onClick={() => setPage(p => p + 1)}
+                >
+                  Load More ({sortedClients.length - paginatedClients.length} remaining)
+                </Button>
+              </Group>
+            )}
+            {sortedClients.length > 0 && (
+              <Text c="dimmed" size="sm" ta="center" mt="sm">
+                Showing {paginatedClients.length} of {sortedClients.length} clients
+                {statusFilter && ` (filtered by ${statusFilter.replace('_', ' ')})`}
+                {tagFilter && ` (tagged: ${tagFilter})`}
+                {dateFilter && ` (${dateFilter === 'last7days' ? 'Last 7 days' : dateFilter === 'last30days' ? 'Last 30 days' : 'Last 90 days'})`}
+                {sortColumn && ` (sorted by ${sortColumn}${sortDirection === 'desc' ? ' desc' : ''})`}
+              </Text>
+            )}
+            </>
+          )}
+        </Paper>
+
+        {/* Create Client Modal */}
+        <Modal
+          opened={createModalOpen}
+          onClose={() => {
+            setCreateModalOpen(false);
+            setFormErrors({});
+          }}
+          title="Add New Client"
+        >
+          <Stack>
+            <TextInput
+              label="Name"
+              placeholder="Client name"
+              required
+              value={newClient.name}
+              onChange={(e) => {
+                setNewClient({ ...newClient, name: e.target.value });
+                if (formErrors.name) setFormErrors({ ...formErrors, name: undefined });
+              }}
+              error={formErrors.name}
+            />
+            <TextInput
+              label="Email"
+              placeholder="client@example.com"
+              required
+              type="email"
+              value={newClient.email}
+              onChange={(e) => {
+                setNewClient({ ...newClient, email: e.target.value });
+                if (formErrors.email) setFormErrors({ ...formErrors, email: undefined });
+              }}
+              error={formErrors.email}
+            />
+            <TextInput
+              label="Phone"
+              placeholder="(555) 123-4567"
+              value={newClient.phone}
+              onChange={(e) => {
+                setNewClient({ ...newClient, phone: e.target.value });
+                if (formErrors.phone) setFormErrors({ ...formErrors, phone: undefined });
+              }}
+              error={formErrors.phone}
+            />
+            <Select
+              label="Status"
+              data={[
+                { value: 'LEAD', label: 'Lead' },
+                { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
+                { value: 'ACTIVE', label: 'Active' },
+                { value: 'PROCESSING', label: 'Processing' },
+                { value: 'UNDERWRITING', label: 'Underwriting' },
+                { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
+                { value: 'CLOSED', label: 'Closed' },
+              ]}
+              value={newClient.status}
+              onChange={(value) => setNewClient({ ...newClient, status: value || 'LEAD' })}
+            />
+            <TagsInput
+              label="Tags"
+              placeholder="Type tag and press Enter"
+              value={newClient.tags}
+              onChange={(value) => setNewClient({ ...newClient, tags: value })}
+            />
+            <Group justify="flex-end" mt="md">
+              <Button variant="subtle" onClick={() => setCreateModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateClient} loading={creating}>
+                Create Client
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
+      </Container>
+    </Box>
   );
 }
