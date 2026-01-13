@@ -1077,6 +1077,17 @@ export default function ClientDetails() {
     HIGH: 'red',
   };
 
+  // Helper function to check if a task is overdue
+  const isTaskOverdue = (task: Task): boolean => {
+    if (!task.dueDate || task.status === 'COMPLETE') return false;
+    const dueDate = new Date(task.dueDate);
+    const today = new Date();
+    // Set both dates to midnight for accurate comparison
+    dueDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return dueDate < today;
+  };
+
   // Loan Scenario functions
   const fetchLoanScenarios = async () => {
     if (!id) return;
@@ -1811,44 +1822,60 @@ export default function ClientDetails() {
             <Text c="dimmed">No tasks yet. Click "Add Task" to create one.</Text>
           ) : (
             <Stack gap="md">
-              {tasks.map((task) => (
-                <Paper key={task.id} p="md" withBorder style={task.status === 'COMPLETE' ? { opacity: 0.7 } : {}}>
-                  <Group justify="space-between" align="flex-start">
-                    <Group gap="sm" style={{ flex: 1 }}>
-                      <Checkbox
-                        checked={task.status === 'COMPLETE'}
-                        onChange={() => handleToggleTaskStatus(task)}
-                        size="md"
-                        disabled={togglingTaskId === task.id}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <Text style={{ textDecoration: task.status === 'COMPLETE' ? 'line-through' : 'none' }}>
-                          {task.text}
-                        </Text>
-                        {task.description && (
-                          <Text size="sm" c="dimmed" mt="xs">{task.description}</Text>
+              {tasks.map((task) => {
+                const overdue = isTaskOverdue(task);
+                return (
+                  <Paper
+                    key={task.id}
+                    p="md"
+                    withBorder
+                    style={{
+                      ...(task.status === 'COMPLETE' ? { opacity: 0.7 } : {}),
+                      ...(overdue ? { borderColor: 'var(--mantine-color-red-5)', borderWidth: 2, backgroundColor: 'var(--mantine-color-red-0)' } : {}),
+                    }}
+                  >
+                    <Group justify="space-between" align="flex-start">
+                      <Group gap="sm" style={{ flex: 1 }}>
+                        <Checkbox
+                          checked={task.status === 'COMPLETE'}
+                          onChange={() => handleToggleTaskStatus(task)}
+                          size="md"
+                          disabled={togglingTaskId === task.id}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <Text style={{ textDecoration: task.status === 'COMPLETE' ? 'line-through' : 'none' }}>
+                            {task.text}
+                          </Text>
+                          {task.description && (
+                            <Text size="sm" c="dimmed" mt="xs">{task.description}</Text>
+                          )}
+                        </div>
+                      </Group>
+                      <Group gap="xs">
+                        {overdue && (
+                          <Badge color="red" size="sm" variant="filled">
+                            OVERDUE
+                          </Badge>
                         )}
-                      </div>
+                        <Badge color={priorityColors[task.priority]} size="sm">
+                          {task.priority}
+                        </Badge>
+                        <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteTask(task.id)} aria-label={`Delete task: ${task.text}`}>
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Group>
                     </Group>
-                    <Group gap="xs">
-                      <Badge color={priorityColors[task.priority]} size="sm">
-                        {task.priority}
-                      </Badge>
-                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteTask(task.id)} aria-label={`Delete task: ${task.text}`}>
-                        <IconTrash size={16} />
-                      </ActionIcon>
+                    <Group justify="space-between" mt="sm">
+                      <Text size="xs" c={overdue ? 'red' : 'dimmed'} fw={overdue ? 600 : 400}>
+                        {task.dueDate ? `Due: ${new Date(task.dueDate).toLocaleDateString()}` : 'No due date'}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Created: {new Date(task.createdAt).toLocaleDateString()}
+                      </Text>
                     </Group>
-                  </Group>
-                  <Group justify="space-between" mt="sm">
-                    <Text size="xs" c="dimmed">
-                      {task.dueDate ? `Due: ${new Date(task.dueDate).toLocaleDateString()}` : 'No due date'}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      Created: {new Date(task.createdAt).toLocaleDateString()}
-                    </Text>
-                  </Group>
-                </Paper>
-              ))}
+                  </Paper>
+                );
+              })}
             </Stack>
           )}
         </Tabs.Panel>
