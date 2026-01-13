@@ -411,6 +411,17 @@ export default function ClientDetails() {
 
   useEffect(() => {
     if (id) {
+      // Reset state immediately when navigating to a new client to prevent stale data flash
+      setClient(null);
+      setNotes([]);
+      setTasks([]);
+      setLoanScenarios([]);
+      setDocuments([]);
+      setActivities([]);
+      setLoading(true);
+      setError(null);
+      setAccessDenied(false);
+
       fetchClient();
       fetchNotes();
       fetchTasks();
