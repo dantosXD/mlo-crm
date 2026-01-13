@@ -41,6 +41,7 @@ import {
   IconCalculator,
   IconTimeline,
   IconAlertCircle,
+  IconAlertTriangle,
   IconLock,
   IconHome,
   IconChevronRight,
@@ -159,9 +160,10 @@ interface Document {
   fileName: string;
   fileSize?: number;
   mimeType?: string;
-  status: 'REQUIRED' | 'REQUESTED' | 'UPLOADED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED';
+  status: 'REQUIRED' | 'REQUESTED' | 'UPLOADED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
   category: 'INCOME' | 'EMPLOYMENT' | 'ASSETS' | 'PROPERTY' | 'INSURANCE' | 'CREDIT' | 'OTHER';
   dueDate?: string;
+  expiresAt?: string;
   notes?: string;
   createdAt: string;
   updatedAt?: string;
@@ -218,6 +220,29 @@ const documentStatusColors: Record<string, string> = {
   UNDER_REVIEW: 'orange',
   APPROVED: 'green',
   REJECTED: 'red',
+  EXPIRED: 'gray',
+};
+
+// Helper function to check if a document is expired or expiring soon
+const isDocumentExpired = (doc: Document): boolean => {
+  if (!doc.expiresAt) return false;
+  const expiresAt = new Date(doc.expiresAt);
+  const today = new Date();
+  expiresAt.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return expiresAt < today;
+};
+
+const isDocumentExpiringSoon = (doc: Document): boolean => {
+  if (!doc.expiresAt) return false;
+  const expiresAt = new Date(doc.expiresAt);
+  const today = new Date();
+  const warningDate = new Date();
+  warningDate.setDate(warningDate.getDate() + 30); // 30 days warning
+  expiresAt.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  warningDate.setHours(0, 0, 0, 0);
+  return expiresAt >= today && expiresAt <= warningDate;
 };
 
 const documentCategoryLabels: Record<string, string> = {
@@ -365,6 +390,7 @@ export default function ClientDetails() {
     fileName: '',
     category: 'OTHER' as Document['category'],
     status: 'UPLOADED' as Document['status'],
+    expiresAt: null as Date | null,
     notes: '',
   });
 
@@ -1400,6 +1426,7 @@ export default function ClientDetails() {
           fileName: newDocumentForm.fileName,
           category: newDocumentForm.category,
           status: newDocumentForm.status,
+          expiresAt: newDocumentForm.expiresAt ? newDocumentForm.expiresAt.toISOString() : undefined,
           notes: newDocumentForm.notes || undefined,
         }),
       });
@@ -1416,6 +1443,7 @@ export default function ClientDetails() {
         fileName: '',
         category: 'OTHER',
         status: 'UPLOADED',
+        expiresAt: null,
         notes: '',
       });
 
@@ -1779,58 +1807,86 @@ export default function ClientDetails() {
             <Text c="dimmed">No documents yet. Click "Add Document" to create one.</Text>
           ) : (
             <Stack gap="md">
-              {documents.map((doc) => (
-                <Paper key={doc.id} p="md" withBorder>
-                  <Group justify="space-between" align="flex-start">
-                    <div style={{ flex: 1 }}>
-                      <Group gap="sm" mb="xs">
-                        <IconFiles size={20} />
-                        <Text fw={500}>{doc.name}</Text>
+              {documents.map((doc) => {
+                const expired = isDocumentExpired(doc);
+                const expiringSoon = isDocumentExpiringSoon(doc);
+                return (
+                  <Paper
+                    key={doc.id}
+                    p="md"
+                    withBorder
+                    style={{
+                      ...(expired ? { borderColor: 'var(--mantine-color-red-5)', borderWidth: 2, backgroundColor: 'var(--mantine-color-red-0)' } : {}),
+                      ...(expiringSoon && !expired ? { borderColor: 'var(--mantine-color-yellow-5)', borderWidth: 2, backgroundColor: 'var(--mantine-color-yellow-0)' } : {}),
+                    }}
+                  >
+                    <Group justify="space-between" align="flex-start">
+                      <div style={{ flex: 1 }}>
+                        <Group gap="sm" mb="xs">
+                          <IconFiles size={20} />
+                          <Text fw={500}>{doc.name}</Text>
+                          {expired && (
+                            <Badge color="red" variant="filled" size="sm">EXPIRED</Badge>
+                          )}
+                          {expiringSoon && !expired && (
+                            <Badge color="yellow" variant="filled" size="sm" leftSection={<IconAlertTriangle size={12} />}>
+                              EXPIRING SOON
+                            </Badge>
+                          )}
+                        </Group>
+                        <Text size="sm" c="dimmed">{doc.fileName}</Text>
+                        {doc.notes && (
+                          <Text size="sm" c="dimmed" mt="xs">{doc.notes}</Text>
+                        )}
+                      </div>
+                      <Group gap="xs">
+                        <Badge color={documentCategoryLabels[doc.category] ? 'blue' : 'gray'} variant="light" size="sm">
+                          {documentCategoryLabels[doc.category] || doc.category}
+                        </Badge>
+                        <Select
+                          size="xs"
+                          value={doc.status}
+                          data={[
+                            { value: 'REQUIRED', label: 'Required' },
+                            { value: 'REQUESTED', label: 'Requested' },
+                            { value: 'UPLOADED', label: 'Uploaded' },
+                            { value: 'UNDER_REVIEW', label: 'Under Review' },
+                            { value: 'APPROVED', label: 'Approved' },
+                            { value: 'REJECTED', label: 'Rejected' },
+                            { value: 'EXPIRED', label: 'Expired' },
+                          ]}
+                          onChange={(value) => value && handleUpdateDocumentStatus(doc.id, value as Document['status'])}
+                          styles={{
+                            input: {
+                              backgroundColor: `var(--mantine-color-${documentStatusColors[doc.status]}-1)`,
+                              color: `var(--mantine-color-${documentStatusColors[doc.status]}-9)`,
+                              fontWeight: 500,
+                            },
+                          }}
+                        />
+                        <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteDocument(doc.id)} aria-label={`Delete document ${doc.name}`}>
+                          <IconTrash size={16} />
+                        </ActionIcon>
                       </Group>
-                      <Text size="sm" c="dimmed">{doc.fileName}</Text>
-                      {doc.notes && (
-                        <Text size="sm" c="dimmed" mt="xs">{doc.notes}</Text>
-                      )}
-                    </div>
-                    <Group gap="xs">
-                      <Badge color={documentCategoryLabels[doc.category] ? 'blue' : 'gray'} variant="light" size="sm">
-                        {documentCategoryLabels[doc.category] || doc.category}
-                      </Badge>
-                      <Select
-                        size="xs"
-                        value={doc.status}
-                        data={[
-                          { value: 'REQUIRED', label: 'Required' },
-                          { value: 'REQUESTED', label: 'Requested' },
-                          { value: 'UPLOADED', label: 'Uploaded' },
-                          { value: 'UNDER_REVIEW', label: 'Under Review' },
-                          { value: 'APPROVED', label: 'Approved' },
-                          { value: 'REJECTED', label: 'Rejected' },
-                        ]}
-                        onChange={(value) => value && handleUpdateDocumentStatus(doc.id, value as Document['status'])}
-                        styles={{
-                          input: {
-                            backgroundColor: `var(--mantine-color-${documentStatusColors[doc.status]}-1)`,
-                            color: `var(--mantine-color-${documentStatusColors[doc.status]}-9)`,
-                            fontWeight: 500,
-                          },
-                        }}
-                      />
-                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteDocument(doc.id)} aria-label={`Delete document ${doc.name}`}>
-                        <IconTrash size={16} />
-                      </ActionIcon>
                     </Group>
-                  </Group>
-                  <Group justify="space-between" mt="sm">
-                    <Text size="xs" c="dimmed">
-                      {doc.dueDate ? `Due: ${new Date(doc.dueDate).toLocaleDateString()}` : ''}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      Created: {new Date(doc.createdAt).toLocaleDateString()}
-                    </Text>
-                  </Group>
-                </Paper>
-              ))}
+                    <Group justify="space-between" mt="sm">
+                      <Group gap="xs">
+                        {doc.dueDate && (
+                          <Text size="xs" c="dimmed">Due: {new Date(doc.dueDate).toLocaleDateString()}</Text>
+                        )}
+                        {doc.expiresAt && (
+                          <Text size="xs" c={expired ? 'red' : expiringSoon ? 'yellow.7' : 'dimmed'} fw={expired || expiringSoon ? 600 : 400}>
+                            Expires: {new Date(doc.expiresAt).toLocaleDateString()}
+                          </Text>
+                        )}
+                      </Group>
+                      <Text size="xs" c="dimmed">
+                        Created: {new Date(doc.createdAt).toLocaleDateString()}
+                      </Text>
+                    </Group>
+                  </Paper>
+                );
+              })}
             </Stack>
           )}
         </Tabs.Panel>
@@ -2222,7 +2278,7 @@ export default function ClientDetails() {
         opened={addDocumentModalOpen}
         onClose={() => {
           setAddDocumentModalOpen(false);
-          setNewDocumentForm({ name: '', fileName: '', category: 'OTHER', status: 'UPLOADED', notes: '' });
+          setNewDocumentForm({ name: '', fileName: '', category: 'OTHER', status: 'UPLOADED', expiresAt: null, notes: '' });
         }}
         title="Add Document"
       >
@@ -2268,6 +2324,13 @@ export default function ClientDetails() {
             value={newDocumentForm.status}
             onChange={(value) => setNewDocumentForm({ ...newDocumentForm, status: (value as Document['status']) || 'UPLOADED' })}
           />
+          <DateInput
+            label="Expiration Date (optional)"
+            placeholder="Select expiration date"
+            value={newDocumentForm.expiresAt}
+            onChange={(value) => setNewDocumentForm({ ...newDocumentForm, expiresAt: value })}
+            clearable
+          />
           <Textarea
             label="Notes (optional)"
             placeholder="Add any notes about this document..."
@@ -2280,7 +2343,7 @@ export default function ClientDetails() {
               variant="subtle"
               onClick={() => {
                 setAddDocumentModalOpen(false);
-                setNewDocumentForm({ name: '', fileName: '', category: 'OTHER', status: 'UPLOADED', notes: '' });
+                setNewDocumentForm({ name: '', fileName: '', category: 'OTHER', status: 'UPLOADED', expiresAt: null, notes: '' });
               }}
             >
               Cancel

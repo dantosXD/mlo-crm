@@ -137,7 +137,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
 // POST /api/documents - Create a document record (metadata only)
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { clientId, name, fileName, filePath, fileSize, mimeType, status, category, dueDate, notes } = req.body;
+    const { clientId, name, fileName, filePath, fileSize, mimeType, status, category, dueDate, expiresAt, notes } = req.body;
     const userId = req.user!.id;
     const userRole = req.user!.role;
 
@@ -169,6 +169,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         status: status || 'UPLOADED',
         category: category || 'OTHER',
         dueDate: dueDate ? new Date(dueDate) : null,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
         notes,
       },
     });
@@ -184,7 +185,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, status, category, dueDate, notes } = req.body;
+    const { name, status, category, dueDate, expiresAt, notes } = req.body;
     const userId = req.user!.id;
     const userRole = req.user!.role;
 
@@ -211,6 +212,7 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         status: status || document.status,
         category: category || document.category,
         dueDate: dueDate ? new Date(dueDate) : document.dueDate,
+        expiresAt: expiresAt !== undefined ? (expiresAt ? new Date(expiresAt) : null) : document.expiresAt,
         notes: notes !== undefined ? notes : document.notes,
       },
     });

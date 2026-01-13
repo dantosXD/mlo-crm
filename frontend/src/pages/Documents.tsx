@@ -17,7 +17,7 @@ import {
   Anchor,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconSearch, IconFilter, IconX, IconEye, IconFile, IconFileText } from '@tabler/icons-react';
+import { IconSearch, IconFilter, IconX, IconEye, IconFile, IconFileText, IconAlertTriangle } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
 interface Document {
@@ -58,6 +58,29 @@ const categoryColors: Record<string, string> = {
 };
 
 const API_URL = 'http://localhost:3000/api';
+
+// Helper function to check if a document is expired
+const isDocumentExpired = (doc: Document): boolean => {
+  if (!doc.expiresAt) return false;
+  const expiresAt = new Date(doc.expiresAt);
+  const today = new Date();
+  expiresAt.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return expiresAt < today;
+};
+
+// Helper function to check if a document is expiring soon (within 30 days)
+const isDocumentExpiringSoon = (doc: Document): boolean => {
+  if (!doc.expiresAt) return false;
+  const expiresAt = new Date(doc.expiresAt);
+  const today = new Date();
+  const warningDate = new Date();
+  warningDate.setDate(warningDate.getDate() + 30);
+  expiresAt.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  warningDate.setHours(0, 0, 0, 0);
+  return expiresAt >= today && expiresAt <= warningDate;
+};
 
 export default function Documents() {
   const navigate = useNavigate();
@@ -210,73 +233,103 @@ export default function Documents() {
                 <Table.Th>Client</Table.Th>
                 <Table.Th>Category</Table.Th>
                 <Table.Th>Status</Table.Th>
+                <Table.Th>Expiration</Table.Th>
                 <Table.Th>Size</Table.Th>
                 <Table.Th>Uploaded</Table.Th>
                 <Table.Th>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {filteredDocuments.map((doc) => (
-                <Table.Tr key={doc.id}>
-                  <Table.Td>
-                    <Group gap="xs">
-                      <IconFileText size={16} color="gray" />
-                      <div>
-                        <Text fw={500} size="sm">
-                          {doc.name}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          {doc.fileName}
-                        </Text>
-                      </div>
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    <Anchor
-                      component="button"
-                      type="button"
-                      onClick={() => handleClientClick(doc.clientId)}
-                      size="sm"
-                    >
-                      {doc.clientName || 'Unknown Client'}
-                    </Anchor>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge color={categoryColors[doc.category] || 'gray'} variant="light" size="sm">
-                      {doc.category}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge color={statusColors[doc.status] || 'gray'} size="sm">
-                      {doc.status.replace('_', ' ')}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" c="dimmed">
-                      {formatFileSize(doc.fileSize)}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" c="dimmed">
-                      {new Date(doc.createdAt).toLocaleDateString()}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs">
-                      <Tooltip label="View Client">
-                        <ActionIcon
-                          variant="subtle"
-                          color="blue"
-                          onClick={() => handleClientClick(doc.clientId)}
-                          aria-label={`View client for document ${doc.name}`}
-                        >
-                          <IconEye size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
+              {filteredDocuments.map((doc) => {
+                const expired = isDocumentExpired(doc);
+                const expiringSoon = isDocumentExpiringSoon(doc);
+                return (
+                  <Table.Tr
+                    key={doc.id}
+                    style={{
+                      ...(expired ? { backgroundColor: 'var(--mantine-color-red-0)' } : {}),
+                      ...(expiringSoon && !expired ? { backgroundColor: 'var(--mantine-color-yellow-0)' } : {}),
+                    }}
+                  >
+                    <Table.Td>
+                      <Group gap="xs">
+                        <IconFileText size={16} color="gray" />
+                        <div>
+                          <Text fw={500} size="sm">
+                            {doc.name}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            {doc.fileName}
+                          </Text>
+                        </div>
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      <Anchor
+                        component="button"
+                        type="button"
+                        onClick={() => handleClientClick(doc.clientId)}
+                        size="sm"
+                      >
+                        {doc.clientName || 'Unknown Client'}
+                      </Anchor>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge color={categoryColors[doc.category] || 'gray'} variant="light" size="sm">
+                        {doc.category}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <Badge color={statusColors[doc.status] || 'gray'} size="sm">
+                          {doc.status.replace('_', ' ')}
+                        </Badge>
+                        {expired && (
+                          <Badge color="red" variant="filled" size="xs">EXPIRED</Badge>
+                        )}
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      {doc.expiresAt ? (
+                        <Group gap={4}>
+                          {(expired || expiringSoon) && (
+                            <IconAlertTriangle size={14} color={expired ? 'var(--mantine-color-red-6)' : 'var(--mantine-color-yellow-6)'} />
+                          )}
+                          <Text size="sm" c={expired ? 'red' : expiringSoon ? 'yellow.7' : 'dimmed'} fw={expired || expiringSoon ? 600 : 400}>
+                            {new Date(doc.expiresAt).toLocaleDateString()}
+                          </Text>
+                        </Group>
+                      ) : (
+                        <Text size="sm" c="dimmed">-</Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" c="dimmed">
+                        {formatFileSize(doc.fileSize)}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" c="dimmed">
+                        {new Date(doc.createdAt).toLocaleDateString()}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <Tooltip label="View Client">
+                          <ActionIcon
+                            variant="subtle"
+                            color="blue"
+                            onClick={() => handleClientClick(doc.clientId)}
+                            aria-label={`View client for document ${doc.name}`}
+                          >
+                            <IconEye size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
             </Table.Tbody>
           </Table>
         )}
