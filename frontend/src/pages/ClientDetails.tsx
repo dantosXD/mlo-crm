@@ -60,6 +60,35 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
+// Helper function to format relative time (e.g., "just now", "5 minutes ago", "2 hours ago")
+const formatRelativeTime = (dateString: string): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) {
+    return 'just now';
+  }
+
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) {
+    return diffInMinutes === 1 ? '1 minute ago' : `${diffInMinutes} minutes ago`;
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) {
+    return diffInHours === 1 ? '1 hour ago' : `${diffInHours} hours ago`;
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 7) {
+    return diffInDays === 1 ? '1 day ago' : `${diffInDays} days ago`;
+  }
+
+  // For older dates, show the full date
+  return date.toLocaleDateString();
+};
+
 interface Client {
   id: string;
   name: string;
@@ -2039,8 +2068,8 @@ export default function ClientDetails() {
                     <Text size="xs" c="dimmed">
                       By {activity.user?.name || 'Unknown'}
                     </Text>
-                    <Text size="xs" c="dimmed">
-                      {new Date(activity.createdAt).toLocaleString()}
+                    <Text size="xs" c="dimmed" title={new Date(activity.createdAt).toLocaleString()}>
+                      {formatRelativeTime(activity.createdAt)}
                     </Text>
                   </Group>
                 </Paper>

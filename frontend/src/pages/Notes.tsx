@@ -19,6 +19,35 @@ import { notifications } from '@mantine/notifications';
 import { IconSearch, IconPin, IconEye, IconNotes } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
+// Helper function to format relative time (e.g., "just now", "5 minutes ago", "2 hours ago")
+const formatRelativeTime = (dateString: string): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) {
+    return 'just now';
+  }
+
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) {
+    return diffInMinutes === 1 ? '1 minute ago' : `${diffInMinutes} minutes ago`;
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) {
+    return diffInHours === 1 ? '1 hour ago' : `${diffInHours} hours ago`;
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 7) {
+    return diffInDays === 1 ? '1 day ago' : `${diffInDays} days ago`;
+  }
+
+  // For older dates, show the full date
+  return date.toLocaleDateString();
+};
+
 interface Note {
   id: string;
   clientId: string;
@@ -144,9 +173,8 @@ export default function Notes() {
                     </Anchor>
                   </Group>
                   <Group gap="xs">
-                    <Text size="xs" c="dimmed">
-                      {new Date(note.createdAt).toLocaleDateString()} at{' '}
-                      {new Date(note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <Text size="xs" c="dimmed" title={new Date(note.createdAt).toLocaleString()}>
+                      {formatRelativeTime(note.createdAt)}
                     </Text>
                     <Tooltip label="View Client">
                       <ActionIcon
