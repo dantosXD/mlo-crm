@@ -22,7 +22,7 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar, IconDownload } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
 interface Client {
@@ -334,6 +334,36 @@ export default function Clients() {
   const paginatedClients = sortedClients.slice(0, page * itemsPerPage);
   const hasMore = page * itemsPerPage < sortedClients.length;
 
+
+  // Export clients to CSV
+  const exportToCSV = () => {
+    const headers = ['Name', 'Email', 'Phone', 'Status', 'Tags', 'Created'];
+    const csvContent = [
+      headers.join(','),
+      ...filteredClients.map(client => [
+        `"${client.name.replace(/"/g, '""')}"`,
+        `"${client.email.replace(/"/g, '""')}"`,
+        `"${(client.phone || '-').replace(/"/g, '""')}"`,
+        `"${client.status}"`,
+        `"${(client.tags || []).join('; ')}"`,
+        `"${new Date(client.createdAt).toLocaleDateString()}"`
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'clients-export.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+
+    notifications.show({
+      title: 'Export Complete',
+      message: `Exported ${filteredClients.length} clients to CSV`,
+      color: 'green',
+    });
+  };
+
   return (
     <Box style={{ maxWidth: '100%', overflow: 'hidden' }}>
       <Container size="xl" py="md" style={{ maxWidth: '100%' }}>
@@ -342,12 +372,21 @@ export default function Clients() {
         {/* Header */}
         <Group justify="space-between" mb="lg" wrap="wrap" gap="sm">
           <Title order={2}>Clients</Title>
-          <Button
-            leftSection={<IconPlus size={16} />}
-            onClick={() => setCreateModalOpen(true)}
-          >
-            Add Client
-          </Button>
+          <Group gap="sm">
+            <Button
+              variant="outline"
+              leftSection={<IconDownload size={16} />}
+              onClick={exportToCSV}
+            >
+              Export CSV
+            </Button>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setCreateModalOpen(true)}
+            >
+              Add Client
+            </Button>
+          </Group>
         </Group>
 
         {/* Search and Filters - responsive wrap */}
