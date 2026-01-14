@@ -1484,6 +1484,175 @@ export default function ClientDetails() {
     });
   };
 
+  // Generate amortization schedule data
+  const generateAmortizationSchedule = (scenario: LoanScenario) => {
+    const schedule = [];
+    const principal = scenario.amount;
+    const monthlyRate = (scenario.interestRate / 100) / 12;
+    const totalMonths = scenario.termYears * 12;
+    const monthlyPayment = scenario.monthlyPayment || 0;
+
+    let balance = principal;
+
+    for (let month = 1; month <= totalMonths; month++) {
+      const interestPayment = balance * monthlyRate;
+      const principalPayment = monthlyPayment - interestPayment;
+      balance = Math.max(0, balance - principalPayment);
+
+      schedule.push({
+        month,
+        payment: monthlyPayment,
+        principal: principalPayment,
+        interest: interestPayment,
+        balance: balance,
+      });
+    }
+
+    return schedule;
+  };
+
+  // Export amortization schedule to PDF/HTML
+  const handleExportAmortizationSchedule = (scenario: LoanScenario) => {
+    const schedule = generateAmortizationSchedule(scenario);
+    const totalMonths = scenario.termYears * 12;
+    const totalInterest = schedule.reduce((sum, row) => sum + row.interest, 0);
+    const totalPrincipal = schedule.reduce((sum, row) => sum + row.principal, 0);
+
+    // Generate schedule rows HTML
+    const scheduleRows = schedule.map(row => `
+      <tr>
+        <td>${row.month}</td>
+        <td>${formatCurrency(row.payment)}</td>
+        <td>${formatCurrency(row.principal)}</td>
+        <td>${formatCurrency(row.interest)}</td>
+        <td>${formatCurrency(row.balance)}</td>
+      </tr>
+    `).join('');
+
+    const content = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Amortization Schedule - ${scenario.name}</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; font-size: 11px; }
+    h1 { color: #228be6; border-bottom: 2px solid #228be6; padding-bottom: 10px; font-size: 20px; }
+    h2 { color: #333; margin-top: 20px; font-size: 16px; }
+    .summary { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+    .summary-item label { display: block; color: #666; font-size: 10px; margin-bottom: 3px; }
+    .summary-item value { display: block; font-size: 14px; font-weight: bold; color: #333; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th { background: #228be6; color: white; padding: 8px 6px; text-align: right; font-size: 10px; }
+    th:first-child { text-align: center; }
+    td { padding: 6px; border-bottom: 1px solid #e9ecef; text-align: right; }
+    td:first-child { text-align: center; }
+    tr:nth-child(even) { background: #f8f9fa; }
+    tr:hover { background: #e7f5ff; }
+    .totals { background: #228be6; color: white; font-weight: bold; }
+    .totals td { border-bottom: none; }
+    .footer { margin-top: 20px; color: #666; font-size: 10px; text-align: center; }
+    @media print {
+      body { padding: 10px; font-size: 9px; }
+      h1 { font-size: 16px; }
+      th, td { padding: 4px 3px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Amortization Schedule</h1>
+  <h2>${scenario.name}</h2>
+  ${client ? `<p><strong>Client:</strong> ${client.name}</p>` : ''}
+  <p><strong>Generated:</strong> ${new Date().toLocaleDateString()}</p>
+
+  <div class="summary">
+    <h2 style="margin-top: 0;">Loan Summary</h2>
+    <div class="summary-grid">
+      <div class="summary-item">
+        <label>Loan Amount</label>
+        <value>${formatCurrency(scenario.amount)}</value>
+      </div>
+      <div class="summary-item">
+        <label>Interest Rate</label>
+        <value>${scenario.interestRate?.toFixed(3)}%</value>
+      </div>
+      <div class="summary-item">
+        <label>Loan Term</label>
+        <value>${scenario.termYears} years (${totalMonths} months)</value>
+      </div>
+      <div class="summary-item">
+        <label>Monthly Payment</label>
+        <value>${formatCurrency(scenario.monthlyPayment)}</value>
+      </div>
+      <div class="summary-item">
+        <label>Total Principal</label>
+        <value>${formatCurrency(totalPrincipal)}</value>
+      </div>
+      <div class="summary-item">
+        <label>Total Interest</label>
+        <value>${formatCurrency(totalInterest)}</value>
+      </div>
+      <div class="summary-item">
+        <label>Total Cost of Loan</label>
+        <value>${formatCurrency(totalPrincipal + totalInterest)}</value>
+      </div>
+      <div class="summary-item">
+        <label>LTV Ratio</label>
+        <value>${scenario.loanToValue ? scenario.loanToValue.toFixed(2) + '%' : '-'}</value>
+      </div>
+    </div>
+  </div>
+
+  <h2>Monthly Payment Schedule</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Month</th>
+        <th>Payment</th>
+        <th>Principal</th>
+        <th>Interest</th>
+        <th>Balance</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${scheduleRows}
+      <tr class="totals">
+        <td>TOTAL</td>
+        <td>${formatCurrency(scenario.monthlyPayment ? scenario.monthlyPayment * totalMonths : 0)}</td>
+        <td>${formatCurrency(totalPrincipal)}</td>
+        <td>${formatCurrency(totalInterest)}</td>
+        <td>$0.00</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <p>This amortization schedule is an estimate based on the information provided. Actual payments may vary.</p>
+    <p>Generated by MLO Dashboard</p>
+  </div>
+</body>
+</html>
+    `;
+
+    // Open in new window for printing/saving as PDF
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(content);
+      printWindow.document.close();
+      printWindow.focus();
+      // Trigger print dialog after a short delay to ensure content is loaded
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+    }
+
+    notifications.show({
+      title: 'Amortization Schedule Export',
+      message: 'Use your browser\'s print dialog to save as PDF',
+      color: 'blue',
+    });
+  };
+
   const formatCurrency = (value: number | undefined | null) => {
     if (value === undefined || value === null) return '-';
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
@@ -2208,6 +2377,15 @@ export default function ClientDetails() {
                       aria-label={`Export ${scenario.name} to PDF`}
                     >
                       <IconDownload size={16} />
+                    </ActionIcon>
+                    <ActionIcon
+                      variant="subtle"
+                      color="teal"
+                      onClick={() => handleExportAmortizationSchedule(scenario)}
+                      title="Export Amortization Schedule"
+                      aria-label={`Export amortization schedule for ${scenario.name}`}
+                    >
+                      <IconCalendar size={16} />
                     </ActionIcon>
                     {!scenario.isPreferred && (
                       <ActionIcon
