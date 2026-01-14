@@ -29,6 +29,8 @@ import {
   Divider,
   ThemeIcon,
   Table,
+  FileInput,
+  Progress,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
@@ -59,6 +61,7 @@ import {
   IconScale,
   IconCheck,
   IconDownload,
+  IconUpload,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -386,6 +389,8 @@ export default function ClientDetails() {
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [addDocumentModalOpen, setAddDocumentModalOpen] = useState(false);
   const [savingDocument, setSavingDocument] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [newDocumentForm, setNewDocumentForm] = useState({
     name: '',
     fileName: '',
@@ -1698,64 +1703,154 @@ export default function ClientDetails() {
   };
 
   const handleCreateDocument = async () => {
-    if (!newDocumentForm.name.trim() || !newDocumentForm.fileName.trim()) {
+    if (!newDocumentForm.name.trim()) {
       notifications.show({
         title: 'Validation Error',
-        message: 'Document name and file name are required',
+        message: 'Document name is required',
+        color: 'red',
+      });
+      return;
+    }
+
+    // If no file is selected, require fileName for metadata-only upload
+    if (!selectedFile && !newDocumentForm.fileName.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Either select a file or enter a file name',
         color: 'red',
       });
       return;
     }
 
     setSavingDocument(true);
-    try {
-      const response = await fetch(`${API_URL}/documents`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          clientId: id,
-          name: newDocumentForm.name,
-          fileName: newDocumentForm.fileName,
-          category: newDocumentForm.category,
-          status: newDocumentForm.status,
-          expiresAt: newDocumentForm.expiresAt ? newDocumentForm.expiresAt.toISOString() : undefined,
-          notes: newDocumentForm.notes || undefined,
-        }),
-      });
 
-      if (!response.ok) {
-        throw new Error('Failed to create document');
+    // If a file is selected, use XHR for progress tracking
+    if (selectedFile) {
+      setUploadProgress(0);
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('clientId', id || '');
+      formData.append('name', newDocumentForm.name);
+      formData.append('category', newDocumentForm.category);
+      formData.append('status', newDocumentForm.status);
+      if (newDocumentForm.notes) {
+        formData.append('notes', newDocumentForm.notes);
       }
 
-      const newDocument = await response.json();
-      setDocuments([newDocument, ...documents]);
-      setAddDocumentModalOpen(false);
-      setNewDocumentForm({
-        name: '',
-        fileName: '',
-        category: 'OTHER',
-        status: 'UPLOADED',
-        expiresAt: null,
-        notes: '',
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(percentComplete);
+        }
       });
 
-      notifications.show({
-        title: 'Success',
-        message: 'Document created successfully',
-        color: 'green',
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const newDocument = JSON.parse(xhr.responseText);
+            setDocuments([newDocument, ...documents]);
+            setAddDocumentModalOpen(false);
+            setNewDocumentForm({
+              name: '',
+              fileName: '',
+              category: 'OTHER',
+              status: 'UPLOADED',
+              expiresAt: null,
+              notes: '',
+            });
+            setSelectedFile(null);
+            setUploadProgress(null);
+
+            notifications.show({
+              title: 'Success',
+              message: 'Document uploaded successfully',
+              color: 'green',
+            });
+          } catch {
+            notifications.show({
+              title: 'Error',
+              message: 'Failed to process upload response',
+              color: 'red',
+            });
+          }
+        } else {
+          notifications.show({
+            title: 'Error',
+            message: 'Failed to upload document',
+            color: 'red',
+          });
+        }
+        setSavingDocument(false);
+        setUploadProgress(null);
       });
-    } catch (error) {
-      console.error('Error creating document:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to create document',
-        color: 'red',
+
+      xhr.addEventListener('error', () => {
+        notifications.show({
+          title: 'Error',
+          message: 'Upload failed. Please check your connection.',
+          color: 'red',
+        });
+        setSavingDocument(false);
+        setUploadProgress(null);
       });
-    } finally {
-      setSavingDocument(false);
+
+      xhr.open('POST', `${API_URL}/documents/upload`);
+      xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+      xhr.send(formData);
+    } else {
+      // Metadata-only upload (no file)
+      try {
+        const response = await fetch(`${API_URL}/documents`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            clientId: id,
+            name: newDocumentForm.name,
+            fileName: newDocumentForm.fileName,
+            category: newDocumentForm.category,
+            status: newDocumentForm.status,
+            expiresAt: newDocumentForm.expiresAt ? newDocumentForm.expiresAt.toISOString() : undefined,
+            notes: newDocumentForm.notes || undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to create document');
+        }
+
+        const newDocument = await response.json();
+        setDocuments([newDocument, ...documents]);
+        setAddDocumentModalOpen(false);
+        setNewDocumentForm({
+          name: '',
+          fileName: '',
+          category: 'OTHER',
+          status: 'UPLOADED',
+          expiresAt: null,
+          notes: '',
+        });
+
+        notifications.show({
+          title: 'Success',
+          message: 'Document created successfully',
+          color: 'green',
+        });
+      } catch (error) {
+        console.error('Error creating document:', error);
+        notifications.show({
+          title: 'Error',
+          message: 'Failed to create document',
+          color: 'red',
+        });
+      } finally {
+        setSavingDocument(false);
+      }
     }
   };
 
@@ -2590,10 +2685,16 @@ export default function ClientDetails() {
       <Modal
         opened={addDocumentModalOpen}
         onClose={() => {
-          setAddDocumentModalOpen(false);
-          setNewDocumentForm({ name: '', fileName: '', category: 'OTHER', status: 'UPLOADED', expiresAt: null, notes: '' });
+          if (!savingDocument) {
+            setAddDocumentModalOpen(false);
+            setNewDocumentForm({ name: '', fileName: '', category: 'OTHER', status: 'UPLOADED', expiresAt: null, notes: '' });
+            setSelectedFile(null);
+            setUploadProgress(null);
+          }
         }}
         title="Add Document"
+        closeOnClickOutside={!savingDocument}
+        closeOnEscape={!savingDocument}
       >
         <Stack>
           <TextInput
@@ -2602,14 +2703,46 @@ export default function ClientDetails() {
             required
             value={newDocumentForm.name}
             onChange={(e) => setNewDocumentForm({ ...newDocumentForm, name: e.target.value })}
+            disabled={savingDocument}
           />
-          <TextInput
-            label="File Name"
-            placeholder="e.g., w2_2025.pdf"
-            required
-            value={newDocumentForm.fileName}
-            onChange={(e) => setNewDocumentForm({ ...newDocumentForm, fileName: e.target.value })}
+          <FileInput
+            label="Upload File (optional)"
+            placeholder="Click to select file"
+            value={selectedFile}
+            onChange={(file) => {
+              setSelectedFile(file);
+              // Auto-fill document name from file name if empty
+              if (file && !newDocumentForm.name) {
+                const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+                setNewDocumentForm({ ...newDocumentForm, name: nameWithoutExt });
+              }
+            }}
+            accept="*/*"
+            clearable
+            disabled={savingDocument}
           />
+          {selectedFile && (
+            <Text size="sm" c="dimmed">
+              Selected: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+            </Text>
+          )}
+          {uploadProgress !== null && (
+            <Stack gap="xs">
+              <Progress value={uploadProgress} size="lg" animated striped />
+              <Text size="sm" ta="center" c="blue">
+                Uploading... {uploadProgress}%
+              </Text>
+            </Stack>
+          )}
+          {!selectedFile && (
+            <TextInput
+              label="File Name (if not uploading)"
+              placeholder="e.g., w2_2025.pdf"
+              value={newDocumentForm.fileName}
+              onChange={(e) => setNewDocumentForm({ ...newDocumentForm, fileName: e.target.value })}
+              disabled={savingDocument}
+            />
+          )}
           <Select
             label="Category"
             data={[
@@ -2623,6 +2756,7 @@ export default function ClientDetails() {
             ]}
             value={newDocumentForm.category}
             onChange={(value) => setNewDocumentForm({ ...newDocumentForm, category: (value as Document['category']) || 'OTHER' })}
+            disabled={savingDocument}
           />
           <Select
             label="Status"
@@ -2636,6 +2770,7 @@ export default function ClientDetails() {
             ]}
             value={newDocumentForm.status}
             onChange={(value) => setNewDocumentForm({ ...newDocumentForm, status: (value as Document['status']) || 'UPLOADED' })}
+            disabled={savingDocument}
           />
           <DateInput
             label="Expiration Date (optional)"
@@ -2643,6 +2778,7 @@ export default function ClientDetails() {
             value={newDocumentForm.expiresAt}
             onChange={(value) => setNewDocumentForm({ ...newDocumentForm, expiresAt: value })}
             clearable
+            disabled={savingDocument}
           />
           <Textarea
             label="Notes (optional)"
@@ -2650,6 +2786,7 @@ export default function ClientDetails() {
             minRows={2}
             value={newDocumentForm.notes}
             onChange={(e) => setNewDocumentForm({ ...newDocumentForm, notes: e.target.value })}
+            disabled={savingDocument}
           />
           <Group justify="flex-end" mt="md">
             <Button
@@ -2657,12 +2794,15 @@ export default function ClientDetails() {
               onClick={() => {
                 setAddDocumentModalOpen(false);
                 setNewDocumentForm({ name: '', fileName: '', category: 'OTHER', status: 'UPLOADED', expiresAt: null, notes: '' });
+                setSelectedFile(null);
+                setUploadProgress(null);
               }}
+              disabled={savingDocument}
             >
               Cancel
             </Button>
             <Button onClick={handleCreateDocument} loading={savingDocument}>
-              Save
+              {selectedFile ? 'Upload' : 'Save'}
             </Button>
           </Group>
         </Stack>

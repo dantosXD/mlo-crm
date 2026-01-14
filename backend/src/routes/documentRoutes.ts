@@ -2,9 +2,35 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import crypto from 'crypto';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+// Configure multer for file uploads
+const uploadDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit
+  },
+});
 
 // Simple encryption/decryption functions
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-key-32-bytes-long-here!';
@@ -29,7 +55,7 @@ function decrypt(encryptedData: string): string {
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { client_id, status, category } = req.query;
-    const userId = req.user!.id;
+    const userId = req.user!.userId;
     const userRole = req.user!.role;
 
     // Build where clause
@@ -91,7 +117,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = req.user!.id;
+    const userId = req.user!.userId;
     const userRole = req.user!.role;
 
     const document = await prisma.document.findUnique({
@@ -134,11 +160,79 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
   }
 });
 
+// POST /api/documents/upload - Upload a file with progress support
+router.post('/upload', authenticateToken, upload.single('file'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { clientId, name, category, status, notes } = req.body;
+    const userId = req.user!.userId;
+    const userRole = req.user!.role;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    if (!clientId) {
+      return res.status(400).json({ error: 'clientId is required' });
+    }
+
+    // Check if user has access to this client
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+    });
+
+    if (!client) {
+      // Clean up uploaded file
+      fs.unlinkSync(file.path);
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    if (userRole !== 'ADMIN' && userRole !== 'MANAGER' && client.createdById !== userId) {
+      // Clean up uploaded file
+      fs.unlinkSync(file.path);
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const document = await prisma.document.create({
+      data: {
+        clientId,
+        name: name || file.originalname,
+        fileName: file.originalname,
+        filePath: file.path,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        status: status || 'UPLOADED',
+        category: category || 'OTHER',
+        notes: notes || null,
+      },
+    });
+
+    // Log activity
+    await prisma.activity.create({
+      data: {
+        clientId,
+        type: 'DOCUMENT_UPLOADED',
+        description: `Document "${document.name}" uploaded`,
+        userId,
+      },
+    });
+
+    res.status(201).json(document);
+  } catch (error) {
+    console.error('Error uploading document:', error);
+    // Clean up file if it exists
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Failed to upload document' });
+  }
+});
+
 // POST /api/documents - Create a document record (metadata only)
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { clientId, name, fileName, filePath, fileSize, mimeType, status, category, dueDate, expiresAt, notes } = req.body;
-    const userId = req.user!.id;
+    const userId = req.user!.userId;
     const userRole = req.user!.role;
 
     if (!clientId || !name || !fileName) {
@@ -186,7 +280,7 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
   try {
     const { id } = req.params;
     const { name, status, category, dueDate, expiresAt, notes } = req.body;
-    const userId = req.user!.id;
+    const userId = req.user!.userId;
     const userRole = req.user!.role;
 
     const document = await prisma.document.findUnique({
@@ -228,7 +322,7 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
 router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = req.user!.id;
+    const userId = req.user!.userId;
     const userRole = req.user!.role;
 
     const document = await prisma.document.findUnique({
