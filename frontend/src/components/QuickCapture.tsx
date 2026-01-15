@@ -30,6 +30,7 @@ import {
   IconCheck,
   IconUser,
   IconArrowLeft,
+  IconCalendar,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -56,6 +57,90 @@ interface SlashCommand {
   description: string;
   icon: React.ReactNode;
   placeholder: string;
+}
+
+interface ParsedTask {
+  text: string;
+  detectedClient: Client | null;
+  detectedDate: Date | null;
+  dateLabel: string;
+}
+
+// Date keywords mapping
+const dateKeywords: Record<string, () => Date> = {
+  'today': () => new Date(),
+  'tomorrow': () => {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    return date;
+  },
+  'next week': () => {
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    return date;
+  },
+  'monday': () => getNextDayOfWeek(1),
+  'tuesday': () => getNextDayOfWeek(2),
+  'wednesday': () => getNextDayOfWeek(3),
+  'thursday': () => getNextDayOfWeek(4),
+  'friday': () => getNextDayOfWeek(5),
+  'saturday': () => getNextDayOfWeek(6),
+  'sunday': () => getNextDayOfWeek(0),
+};
+
+function getNextDayOfWeek(dayOfWeek: number): Date {
+  const today = new Date();
+  const currentDay = today.getDay();
+  const daysUntilTarget = (dayOfWeek - currentDay + 7) % 7;
+  const result = new Date();
+  result.setDate(today.getDate() + (daysUntilTarget === 0 ? 7 : daysUntilTarget));
+  return result;
+}
+
+// Parse natural language to detect client and date
+function parseNaturalLanguageTask(text: string, clients: Client[]): ParsedTask {
+  const textLower = text.toLowerCase();
+  let detectedClient: Client | null = null;
+  let detectedDate: Date | null = null;
+  let dateLabel = '';
+
+  // Detect date from text
+  for (const [keyword, getDate] of Object.entries(dateKeywords)) {
+    if (textLower.includes(keyword)) {
+      detectedDate = getDate();
+      dateLabel = keyword;
+      break;
+    }
+  }
+
+  // Detect client from text (fuzzy match on first name, last name, or full name)
+  for (const client of clients) {
+    const clientNameLower = client.name.toLowerCase();
+    const nameParts = clientNameLower.split(/\s+/);
+
+    // Check if any part of client name appears in text
+    for (const part of nameParts) {
+      if (part.length >= 3 && textLower.includes(part)) {
+        detectedClient = client;
+        break;
+      }
+    }
+
+    // Also check for full name
+    if (textLower.includes(clientNameLower)) {
+      detectedClient = client;
+      break;
+    }
+
+    if (detectedClient) break;
+  }
+
+  return {
+    text,
+    detectedClient,
+    detectedDate,
+    dateLabel,
+  };
 }
 
 const slashCommands: SlashCommand[] = [
@@ -225,32 +310,54 @@ export function QuickCapture() {
     }
   };
 
-  // Create task via API
-  const createTask = async (text: string) => {
+  // Create task via API with optional client and due date
+  const createTask = async (text: string, clientId?: string, dueDate?: Date) => {
     if (!text.trim()) return;
 
     setIsCreating(true);
     try {
+      const taskData: Record<string, unknown> = {
+        text: text.trim(),
+        status: 'TODO',
+        priority: 'MEDIUM',
+      };
+
+      if (clientId) {
+        taskData.clientId = clientId;
+      }
+
+      if (dueDate) {
+        taskData.dueDate = dueDate.toISOString();
+      }
+
       const response = await fetch(`${API_BASE}/tasks`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({
-          text: text.trim(),
-          status: 'TODO',
-          priority: 'MEDIUM',
-        }),
+        body: JSON.stringify(taskData),
       });
 
       if (!response.ok) {
         throw new Error('Failed to create task');
       }
 
+      const clientName = clientId ? clients.find(c => c.id === clientId)?.name : null;
+      const dueDateStr = dueDate ? dueDate.toLocaleDateString() : null;
+
+      let message = `"${text.trim()}" has been added to your tasks`;
+      if (clientName && dueDateStr) {
+        message = `Task created for ${clientName}, due ${dueDateStr}`;
+      } else if (clientName) {
+        message = `Task created for ${clientName}`;
+      } else if (dueDateStr) {
+        message = `Task created, due ${dueDateStr}`;
+      }
+
       notifications.show({
         title: 'Task Created',
-        message: `"${text.trim()}" has been added to your tasks`,
+        message,
         color: 'green',
         icon: <IconCheck size={16} />,
       });
@@ -389,7 +496,12 @@ export function QuickCapture() {
       // Handle slash command execution
       if (activeCommand) {
         if (activeCommand.command === '/task' && commandContent) {
-          createTask(commandContent);
+          const parsed = parseNaturalLanguageTask(commandContent, clients);
+          createTask(
+            commandContent,
+            parsed.detectedClient?.id,
+            parsed.detectedDate || undefined
+          );
         } else if (activeCommand.command === '/note' && commandContent) {
           startNoteCreation(commandContent);
         }
@@ -536,6 +648,11 @@ export function QuickCapture() {
   const renderActiveCommand = () => {
     if (!activeCommand) return null;
 
+    // Parse natural language for /task command
+    const parsedTask = activeCommand.command === '/task' && commandContent
+      ? parseNaturalLanguageTask(commandContent, clients)
+      : null;
+
     return (
       <Box p="sm">
         <Group gap="sm" mb="xs">
@@ -545,46 +662,88 @@ export function QuickCapture() {
           <Text size="sm" c="dimmed">{activeCommand.description}</Text>
         </Group>
         {commandContent ? (
-          <UnstyledButton
-            onClick={() => {
-              if (activeCommand.command === '/task') {
-                createTask(commandContent);
-              } else if (activeCommand.command === '/note') {
-                startNoteCreation(commandContent);
-              }
-            }}
-            p="sm"
-            style={{
-              borderRadius: 8,
-              backgroundColor: 'var(--mantine-color-blue-light)',
-              width: '100%',
-            }}
-          >
-            <Group gap="sm">
+          <Stack gap="xs">
+            <UnstyledButton
+              onClick={() => {
+                if (activeCommand.command === '/task') {
+                  createTask(
+                    commandContent,
+                    parsedTask?.detectedClient?.id,
+                    parsedTask?.detectedDate || undefined
+                  );
+                } else if (activeCommand.command === '/note') {
+                  startNoteCreation(commandContent);
+                }
+              }}
+              p="sm"
+              style={{
+                borderRadius: 8,
+                backgroundColor: 'var(--mantine-color-blue-light)',
+                width: '100%',
+              }}
+            >
+              <Group gap="sm">
+                <Box
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'var(--mantine-color-green-1)',
+                    color: 'var(--mantine-color-green-6)',
+                  }}
+                >
+                  {isCreating ? <Loader size={20} /> : <IconPlus size={20} />}
+                </Box>
+                <div style={{ flex: 1 }}>
+                  <Text size="sm" fw={500}>
+                    Create: "{commandContent}"
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    Press Enter to {activeCommand.command === '/note' ? 'select client' : `create this ${activeCommand.command.slice(1)}`}
+                  </Text>
+                </div>
+              </Group>
+            </UnstyledButton>
+
+            {/* Show detected entities for /task command */}
+            {parsedTask && (parsedTask.detectedClient || parsedTask.detectedDate) && (
               <Box
+                p="xs"
                 style={{
-                  width: 36,
-                  height: 36,
                   borderRadius: 8,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: 'var(--mantine-color-green-1)',
-                  color: 'var(--mantine-color-green-6)',
+                  backgroundColor: 'var(--mantine-color-gray-0)',
+                  border: '1px solid var(--mantine-color-gray-3)',
                 }}
               >
-                {isCreating ? <Loader size={20} /> : <IconPlus size={20} />}
+                <Text size="xs" fw={600} c="dimmed" mb="xs">
+                  DETECTED:
+                </Text>
+                <Group gap="xs">
+                  {parsedTask.detectedClient && (
+                    <Badge
+                      variant="light"
+                      color="green"
+                      leftSection={<IconUser size={12} />}
+                    >
+                      {parsedTask.detectedClient.name}
+                    </Badge>
+                  )}
+                  {parsedTask.detectedDate && (
+                    <Badge
+                      variant="light"
+                      color="blue"
+                      leftSection={<IconCalendar size={12} />}
+                    >
+                      {parsedTask.dateLabel} ({parsedTask.detectedDate.toLocaleDateString()})
+                    </Badge>
+                  )}
+                </Group>
               </Box>
-              <div style={{ flex: 1 }}>
-                <Text size="sm" fw={500}>
-                  Create: "{commandContent}"
-                </Text>
-                <Text size="xs" c="dimmed">
-                  Press Enter to {activeCommand.command === '/note' ? 'select client' : `create this ${activeCommand.command.slice(1)}`}
-                </Text>
-              </div>
-            </Group>
-          </UnstyledButton>
+            )}
+          </Stack>
         ) : (
           <Text size="sm" c="dimmed" ta="center" py="md">
             Type {activeCommand.placeholder}
