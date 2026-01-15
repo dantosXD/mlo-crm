@@ -19,6 +19,7 @@ import {
   IconNotes,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
+import { QuickCapture } from './components/QuickCapture';
 import Login from './pages/Login';
 import Admin from './pages/Admin';
 import AccessDenied from './pages/AccessDenied';
@@ -323,7 +324,12 @@ function App() {
     );
   }
 
-  return <ProtectedLayout />;
+  return (
+    <>
+      <QuickCapture />
+      <ProtectedLayout />
+    </>
+  );
 }
 
 export default App;

@@ -28,10 +28,18 @@ import {
   IconPlus,
   IconChecklist,
   IconCheck,
+  IconUser,
+  IconArrowLeft,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
+interface Client {
+  id: string;
+  name: string;
+  email: string;
+}
 
 interface QuickAction {
   id: string;
@@ -75,9 +83,29 @@ export function QuickCapture() {
   const navigate = useNavigate();
   const { accessToken } = useAuthStore();
 
+  // Note creation with client selection
+  const [noteContent, setNoteContent] = useState<string | null>(null);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [isLoadingClients, setIsLoadingClients] = useState(false);
+
   // Check if query is a slash command
   const activeCommand = slashCommands.find(cmd => query.toLowerCase().startsWith(cmd.command));
   const commandContent = activeCommand ? query.slice(activeCommand.command.length).trim() : '';
+
+  // Filter clients based on search (for note creation mode)
+  const filteredClients = clients.filter(client =>
+    client.name.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
+    client.email.toLowerCase().includes(clientSearchQuery.toLowerCase())
+  );
+
+  // Filter clients based on main query (for client search in main view)
+  const searchedClients = query.trim() && !query.startsWith('/') && !activeCommand
+    ? clients.filter(client =>
+        client.name.toLowerCase().includes(query.toLowerCase()) ||
+        client.email.toLowerCase().includes(query.toLowerCase())
+      ).slice(0, 5)
+    : [];
 
   // Define quick actions
   const actions: QuickAction[] = [
@@ -177,6 +205,26 @@ export function QuickCapture() {
     ? slashCommands.filter(cmd => cmd.command.startsWith(query.toLowerCase()))
     : [];
 
+  // Fetch clients when entering note client selection mode
+  const fetchClients = async () => {
+    setIsLoadingClients(true);
+    try {
+      const response = await fetch(`${API_BASE}/clients`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setClients(data);
+      }
+    } catch (error) {
+      console.error('Error fetching clients:', error);
+    } finally {
+      setIsLoadingClients(false);
+    }
+  };
+
   // Create task via API
   const createTask = async (text: string) => {
     if (!text.trim()) return;
@@ -220,16 +268,78 @@ export function QuickCapture() {
     }
   };
 
-  // Reset selection when query changes
+  // Create note via API
+  const createNote = async (text: string, clientId: string) => {
+    if (!text.trim() || !clientId) return;
+
+    setIsCreating(true);
+    try {
+      const response = await fetch(`${API_BASE}/notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          clientId,
+          text: text.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create note');
+      }
+
+      const client = clients.find(c => c.id === clientId);
+      notifications.show({
+        title: 'Note Created',
+        message: `Note added to ${client?.name || 'client'}`,
+        color: 'green',
+        icon: <IconCheck size={16} />,
+      });
+
+      close();
+    } catch (error) {
+      console.error('Error creating note:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to create note. Please try again.',
+        color: 'red',
+      });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Start note creation - show client selector
+  const startNoteCreation = (content: string) => {
+    setNoteContent(content);
+    setClientSearchQuery('');
+    setSelectedIndex(0);
+    fetchClients();
+  };
+
+  // Go back from client selection to note input
+  const cancelClientSelection = () => {
+    setNoteContent(null);
+    setClientSearchQuery('');
+    setSelectedIndex(0);
+  };
+
+  // Reset selection when query/clientSearchQuery changes
   useEffect(() => {
     setSelectedIndex(0);
-  }, [query]);
+  }, [query, clientSearchQuery]);
 
-  // Reset query when modal opens/closes
+  // Reset everything when modal opens/closes
   useEffect(() => {
     if (opened) {
       setQuery('');
       setSelectedIndex(0);
+      setNoteContent(null);
+      setClientSearchQuery('');
+      // Fetch clients when modal opens for quick client search
+      fetchClients();
     }
   }, [opened]);
 
@@ -243,9 +353,32 @@ export function QuickCapture() {
 
   // Handle keyboard navigation within the modal
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Handle client selection mode for notes
+    if (noteContent !== null) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex((prev) => Math.min(prev + 1, filteredClients.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex((prev) => Math.max(prev - 1, 0));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filteredClients[selectedIndex]) {
+          createNote(noteContent, filteredClients[selectedIndex].id);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelClientSelection();
+      }
+      return;
+    }
+
+    // Calculate total items: searchedClients first, then filteredActions
+    const totalItems = searchedClients.length + filteredActions.length;
+    const maxIndex = activeCommand ? 0 : (showSlashSuggestions ? filteredSlashCommands.length - 1 : totalItems - 1);
+
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      const maxIndex = activeCommand ? 0 : (showSlashSuggestions ? filteredSlashCommands.length - 1 : filteredActions.length - 1);
       setSelectedIndex((prev) => Math.min(prev + 1, maxIndex));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
@@ -258,12 +391,7 @@ export function QuickCapture() {
         if (activeCommand.command === '/task' && commandContent) {
           createTask(commandContent);
         } else if (activeCommand.command === '/note' && commandContent) {
-          // Note creation could be implemented similarly
-          notifications.show({
-            title: 'Coming Soon',
-            message: 'Quick note creation will be available soon',
-            color: 'blue',
-          });
+          startNoteCreation(commandContent);
         }
         return;
       }
@@ -274,11 +402,96 @@ export function QuickCapture() {
         return;
       }
 
-      // Handle regular action
-      if (filteredActions[selectedIndex]) {
-        filteredActions[selectedIndex].action();
+      // Handle client selection (clients are listed first)
+      if (selectedIndex < searchedClients.length) {
+        const selectedClient = searchedClients[selectedIndex];
+        navigate(`/clients/${selectedClient.id}`);
+        close();
+        return;
+      }
+
+      // Handle regular action (offset by number of searched clients)
+      const actionIndex = selectedIndex - searchedClients.length;
+      if (filteredActions[actionIndex]) {
+        filteredActions[actionIndex].action();
       }
     }
+  };
+
+  // Render client selection for note
+  const renderClientSelection = () => {
+    return (
+      <Box p="sm">
+        <Group gap="sm" mb="xs">
+          <UnstyledButton onClick={cancelClientSelection}>
+            <IconArrowLeft size={16} />
+          </UnstyledButton>
+          <Badge color="violet" variant="light" leftSection={<IconNotes size={14} />}>
+            /note
+          </Badge>
+          <Text size="sm" c="dimmed" style={{ flex: 1 }} lineClamp={1}>
+            "{noteContent}"
+          </Text>
+        </Group>
+        <Text size="sm" fw={500} mb="xs">Select a client:</Text>
+        <TextInput
+          placeholder="Search clients..."
+          value={clientSearchQuery}
+          onChange={(e) => setClientSearchQuery(e.currentTarget.value)}
+          onKeyDown={handleKeyDown}
+          leftSection={<IconSearch size={16} />}
+          size="sm"
+          autoFocus
+          mb="sm"
+        />
+        {isLoadingClients ? (
+          <Group justify="center" py="md">
+            <Loader size="sm" />
+            <Text size="sm" c="dimmed">Loading clients...</Text>
+          </Group>
+        ) : filteredClients.length === 0 ? (
+          <Text size="sm" c="dimmed" ta="center" py="md">
+            No clients found
+          </Text>
+        ) : (
+          <Stack gap={4}>
+            {filteredClients.slice(0, 10).map((client, index) => (
+              <UnstyledButton
+                key={client.id}
+                onClick={() => createNote(noteContent!, client.id)}
+                p="sm"
+                style={{
+                  borderRadius: 8,
+                  backgroundColor: index === selectedIndex ? 'var(--mantine-color-blue-light)' : 'transparent',
+                }}
+                onMouseEnter={() => setSelectedIndex(index)}
+              >
+                <Group gap="sm">
+                  <Box
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'var(--mantine-color-blue-1)',
+                      color: 'var(--mantine-color-blue-6)',
+                    }}
+                  >
+                    <IconUser size={20} />
+                  </Box>
+                  <div style={{ flex: 1 }}>
+                    <Text size="sm" fw={500}>{client.name}</Text>
+                    <Text size="xs" c="dimmed">{client.email}</Text>
+                  </div>
+                </Group>
+              </UnstyledButton>
+            ))}
+          </Stack>
+        )}
+      </Box>
+    );
   };
 
   // Render slash command suggestion
@@ -336,6 +549,8 @@ export function QuickCapture() {
             onClick={() => {
               if (activeCommand.command === '/task') {
                 createTask(commandContent);
+              } else if (activeCommand.command === '/note') {
+                startNoteCreation(commandContent);
               }
             }}
             p="sm"
@@ -365,7 +580,7 @@ export function QuickCapture() {
                   Create: "{commandContent}"
                 </Text>
                 <Text size="xs" c="dimmed">
-                  Press Enter to create this {activeCommand.command.slice(1)}
+                  Press Enter to {activeCommand.command === '/note' ? 'select client' : `create this ${activeCommand.command.slice(1)}`}
                 </Text>
               </div>
             </Group>
@@ -391,27 +606,31 @@ export function QuickCapture() {
       transitionProps={{ transition: 'pop', duration: 150 }}
     >
       <Box>
-        <Box p="md" pb={0}>
-          <TextInput
-            placeholder={activeCommand ? activeCommand.placeholder : "Type / for commands, or search..."}
-            value={query}
-            onChange={(e) => setQuery(e.currentTarget.value)}
-            onKeyDown={handleKeyDown}
-            leftSection={activeCommand ? activeCommand.icon : <IconSearch size={18} />}
-            size="md"
-            autoFocus
-            disabled={isCreating}
-            styles={{
-              input: {
-                border: 'none',
-                fontSize: '16px',
-              },
-            }}
-          />
-        </Box>
+        {noteContent === null && (
+          <Box p="md" pb={0}>
+            <TextInput
+              placeholder={activeCommand ? activeCommand.placeholder : "Type / for commands, or search..."}
+              value={query}
+              onChange={(e) => setQuery(e.currentTarget.value)}
+              onKeyDown={handleKeyDown}
+              leftSection={activeCommand ? activeCommand.icon : <IconSearch size={18} />}
+              size="md"
+              autoFocus
+              disabled={isCreating}
+              styles={{
+                input: {
+                  border: 'none',
+                  fontSize: '16px',
+                },
+              }}
+            />
+          </Box>
+        )}
 
-        <ScrollArea.Autosize mah={300} p="xs">
-          {activeCommand ? (
+        <ScrollArea.Autosize mah={350} p="xs">
+          {noteContent !== null ? (
+            renderClientSelection()
+          ) : activeCommand ? (
             renderActiveCommand()
           ) : showSlashSuggestions ? (
             <Stack gap={4}>
@@ -425,48 +644,114 @@ export function QuickCapture() {
             </Stack>
           ) : (
             <Stack gap={4}>
-              {filteredActions.length === 0 ? (
+              {/* Show searched clients first */}
+              {searchedClients.length > 0 && (
+                <>
+                  <Text size="xs" c="dimmed" fw={600} px="sm" pt="xs">
+                    CLIENTS
+                  </Text>
+                  {searchedClients.map((client, index) => (
+                    <UnstyledButton
+                      key={`client-${client.id}`}
+                      onClick={() => {
+                        navigate(`/clients/${client.id}`);
+                        close();
+                      }}
+                      p="sm"
+                      style={{
+                        borderRadius: 8,
+                        backgroundColor: index === selectedIndex ? 'var(--mantine-color-blue-light)' : 'transparent',
+                      }}
+                      onMouseEnter={() => setSelectedIndex(index)}
+                    >
+                      <Group gap="sm">
+                        <Box
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 8,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: 'var(--mantine-color-green-1)',
+                            color: 'var(--mantine-color-green-6)',
+                          }}
+                        >
+                          <IconUser size={20} />
+                        </Box>
+                        <div style={{ flex: 1 }}>
+                          <Text size="sm" fw={500}>
+                            {client.name}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            {client.email}
+                          </Text>
+                        </div>
+                        <Badge size="xs" variant="light" color="green">
+                          Client
+                        </Badge>
+                      </Group>
+                    </UnstyledButton>
+                  ))}
+                </>
+              )}
+
+              {/* Show actions */}
+              {filteredActions.length > 0 && (
+                <>
+                  {searchedClients.length > 0 && (
+                    <Text size="xs" c="dimmed" fw={600} px="sm" pt="xs">
+                      ACTIONS
+                    </Text>
+                  )}
+                  {filteredActions.map((action, index) => {
+                    const adjustedIndex = searchedClients.length + index;
+                    return (
+                      <UnstyledButton
+                        key={action.id}
+                        onClick={action.action}
+                        p="sm"
+                        style={{
+                          borderRadius: 8,
+                          backgroundColor: adjustedIndex === selectedIndex ? 'var(--mantine-color-blue-light)' : 'transparent',
+                        }}
+                        onMouseEnter={() => setSelectedIndex(adjustedIndex)}
+                      >
+                        <Group gap="sm">
+                          <Box
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 8,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: 'var(--mantine-color-gray-1)',
+                              color: 'var(--mantine-color-blue-6)',
+                            }}
+                          >
+                            {action.icon}
+                          </Box>
+                          <div style={{ flex: 1 }}>
+                            <Text size="sm" fw={500}>
+                              {action.label}
+                            </Text>
+                            <Text size="xs" c="dimmed">
+                              {action.description}
+                            </Text>
+                          </div>
+                        </Group>
+                      </UnstyledButton>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Show no results message */}
+              {searchedClients.length === 0 && filteredActions.length === 0 && (
                 <Text c="dimmed" ta="center" py="md">
                   No results found. Try typing / for commands.
                 </Text>
-              ) : (
-                filteredActions.map((action, index) => (
-                  <UnstyledButton
-                    key={action.id}
-                    onClick={action.action}
-                    p="sm"
-                    style={{
-                      borderRadius: 8,
-                      backgroundColor: index === selectedIndex ? 'var(--mantine-color-blue-light)' : 'transparent',
-                    }}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                  >
-                    <Group gap="sm">
-                      <Box
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 8,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          backgroundColor: 'var(--mantine-color-gray-1)',
-                          color: 'var(--mantine-color-blue-6)',
-                        }}
-                      >
-                        {action.icon}
-                      </Box>
-                      <div style={{ flex: 1 }}>
-                        <Text size="sm" fw={500}>
-                          {action.label}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          {action.description}
-                        </Text>
-                      </div>
-                    </Group>
-                  </UnstyledButton>
-                ))
               )}
             </Stack>
           )}
