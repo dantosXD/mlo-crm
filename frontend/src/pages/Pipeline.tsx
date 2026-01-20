@@ -12,9 +12,11 @@ import {
   LoadingOverlay,
   ScrollArea,
   Box,
+  SegmentedControl,
+  Table,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconUser, IconMail, IconPhone } from '@tabler/icons-react';
+import { IconUser, IconMail, IconPhone, IconLayoutKanban, IconTable } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
 interface Client {
@@ -26,6 +28,14 @@ interface Client {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+interface LoanScenario {
+  id: string;
+  clientId: string;
+  name: string;
+  amount: number;
+  isPreferred: boolean;
 }
 
 // Pipeline stages in order
@@ -135,34 +145,35 @@ export default function Pipeline() {
   const navigate = useNavigate();
   const { accessToken } = useAuthStore();
   const [clients, setClients] = useState<Client[]>([]);
+  const [loanScenarios, setLoanScenarios] = useState<LoanScenario[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
 
   useEffect(() => {
-    fetchClients();
+    fetchData();
   }, [accessToken]);
 
-  const fetchClients = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/clients`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const [clientsResponse, scenariosResponse] = await Promise.all([
+        fetch(`${API_URL}/clients`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }),
+        fetch(`${API_URL}/loan-scenarios`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }),
+      ]);
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch clients');
+      if (!clientsResponse.ok) throw new Error('Failed to fetch clients');
+      setClients(await clientsResponse.json());
+
+      if (scenariosResponse.ok) {
+        setLoanScenarios(await scenariosResponse.json());
       }
-
-      const data = await response.json();
-      setClients(data);
     } catch (error) {
-      console.error('Error fetching clients:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load pipeline data',
-        color: 'red',
-      });
+      console.error('Error fetching pipeline data:', error);
+      notifications.show({ title: 'Error', message: 'Failed to load pipeline data', color: 'red' });
     } finally {
       setLoading(false);
     }
@@ -178,31 +189,137 @@ export default function Pipeline() {
     return acc;
   }, {} as Record<string, Client[]>);
 
+  // Calculate days in pipeline
+  const getDaysInPipeline = (createdAt: string) => {
+    const created = new Date(createdAt);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - created.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  // Get status color
+  const getStatusColor = (status: string) => {
+    const stage = PIPELINE_STAGES.find(s => s.key === status);
+    return stage?.color || 'gray';
+  };
+
+  // Get status label
+  const getStatusLabel = (status: string) => {
+    const stage = PIPELINE_STAGES.find(s => s.key === status);
+    return stage?.label || status.replace(/_/g, ' ');
+  };
+
+  const getClientLoanAmount = (clientId: string): number | null => {
+    const clientScenarios = loanScenarios.filter(s => s.clientId === clientId);
+    if (clientScenarios.length === 0) return null;
+    const preferred = clientScenarios.find(s => s.isPreferred);
+    return preferred ? preferred.amount : clientScenarios[0].amount;
+  };
+
+  const formatCurrency = (amount: number | null): string => {
+    if (amount === null) return '-';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
   return (
     <Container size="xl" py="md" style={{ height: '100%' }}>
       <LoadingOverlay visible={loading} />
 
       <Group justify="space-between" mb="lg">
-        <Title order={2}>Pipeline</Title>
+        <Group>
+          <Title order={2}>Pipeline</Title>
+          <SegmentedControl
+            value={viewMode}
+            onChange={(value) => setViewMode(value as 'kanban' | 'table')}
+            data={[
+              {
+                value: 'kanban',
+                label: (
+                  <Group gap={4}>
+                    <IconLayoutKanban size={16} />
+                    <span>Board</span>
+                  </Group>
+                ),
+              },
+              {
+                value: 'table',
+                label: (
+                  <Group gap={4}>
+                    <IconTable size={16} />
+                    <span>Table</span>
+                  </Group>
+                ),
+              },
+            ]}
+          />
+        </Group>
         <Text c="dimmed">
           {clients.length} total clients
         </Text>
       </Group>
 
-      <Box style={{ height: 'calc(100vh - 200px)' }}>
-        <ScrollArea type="auto" style={{ width: '100%', height: '100%' }}>
-          <Group gap="md" align="stretch" wrap="nowrap" style={{ minHeight: '100%' }}>
-            {PIPELINE_STAGES.map((stage) => (
-              <PipelineColumn
-                key={stage.key}
-                stage={stage}
-                clients={clientsByStatus[stage.key] || []}
-                onClientClick={handleClientClick}
-              />
-            ))}
-          </Group>
-        </ScrollArea>
-      </Box>
+      {viewMode === 'kanban' ? (
+        <Box style={{ height: 'calc(100vh - 200px)' }}>
+          <ScrollArea type="auto" style={{ width: '100%', height: '100%' }}>
+            <Group gap="md" align="stretch" wrap="nowrap" style={{ minHeight: '100%' }}>
+              {PIPELINE_STAGES.map((stage) => (
+                <PipelineColumn
+                  key={stage.key}
+                  stage={stage}
+                  clients={clientsByStatus[stage.key] || []}
+                  onClientClick={handleClientClick}
+                />
+              ))}
+            </Group>
+          </ScrollArea>
+        </Box>
+      ) : (
+        <Paper shadow="xs" withBorder>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th>Days in Pipeline</Table.Th>
+                <Table.Th>Amount</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {clients.map((client) => (
+                <Table.Tr
+                  key={client.id}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => handleClientClick(client)}
+                  aria-label={`View details for ${client.name}`}
+                >
+                  <Table.Td>
+                    <Text fw={500}>{client.name}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge color={getStatusColor(client.status)} variant="light">
+                      {getStatusLabel(client.status)}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{getDaysInPipeline(client.createdAt)} days</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" fw={getClientLoanAmount(client.id) ? 500 : undefined} c={getClientLoanAmount(client.id) ? undefined : 'dimmed'}>
+                      {formatCurrency(getClientLoanAmount(client.id))}
+                    </Text>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Paper>
+      )}
 
       <style>{`
         .pipeline-card:hover {
