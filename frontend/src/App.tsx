@@ -31,12 +31,7 @@ import Documents from './pages/Documents';
 import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
 import Notes from './pages/Notes';
-
-const Calculator = () => (
-  <Center h="100%">
-    <Text size="xl">Loan Calculator - Coming Soon</Text>
-  </Center>
-);
+import Calculator from './pages/Calculator';
 
 const Analytics = () => (
   <Center h="100%">
