@@ -32,12 +32,7 @@ import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
 import Notes from './pages/Notes';
 import Calculator from './pages/Calculator';
-
-const Analytics = () => (
-  <Center h="100%">
-    <Text size="xl">Analytics - Coming Soon</Text>
-  </Center>
-);
+import Analytics from './pages/Analytics';
 
 const ForgotPassword = () => (
   <Center h="100vh">

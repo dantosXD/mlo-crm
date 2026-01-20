@@ -1,0 +1,367 @@
+import { useEffect, useState } from 'react';
+import {
+  Container,
+  Title,
+  Paper,
+  Group,
+  Stack,
+  Text,
+  SimpleGrid,
+  Card,
+  ThemeIcon,
+  Badge,
+  Loader,
+  Center,
+  Progress,
+  Table,
+  Tooltip,
+} from '@mantine/core';
+import {
+  IconChartBar,
+  IconUsers,
+  IconTrendingUp,
+  IconTrendingDown,
+  IconMinus,
+  IconArrowRight,
+} from '@tabler/icons-react';
+import { useAuthStore } from '../stores/authStore';
+
+const API_URL = 'http://localhost:3000/api';
+
+// Pipeline stages in order
+const PIPELINE_STAGES = [
+  { key: 'LEAD', label: 'Lead', color: '#868e96' },
+  { key: 'PRE_QUALIFIED', label: 'Pre-Qualified', color: '#339af0' },
+  { key: 'ACTIVE', label: 'Active', color: '#40c057' },
+  { key: 'PROCESSING', label: 'Processing', color: '#fab005' },
+  { key: 'UNDERWRITING', label: 'Underwriting', color: '#fd7e14' },
+  { key: 'CLEAR_TO_CLOSE', label: 'Clear to Close', color: '#69db7c' },
+  { key: 'CLOSED', label: 'Closed', color: '#2f9e44' },
+  { key: 'DENIED', label: 'Denied', color: '#fa5252' },
+];
+
+interface PipelineData {
+  stage: string;
+  label: string;
+  count: number;
+  color: string;
+  percentage: number;
+}
+
+interface AnalyticsData {
+  totalClients: number;
+  pipelineData: PipelineData[];
+  conversionRate: number;
+  avgTimeInPipeline: number;
+}
+
+export default function Analytics() {
+  const { accessToken } = useAuthStore();
+  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [hoveredStage, setHoveredStage] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [accessToken]);
+
+  const fetchAnalytics = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch all clients
+      const clientsRes = await fetch(`${API_URL}/clients`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!clientsRes.ok) throw new Error('Failed to fetch clients');
+      const clients = await clientsRes.json();
+
+      // Calculate clients by status
+      const clientsByStatus: Record<string, number> = {};
+      clients.forEach((client: { status: string }) => {
+        clientsByStatus[client.status] = (clientsByStatus[client.status] || 0) + 1;
+      });
+
+      const totalClients = clients.length;
+
+      // Build pipeline data
+      const pipelineData: PipelineData[] = PIPELINE_STAGES.map((stage) => ({
+        stage: stage.key,
+        label: stage.label,
+        count: clientsByStatus[stage.key] || 0,
+        color: stage.color,
+        percentage: totalClients > 0 ? ((clientsByStatus[stage.key] || 0) / totalClients) * 100 : 0,
+      }));
+
+      // Calculate conversion rate (Closed / Total non-Denied)
+      const closedCount = clientsByStatus['CLOSED'] || 0;
+      const deniedCount = clientsByStatus['DENIED'] || 0;
+      const totalNonDenied = totalClients - deniedCount;
+      const conversionRate = totalNonDenied > 0 ? (closedCount / totalNonDenied) * 100 : 0;
+
+      setData({
+        totalClients,
+        pipelineData,
+        conversionRate,
+        avgTimeInPipeline: 0, // Would need date tracking to calculate
+      });
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Center h={400}>
+        <Loader size="lg" />
+      </Center>
+    );
+  }
+
+  if (!data) {
+    return (
+      <Center h={400}>
+        <Text c="dimmed">Failed to load analytics data</Text>
+      </Center>
+    );
+  }
+
+  // Find max count for chart scaling
+  const maxCount = Math.max(...data.pipelineData.map((d) => d.count), 1);
+
+  return (
+    <Container size="xl" py="md">
+      <Group mb="lg">
+        <ThemeIcon size="xl" variant="light" color="blue">
+          <IconChartBar size={24} />
+        </ThemeIcon>
+        <Title order={2}>Analytics</Title>
+      </Group>
+
+      {/* Summary Cards */}
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} mb="xl">
+        <Card padding="lg" withBorder>
+          <Group justify="space-between">
+            <div>
+              <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                Total Clients
+              </Text>
+              <Text size="xl" fw={700}>
+                {data.totalClients}
+              </Text>
+            </div>
+            <ThemeIcon size="lg" variant="light" color="blue">
+              <IconUsers size={20} />
+            </ThemeIcon>
+          </Group>
+        </Card>
+
+        <Card padding="lg" withBorder>
+          <Group justify="space-between">
+            <div>
+              <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                Active Pipeline
+              </Text>
+              <Text size="xl" fw={700}>
+                {data.pipelineData
+                  .filter((d) => !['CLOSED', 'DENIED'].includes(d.stage))
+                  .reduce((sum, d) => sum + d.count, 0)}
+              </Text>
+            </div>
+            <ThemeIcon size="lg" variant="light" color="green">
+              <IconTrendingUp size={20} />
+            </ThemeIcon>
+          </Group>
+        </Card>
+
+        <Card padding="lg" withBorder>
+          <Group justify="space-between">
+            <div>
+              <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                Closed Deals
+              </Text>
+              <Text size="xl" fw={700}>
+                {data.pipelineData.find((d) => d.stage === 'CLOSED')?.count || 0}
+              </Text>
+            </div>
+            <ThemeIcon size="lg" variant="light" color="teal">
+              <IconTrendingUp size={20} />
+            </ThemeIcon>
+          </Group>
+        </Card>
+
+        <Card padding="lg" withBorder>
+          <Group justify="space-between">
+            <div>
+              <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                Conversion Rate
+              </Text>
+              <Text size="xl" fw={700}>
+                {data.conversionRate.toFixed(1)}%
+              </Text>
+            </div>
+            <ThemeIcon
+              size="lg"
+              variant="light"
+              color={data.conversionRate >= 50 ? 'green' : data.conversionRate >= 25 ? 'yellow' : 'red'}
+            >
+              {data.conversionRate >= 50 ? (
+                <IconTrendingUp size={20} />
+              ) : data.conversionRate >= 25 ? (
+                <IconMinus size={20} />
+              ) : (
+                <IconTrendingDown size={20} />
+              )}
+            </ThemeIcon>
+          </Group>
+        </Card>
+      </SimpleGrid>
+
+      {/* Pipeline Chart */}
+      <Paper shadow="xs" p="lg" withBorder mb="xl">
+        <Title order={4} mb="md">
+          Pipeline Overview
+        </Title>
+        <Text size="sm" c="dimmed" mb="lg">
+          Distribution of clients across pipeline stages
+        </Text>
+
+        {/* Bar Chart */}
+        <Stack gap="xs" mb="xl">
+          {data.pipelineData.map((stage) => (
+            <Group
+              key={stage.stage}
+              gap="md"
+              style={{ cursor: 'pointer' }}
+              onMouseEnter={() => setHoveredStage(stage.stage)}
+              onMouseLeave={() => setHoveredStage(null)}
+            >
+              <Text size="sm" w={120} ta="right" fw={hoveredStage === stage.stage ? 600 : 400}>
+                {stage.label}
+              </Text>
+              <Tooltip
+                label={`${stage.count} clients (${stage.percentage.toFixed(1)}%)`}
+                position="right"
+                withArrow
+                opened={hoveredStage === stage.stage}
+              >
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <Progress.Root size={28}>
+                    <Progress.Section
+                      value={(stage.count / maxCount) * 100}
+                      color={stage.color}
+                      style={{
+                        transition: 'all 0.2s ease',
+                        transform: hoveredStage === stage.stage ? 'scaleY(1.1)' : 'scaleY(1)',
+                      }}
+                    >
+                      <Progress.Label>
+                        {stage.count > 0 ? stage.count : ''}
+                      </Progress.Label>
+                    </Progress.Section>
+                  </Progress.Root>
+                </div>
+              </Tooltip>
+              <Text size="sm" w={50} c="dimmed">
+                {stage.percentage.toFixed(0)}%
+              </Text>
+            </Group>
+          ))}
+        </Stack>
+
+        {/* Pipeline Flow Visualization */}
+        <Paper p="md" bg="gray.0" radius="md">
+          <Text size="sm" fw={600} mb="sm">
+            Pipeline Flow
+          </Text>
+          <Group gap="xs" wrap="nowrap" style={{ overflowX: 'auto' }}>
+            {data.pipelineData
+              .filter((d) => !['DENIED'].includes(d.stage))
+              .map((stage, index, arr) => (
+                <Group key={stage.stage} gap="xs" wrap="nowrap">
+                  <Badge
+                    size="lg"
+                    color={stage.color}
+                    variant={hoveredStage === stage.stage ? 'filled' : 'light'}
+                    style={{
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={() => setHoveredStage(stage.stage)}
+                    onMouseLeave={() => setHoveredStage(null)}
+                  >
+                    {stage.label}: {stage.count}
+                  </Badge>
+                  {index < arr.length - 1 && (
+                    <IconArrowRight size={16} color="gray" />
+                  )}
+                </Group>
+              ))}
+          </Group>
+        </Paper>
+      </Paper>
+
+      {/* Detailed Breakdown Table */}
+      <Paper shadow="xs" p="lg" withBorder>
+        <Title order={4} mb="md">
+          Stage Breakdown
+        </Title>
+        <Table striped highlightOnHover withTableBorder>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Stage</Table.Th>
+              <Table.Th style={{ textAlign: 'right' }}>Count</Table.Th>
+              <Table.Th style={{ textAlign: 'right' }}>Percentage</Table.Th>
+              <Table.Th>Distribution</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {data.pipelineData.map((stage) => (
+              <Table.Tr
+                key={stage.stage}
+                style={{
+                  backgroundColor:
+                    hoveredStage === stage.stage ? 'var(--mantine-color-blue-0)' : undefined,
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={() => setHoveredStage(stage.stage)}
+                onMouseLeave={() => setHoveredStage(null)}
+              >
+                <Table.Td>
+                  <Group gap="xs">
+                    <div
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: 3,
+                        backgroundColor: stage.color,
+                      }}
+                    />
+                    <Text fw={500}>{stage.label}</Text>
+                  </Group>
+                </Table.Td>
+                <Table.Td style={{ textAlign: 'right' }}>
+                  <Text fw={600}>{stage.count}</Text>
+                </Table.Td>
+                <Table.Td style={{ textAlign: 'right' }}>
+                  <Text c="dimmed">{stage.percentage.toFixed(1)}%</Text>
+                </Table.Td>
+                <Table.Td>
+                  <Progress
+                    value={stage.percentage}
+                    color={stage.color}
+                    size="sm"
+                    style={{ minWidth: 100 }}
+                  />
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Paper>
+    </Container>
+  );
+}
