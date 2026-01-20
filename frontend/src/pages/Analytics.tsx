@@ -15,6 +15,7 @@ import {
   Progress,
   Table,
   Tooltip,
+  Select,
 } from '@mantine/core';
 import {
   IconChartBar,
@@ -23,6 +24,7 @@ import {
   IconTrendingDown,
   IconMinus,
   IconArrowRight,
+  IconCalendar,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -55,15 +57,24 @@ interface AnalyticsData {
   avgTimeInPipeline: number;
 }
 
+// Date range options
+const DATE_RANGE_OPTIONS = [
+  { value: 'all', label: 'All Time' },
+  { value: '7', label: 'Last 7 Days' },
+  { value: '30', label: 'Last 30 Days' },
+  { value: '90', label: 'Last 90 Days' },
+];
+
 export default function Analytics() {
   const { accessToken } = useAuthStore();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<string>('all');
 
   useEffect(() => {
     fetchAnalytics();
-  }, [accessToken]);
+  }, [accessToken, dateRange]);
 
   const fetchAnalytics = async () => {
     try {
@@ -75,7 +86,18 @@ export default function Analytics() {
       });
 
       if (!clientsRes.ok) throw new Error('Failed to fetch clients');
-      const clients = await clientsRes.json();
+      let clients = await clientsRes.json();
+
+      // Filter by date range
+      if (dateRange !== 'all') {
+        const days = parseInt(dateRange, 10);
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+        clients = clients.filter((client: { createdAt: string }) => {
+          const clientDate = new Date(client.createdAt);
+          return clientDate >= cutoffDate;
+        });
+      }
 
       // Calculate clients by status
       const clientsByStatus: Record<string, number> = {};
@@ -134,11 +156,21 @@ export default function Analytics() {
 
   return (
     <Container size="xl" py="md">
-      <Group mb="lg">
-        <ThemeIcon size="xl" variant="light" color="blue">
-          <IconChartBar size={24} />
-        </ThemeIcon>
-        <Title order={2}>Analytics</Title>
+      <Group mb="lg" justify="space-between">
+        <Group>
+          <ThemeIcon size="xl" variant="light" color="blue">
+            <IconChartBar size={24} />
+          </ThemeIcon>
+          <Title order={2}>Analytics</Title>
+        </Group>
+        <Select
+          value={dateRange}
+          onChange={(value) => setDateRange(value || 'all')}
+          data={DATE_RANGE_OPTIONS}
+          leftSection={<IconCalendar size={16} />}
+          style={{ width: 160 }}
+          aria-label="Date range filter"
+        />
       </Group>
 
       {/* Summary Cards */}
