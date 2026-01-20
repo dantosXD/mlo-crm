@@ -45,6 +45,17 @@ export function Admin() {
     role: 'MLO',
   });
 
+  // Edit user state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editUser, setEditUser] = useState<User | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    email: '',
+    role: '',
+    isActive: true,
+  });
+
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -173,6 +184,58 @@ export function Admin() {
     }
   };
 
+  const handleEditUser = (user: User) => {
+    setEditUser(user);
+    setEditForm({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleUpdateUser = async () => {
+    if (!editUser) return;
+
+    setEditing(true);
+    try {
+      const response = await fetch(`${API_URL}/users/${editUser.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(editForm),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to update user');
+      }
+
+      const updatedUser = await response.json();
+      setUsers(users.map(u => u.id === editUser.id ? updatedUser : u));
+      setEditModalOpen(false);
+      setEditUser(null);
+
+      notifications.show({
+        title: 'Success',
+        message: 'User updated successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error updating user:', error);
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to update user',
+        color: 'red',
+      });
+    } finally {
+      setEditing(false);
+    }
+  };
+
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
       case 'ADMIN': return 'red';
@@ -243,7 +306,7 @@ export function Admin() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs">
-                      <Button size="xs" variant="light">Edit</Button>
+                      <Button size="xs" variant="light" onClick={() => handleEditUser(user)}>Edit</Button>
                       <Button
                         size="xs"
                         variant="light"
@@ -309,6 +372,57 @@ export function Admin() {
             </Button>
             <Button onClick={handleCreateUser} loading={creating}>
               Create User
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Edit User Modal */}
+      <Modal
+        opened={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        title="Edit User"
+      >
+        <Stack>
+          <TextInput
+            label="Name"
+            placeholder="Full name"
+            required
+            value={editForm.name}
+            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+          />
+          <TextInput
+            label="Email"
+            placeholder="user@example.com"
+            required
+            type="email"
+            value={editForm.email}
+            onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+          />
+          <Select
+            label="Role"
+            data={[
+              { value: 'ADMIN', label: 'Admin' },
+              { value: 'MANAGER', label: 'Manager' },
+              { value: 'MLO', label: 'MLO' },
+              { value: 'PROCESSOR', label: 'Processor' },
+              { value: 'UNDERWRITER', label: 'Underwriter' },
+              { value: 'VIEWER', label: 'Viewer' },
+            ]}
+            value={editForm.role}
+            onChange={(value) => setEditForm({ ...editForm, role: value || 'MLO' })}
+          />
+          <Switch
+            label="Active"
+            checked={editForm.isActive}
+            onChange={(e) => setEditForm({ ...editForm, isActive: e.currentTarget.checked })}
+          />
+          <Group justify="flex-end" mt="md">
+            <Button variant="subtle" onClick={() => setEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateUser} loading={editing}>
+              Save Changes
             </Button>
           </Group>
         </Stack>
