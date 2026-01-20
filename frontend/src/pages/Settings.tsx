@@ -27,9 +27,12 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
+const API_URL = 'http://localhost:3000/api';
+
 export default function Settings() {
-  const { user } = useAuthStore();
+  const { user, accessToken, updateUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState<string | null>('profile');
+  const [saving, setSaving] = useState(false);
 
   // Profile settings state
   const [profileForm, setProfileForm] = useState({
@@ -53,12 +56,47 @@ export default function Settings() {
     showWelcome: true,
   });
 
-  const handleProfileSave = () => {
-    notifications.show({
-      title: 'Settings Saved',
-      message: 'Your profile settings have been updated',
-      color: 'green',
-    });
+  const handleProfileSave = async () => {
+    try {
+      setSaving(true);
+      const response = await fetch(`${API_URL}/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          name: profileForm.name,
+          email: profileForm.email,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update profile');
+      }
+
+      // Update the user in the auth store
+      updateUser({
+        name: data.user.name,
+        email: data.user.email,
+      });
+
+      notifications.show({
+        title: 'Profile Updated',
+        message: 'Your profile settings have been saved successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to update profile',
+        color: 'red',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleNotificationsSave = () => {
@@ -135,7 +173,7 @@ export default function Settings() {
               />
 
               <Group justify="flex-end" mt="md">
-                <Button leftSection={<IconDeviceFloppy size={16} />} onClick={handleProfileSave}>
+                <Button leftSection={<IconDeviceFloppy size={16} />} onClick={handleProfileSave} loading={saving}>
                   Save Changes
                 </Button>
               </Group>

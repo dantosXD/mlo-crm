@@ -21,6 +21,7 @@ interface AuthState {
   logout: () => Promise<void>;
   refreshAuth: () => Promise<boolean>;
   setUser: (user: User | null) => void;
+  updateUser: (updates: Partial<User>) => void;
   clearError: () => void;
 }
 
@@ -141,6 +142,13 @@ export const useAuthStore = create<AuthState>()(
 
       setUser: (user: User | null) => {
         set({ user, isAuthenticated: !!user });
+      },
+
+      updateUser: (updates: Partial<User>) => {
+        const { user } = get();
+        if (user) {
+          set({ user: { ...user, ...updates } });
+        }
       },
 
       clearError: () => {

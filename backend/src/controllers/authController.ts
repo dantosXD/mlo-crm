@@ -358,3 +358,92 @@ export async function getMe(req: Request, res: Response) {
     });
   }
 }
+
+export async function updateProfile(req: Request, res: Response) {
+  try {
+    // User should be attached by auth middleware
+    const userId = (req as any).user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Authentication Required',
+        message: 'Please log in to access this resource',
+      });
+    }
+
+    const { name, email } = req.body;
+
+    // Build update data - only include fields that are provided
+    const updateData: { name?: string; email?: string } = {};
+
+    if (name && typeof name === 'string' && name.trim().length > 0) {
+      updateData.name = name.trim();
+    }
+
+    if (email && typeof email === 'string' && email.trim().length > 0) {
+      // Check if email is already taken by another user
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email: email.toLowerCase().trim(),
+          NOT: { id: userId },
+        },
+      });
+
+      if (existingUser) {
+        return res.status(400).json({
+          error: 'Validation Error',
+          message: 'This email is already in use by another account',
+        });
+      }
+
+      updateData.email = email.toLowerCase().trim();
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'No valid fields to update',
+      });
+    }
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        createdAt: true,
+        lastLoginAt: true,
+      },
+    });
+
+    // Log activity
+    await prisma.activity.create({
+      data: {
+        userId: userId,
+        type: 'PROFILE_UPDATED',
+        description: `User updated their profile`,
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+      },
+    });
+
+    return res.json({
+      message: 'Profile updated successfully',
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('UpdateProfile error:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'An error occurred while updating profile',
+    });
+  }
+}
