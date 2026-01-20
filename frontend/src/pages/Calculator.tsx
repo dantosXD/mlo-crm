@@ -27,6 +27,8 @@ import {
   IconTrendingUp,
   IconHome,
   IconReceipt,
+  IconWallet,
+  IconAlertTriangle,
 } from '@tabler/icons-react';
 
 interface CalculationResult {
@@ -35,6 +37,7 @@ interface CalculationResult {
   totalInterest: number;
   totalCost: number;
   loanToValue: number | null;
+  dti: number | null;
 }
 
 interface AmortizationEntry {
@@ -55,6 +58,10 @@ export default function Calculator() {
   const [propertyTaxes, setPropertyTaxes] = useState<number>(3600);
   const [homeInsurance, setHomeInsurance] = useState<number>(1200);
   const [hoaFees, setHoaFees] = useState<number>(0);
+
+  // DTI calculation inputs
+  const [monthlyIncome, setMonthlyIncome] = useState<number>(0);
+  const [existingDebts, setExistingDebts] = useState<number>(0);
 
   // Results
   const [result, setResult] = useState<CalculationResult | null>(null);
@@ -93,12 +100,20 @@ export default function Calculator() {
     const totalInterest = (monthlyPayment * numPayments) - principal;
     const totalCost = monthlyPayment * numPayments;
 
+    // Calculate DTI (Debt-to-Income) ratio
+    let dti: number | null = null;
+    if (monthlyIncome > 0) {
+      const totalMonthlyDebt = totalMonthlyPayment + (existingDebts || 0);
+      dti = (totalMonthlyDebt / monthlyIncome) * 100;
+    }
+
     setResult({
       monthlyPayment: Math.round(monthlyPayment * 100) / 100,
       totalMonthlyPayment: Math.round(totalMonthlyPayment * 100) / 100,
       totalInterest: Math.round(totalInterest * 100) / 100,
       totalCost: Math.round(totalCost * 100) / 100,
       loanToValue: loanToValue ? Math.round(loanToValue * 100) / 100 : null,
+      dti: dti ? Math.round(dti * 100) / 100 : null,
     });
 
     // Generate amortization schedule (first 12 months + yearly summaries)
@@ -123,7 +138,7 @@ export default function Calculator() {
     }
 
     setAmortization(schedule);
-  }, [loanAmount, interestRate, termYears, propertyValue, propertyTaxes, homeInsurance, hoaFees]);
+  }, [loanAmount, interestRate, termYears, propertyValue, propertyTaxes, homeInsurance, hoaFees, monthlyIncome, existingDebts]);
 
   // Format currency
   const formatCurrency = (value: number) => {
@@ -255,6 +270,36 @@ export default function Calculator() {
                     </Stack>
                   </Accordion.Panel>
                 </Accordion.Item>
+                <Accordion.Item value="dti">
+                  <Accordion.Control icon={<IconWallet size={18} />}>
+                    DTI Calculation (Optional)
+                  </Accordion.Control>
+                  <Accordion.Panel>
+                    <Stack gap="md">
+                      <NumberInput
+                        label="Monthly Income"
+                        description="Gross monthly income before taxes"
+                        value={monthlyIncome}
+                        onChange={(val) => setMonthlyIncome(typeof val === 'number' ? val : 0)}
+                        min={0}
+                        prefix="$"
+                        thousandSeparator=","
+                        leftSection={<IconCurrencyDollar size={16} />}
+                      />
+
+                      <NumberInput
+                        label="Existing Monthly Debts"
+                        description="Car payments, credit cards, student loans, etc."
+                        value={existingDebts}
+                        onChange={(val) => setExistingDebts(typeof val === 'number' ? val : 0)}
+                        min={0}
+                        prefix="$"
+                        thousandSeparator=","
+                        leftSection={<IconCurrencyDollar size={16} />}
+                      />
+                    </Stack>
+                  </Accordion.Panel>
+                </Accordion.Item>
               </Accordion>
 
               <Button
@@ -328,6 +373,43 @@ export default function Calculator() {
                     </Group>
                   </Card>
                 </Grid.Col>
+                {result.dti !== null && (
+                  <Grid.Col span={12}>
+                    <Card
+                      padding="md"
+                      withBorder
+                      style={{
+                        borderColor: result.dti > 43 ? 'var(--mantine-color-red-5)' : undefined,
+                        backgroundColor: result.dti > 43 ? 'var(--mantine-color-red-0)' : undefined,
+                      }}
+                    >
+                      <Group justify="space-between" align="center">
+                        <div>
+                          <Text size="sm" c="dimmed">Debt-to-Income Ratio (DTI)</Text>
+                          <Group gap="xs">
+                            <Text size="lg" fw={600} c={result.dti > 43 ? 'red' : undefined}>
+                              {formatPercent(result.dti)}
+                            </Text>
+                            {result.dti > 43 ? (
+                              <Badge color="red" size="sm" leftSection={<IconAlertTriangle size={12} />}>
+                                High DTI
+                              </Badge>
+                            ) : result.dti > 36 ? (
+                              <Badge color="yellow" size="sm">Moderate</Badge>
+                            ) : (
+                              <Badge color="green" size="sm">Good</Badge>
+                            )}
+                          </Group>
+                        </div>
+                        {result.dti > 43 && (
+                          <Text size="xs" c="red" style={{ maxWidth: 200 }}>
+                            DTI above 43% may make loan approval difficult. Consider reducing debt or increasing income.
+                          </Text>
+                        )}
+                      </Group>
+                    </Card>
+                  </Grid.Col>
+                )}
               </Grid>
 
               {/* Loan Summary */}
