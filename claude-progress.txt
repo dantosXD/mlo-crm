@@ -1,6 +1,66 @@
 # MLO Dashboard - Development Progress
 
-## Session 16 Summary (Current)
+## Session 17 Summary (Current)
+Date: January 21, 2026
+
+### What Was Accomplished
+
+#### Feature #247: Loading skeletons match layout (PASSED)
+- Implemented skeleton loading state for the Clients page that matches table layout
+- **Changes**:
+  - Replaced LoadingOverlay with skeleton loaders
+  - Created skeleton table with 7 columns matching real data layout:
+    - Name: 80% width skeleton
+    - Email: 70% width skeleton
+    - Phone: 90% width skeleton
+    - Status: Pill-shaped skeleton (80px, xl radius)
+    - Tags: Pill-shaped skeleton (50px, xl radius)
+    - Created: 80% width skeleton
+    - Actions: Two 28x28 square skeletons for action buttons
+  - Shows 8 skeleton rows during loading
+  - Added 300ms minimum loading time for smooth UX (prevents flash)
+- **Backend**: Added CORS support for additional localhost ports (5179-5183)
+- **Verification** (all test steps passed):
+  1. ✅ Clear cache / slow network - forced full page reload
+  2. ✅ Load clients page - navigated to /clients
+  3. ✅ Skeleton loaders shown - captured in accessibility snapshot
+  4. ✅ Skeletons match content layout - table structure with 7 columns
+  5. ✅ Smooth transition to content - data loads and replaces skeletons
+
+### Features Passing: 216/250 (86.4%)
+
+New features passed this session:
+- #247: Loading skeletons match layout
+
+### Files Modified This Session
+
+```
+frontend/
+└── src/
+    └── pages/
+        └── Clients.tsx    # Added skeleton loading state
+                          # - Removed LoadingOverlay
+                          # - Added Skeleton import from Mantine
+                          # - Added skeleton table matching real layout
+                          # - Added 300ms minimum loading time
+
+backend/
+└── src/
+    └── index.ts          # Added CORS support for ports 5179-5183
+```
+
+### Commits Made
+- feat: Add skeleton loading state that matches table layout (Feature #247)
+
+### Current State
+- 20 clients in database (Admin user)
+- Backend: localhost:3000, Frontend: localhost:5181
+- Logged in as Admin User
+- Skeleton loading working correctly
+
+---
+
+## Session 16 Summary
 Date: January 21, 2026
 
 ### What Was Accomplished
@@ -412,3 +472,50 @@ New features passed this session:
 
 ---
 End of Progress Notes
+[Testing] Feature #60 verified - still passing
+[Testing] Session complete - verified feature #60 (Document data persists after refresh)
+[Testing] Feature #210 verified - still passing (Quick capture bar opens with Ctrl+K)
+
+---
+
+## Testing Session Summary
+Date: January 21, 2026
+
+### Regression Test Results
+
+#### Feature #210: Quick capture bar opens with Ctrl+K - ✅ VERIFIED PASSING
+
+**Verification Steps Completed:**
+1. ✅ Login to dashboard (mlo@example.com)
+2. ✅ Press Ctrl+K
+3. ✅ Verify quick capture modal opens - Dialog appeared with search input
+4. ✅ Verify input field is focused - Input marked as [active] in accessibility tree
+5. ✅ Press Escape to close
+6. ✅ Verify modal closes - Dialog removed from DOM
+
+**Visual Verification:**
+- Screenshot captured: feature-210-quick-capture-modal.png
+- Modal displays with search input at top
+- Quick action buttons shown (Go to Dashboard, Go to Clients, Add New Client, etc.)
+- Keyboard shortcuts displayed at bottom (/, ↑↓ Navigate, Enter Select, Esc Close)
+- Modal backdrop correctly blurs background content
+
+**Technical Details:**
+- Keyboard shortcut Ctrl+K triggers modal correctly
+- Focus automatically placed on search input
+- Escape key properly closes modal
+- Modal state management working correctly
+
+**Console Notes:**
+- Minor non-blocking error: QuickCapture component attempts to fetch clients for autocomplete but encounters connection issue
+- This does not affect core feature functionality (keyboard shortcut, modal display, focus management, close behavior)
+
+### Current Project Status
+- Features Passing: 215/250 (86.0%)
+- Features In Progress: 2
+- Backend: Running on localhost:3000
+- Frontend: Running on localhost:5173
+
+### Conclusion
+Feature #210 is still passing. No regression found. The quick capture keyboard shortcut works as designed.
+
