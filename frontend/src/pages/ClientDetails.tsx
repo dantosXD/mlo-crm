@@ -266,7 +266,7 @@ const statusColors: Record<string, string> = {
   PROCESSING: 'yellow',
   UNDERWRITING: 'orange',
   CLEAR_TO_CLOSE: 'lime',
-  CLOSED: 'teal',
+  CLOSED: 'green.9',
   DENIED: 'red',
   INACTIVE: 'gray',
 };
@@ -337,12 +337,15 @@ export default function ClientDetails() {
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [addNoteModalOpen, setAddNoteModalOpen] = useState(false);
   const [newNoteText, setNewNoteText] = useState('');
+  const [newNoteTags, setNewNoteTags] = useState<string[]>([]);
   const [savingNote, setSavingNote] = useState(false);
   const [editNoteModalOpen, setEditNoteModalOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editNoteText, setEditNoteText] = useState('');
+  const [editNoteTags, setEditNoteTags] = useState<string[]>([]);
   const [noteTemplates, setNoteTemplates] = useState<{ id: string; name: string; content: string }[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [existingNoteTags, setExistingNoteTags] = useState<string[]>([]);
 
   // Task state
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -774,6 +777,10 @@ export default function ClientDetails() {
       if (response.ok) {
         const data = await response.json();
         setNotes(data);
+        // Extract unique tags from all notes for autocomplete
+        const allTags = data.flatMap((note: Note) => note.tags || []);
+        const uniqueTags = Array.from(new Set(allTags));
+        setExistingNoteTags(uniqueTags);
       }
     } catch (error) {
       console.error('Error fetching notes:', error);
@@ -822,6 +829,7 @@ export default function ClientDetails() {
         body: JSON.stringify({
           clientId: id,
           text: newNoteText,
+          tags: newNoteTags,
         }),
       });
 
@@ -831,8 +839,14 @@ export default function ClientDetails() {
 
       const createdNote = await response.json();
       setNotes([createdNote, ...notes]);
+      // Update existing tags list
+      const newTagsToAdd = newNoteTags.filter(tag => !existingNoteTags.includes(tag));
+      if (newTagsToAdd.length > 0) {
+        setExistingNoteTags([...existingNoteTags, ...newTagsToAdd]);
+      }
       setAddNoteModalOpen(false);
       setNewNoteText('');
+      setNewNoteTags([]);
 
       // Refresh activities to show the new note activity
       fetchActivities();
@@ -857,6 +871,7 @@ export default function ClientDetails() {
   const handleEditNote = (note: Note) => {
     setEditingNote(note);
     setEditNoteText(note.text);
+    setEditNoteTags(note.tags || []);
     setEditNoteModalOpen(true);
   };
 
@@ -880,6 +895,7 @@ export default function ClientDetails() {
         },
         body: JSON.stringify({
           text: editNoteText,
+          tags: editNoteTags,
         }),
       });
 
@@ -888,10 +904,16 @@ export default function ClientDetails() {
       }
 
       const updatedNote = await response.json();
-      setNotes(notes.map(n => n.id === updatedNote.id ? { ...n, text: updatedNote.text, updatedAt: updatedNote.updatedAt } : n));
+      setNotes(notes.map(n => n.id === updatedNote.id ? { ...n, text: updatedNote.text, tags: updatedNote.tags, updatedAt: updatedNote.updatedAt } : n));
+      // Update existing tags list
+      const newTagsToAdd = editNoteTags.filter(tag => !existingNoteTags.includes(tag));
+      if (newTagsToAdd.length > 0) {
+        setExistingNoteTags([...existingNoteTags, ...newTagsToAdd]);
+      }
       setEditNoteModalOpen(false);
       setEditingNote(null);
       setEditNoteText('');
+      setEditNoteTags([]);
 
       notifications.show({
         title: 'Success',
@@ -1145,8 +1167,8 @@ export default function ClientDetails() {
   };
 
   const priorityColors: Record<string, string> = {
-    LOW: 'gray',
-    MEDIUM: 'blue',
+    LOW: 'blue',
+    MEDIUM: 'yellow',
     HIGH: 'red',
   };
 
@@ -2670,7 +2692,7 @@ export default function ClientDetails() {
       {/* Add Note Modal */}
       <Modal
         opened={addNoteModalOpen}
-        onClose={() => { setAddNoteModalOpen(false); setNewNoteText(''); }}
+        onClose={() => { setAddNoteModalOpen(false); setNewNoteText(''); setNewNoteTags([]); }}
         title="Add Note"
       >
         <Stack>
@@ -2695,8 +2717,17 @@ export default function ClientDetails() {
             value={newNoteText}
             onChange={(e) => setNewNoteText(e.target.value)}
           />
+          <TagsInput
+            label="Tags (optional)"
+            placeholder="Add tags (press Enter to add)"
+            value={newNoteTags}
+            onChange={setNewNoteTags}
+            data={existingNoteTags}
+            clearable
+            acceptValueOnBlur
+          />
           <Group justify="flex-end" mt="md">
-            <Button variant="subtle" onClick={() => { setAddNoteModalOpen(false); setNewNoteText(''); }}>
+            <Button variant="subtle" onClick={() => { setAddNoteModalOpen(false); setNewNoteText(''); setNewNoteTags([]); }}>
               Cancel
             </Button>
             <Button onClick={handleCreateNote} loading={savingNote}>
@@ -2708,7 +2739,7 @@ export default function ClientDetails() {
       {/* Edit Note Modal */}
       <Modal
         opened={editNoteModalOpen}
-        onClose={() => { setEditNoteModalOpen(false); setEditingNote(null); setEditNoteText(''); }}
+        onClose={() => { setEditNoteModalOpen(false); setEditingNote(null); setEditNoteText(''); setEditNoteTags([]); }}
         title="Edit Note"
       >
         <Stack>
@@ -2720,8 +2751,17 @@ export default function ClientDetails() {
             value={editNoteText}
             onChange={(e) => setEditNoteText(e.target.value)}
           />
+          <TagsInput
+            label="Tags (optional)"
+            placeholder="Add tags (press Enter to add)"
+            value={editNoteTags}
+            onChange={setEditNoteTags}
+            data={existingNoteTags}
+            clearable
+            acceptValueOnBlur
+          />
           <Group justify="flex-end" mt="md">
-            <Button variant="subtle" onClick={() => { setEditNoteModalOpen(false); setEditingNote(null); setEditNoteText(''); }}>
+            <Button variant="subtle" onClick={() => { setEditNoteModalOpen(false); setEditingNote(null); setEditNoteText(''); setEditNoteTags([]); }}>
               Cancel
             </Button>
             <Button onClick={handleUpdateNote} loading={savingNote}>

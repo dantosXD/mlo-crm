@@ -59,7 +59,7 @@ const statusColors: Record<string, string> = {
   PROCESSING: 'yellow',
   UNDERWRITING: 'orange',
   CLEAR_TO_CLOSE: 'lime',
-  CLOSED: 'teal',
+  CLOSED: 'green.9',
   DENIED: 'red',
 };
 

@@ -46,7 +46,7 @@ const PIPELINE_STAGES = [
   { key: 'PROCESSING', label: 'Processing', color: 'yellow' },
   { key: 'UNDERWRITING', label: 'Underwriting', color: 'orange' },
   { key: 'CLEAR_TO_CLOSE', label: 'Clear to Close', color: 'lime' },
-  { key: 'CLOSED', label: 'Closed', color: 'teal' },
+  { key: 'CLOSED', label: 'Closed', color: 'green.9' },
 ];
 
 const API_URL = 'http://localhost:3000/api';
