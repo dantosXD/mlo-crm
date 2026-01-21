@@ -22,7 +22,7 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar, IconDownload } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar, IconDownload, IconEyeOff } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
 interface Client {
@@ -49,6 +49,52 @@ const statusColors: Record<string, string> = {
 };
 
 const API_URL = 'http://localhost:3000/api';
+
+// Mask email: show first 2 chars, mask middle, show domain
+function maskEmail(email: string): string {
+  if (!email || !email.includes('@')) return email;
+  const [local, domain] = email.split('@');
+  if (local.length <= 2) return `${local[0]}***@${domain}`;
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
+// Mask phone: show last 4 digits only
+function maskPhone(phone: string): string {
+  if (!phone) return '-';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 4) return '***';
+  return `***-***-${digits.slice(-4)}`;
+}
+
+// Component for masked sensitive data with reveal on hover/click
+function MaskedData({ value, maskFn, label }: { value: string; maskFn: (v: string) => string; label: string }) {
+  const [revealed, setRevealed] = useState(false);
+
+  if (!value || value === '-') return <Text c="dimmed" size="sm">-</Text>;
+
+  return (
+    <Tooltip label={revealed ? `Hide ${label}` : `Click to reveal ${label}`}>
+      <Group
+        gap={4}
+        wrap="nowrap"
+        style={{ cursor: 'pointer' }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setRevealed(!revealed);
+        }}
+        onMouseEnter={() => setRevealed(true)}
+        onMouseLeave={() => setRevealed(false)}
+      >
+        <Text size="sm" truncate="end" style={{ maxWidth: '150px' }}>
+          {revealed ? value : maskFn(value)}
+        </Text>
+        <ActionIcon size="xs" variant="subtle" color="gray">
+          {revealed ? <IconEyeOff size={12} /> : <IconEye size={12} />}
+        </ActionIcon>
+      </Group>
+    </Tooltip>
+  );
+}
 
 export default function Clients() {
   const navigate = useNavigate();
@@ -527,9 +573,11 @@ export default function Clients() {
                         <Text fw={500} truncate="end" title={client.name}>{client.name}</Text>
                       </Table.Td>
                       <Table.Td style={{ maxWidth: '200px' }}>
-                        <Text truncate="end" title={client.email}>{client.email}</Text>
+                        <MaskedData value={client.email} maskFn={maskEmail} label="email" />
                       </Table.Td>
-                      <Table.Td>{client.phone || '-'}</Table.Td>
+                      <Table.Td>
+                        <MaskedData value={client.phone || ''} maskFn={maskPhone} label="phone" />
+                      </Table.Td>
                       <Table.Td>
                         <Badge color={statusColors[client.status] || 'gray'}>
                           {client.status.replace('_', ' ')}
