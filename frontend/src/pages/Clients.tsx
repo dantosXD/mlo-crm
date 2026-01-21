@@ -19,6 +19,7 @@ import {
   TagsInput,
   Box,
   ScrollArea,
+  Skeleton,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -157,11 +158,15 @@ export default function Clients() {
   const fetchClients = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/clients`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      // Minimum loading time to ensure skeleton is visible (better UX)
+      const [response] = await Promise.all([
+        fetch(`${API_URL}/clients`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }),
+        new Promise(resolve => setTimeout(resolve, 300)), // Minimum 300ms loading state for smooth UX
+      ]);
 
       if (!response.ok) {
         throw new Error('Failed to fetch clients');
@@ -413,8 +418,6 @@ export default function Clients() {
   return (
     <Box style={{ maxWidth: '100%', overflow: 'hidden' }}>
       <Container size="xl" py="md" style={{ maxWidth: '100%' }}>
-        <LoadingOverlay visible={loading} />
-
         {/* Header */}
         <Group justify="space-between" mb="lg" wrap="wrap" gap="sm">
           <Title order={2}>Clients</Title>
@@ -519,7 +522,42 @@ export default function Clients() {
 
         {/* Clients Table - scrollable on mobile */}
         <Paper shadow="xs" p="md" withBorder style={{ overflow: 'hidden' }}>
-          {filteredClients.length === 0 ? (
+          {loading ? (
+            /* Skeleton loading state that matches table layout */
+            <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <Table striped style={{ minWidth: '700px' }}>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th style={{ width: '200px' }}>Name</Table.Th>
+                    <Table.Th style={{ width: '200px' }}>Email</Table.Th>
+                    <Table.Th style={{ width: '120px' }}>Phone</Table.Th>
+                    <Table.Th style={{ width: '120px' }}>Status</Table.Th>
+                    <Table.Th style={{ width: '100px' }}>Tags</Table.Th>
+                    <Table.Th style={{ width: '100px' }}>Created</Table.Th>
+                    <Table.Th style={{ width: '80px' }}>Actions</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {[...Array(8)].map((_, index) => (
+                    <Table.Tr key={index}>
+                      <Table.Td><Skeleton height={20} width="80%" radius="sm" /></Table.Td>
+                      <Table.Td><Skeleton height={20} width="70%" radius="sm" /></Table.Td>
+                      <Table.Td><Skeleton height={20} width="90%" radius="sm" /></Table.Td>
+                      <Table.Td><Skeleton height={24} width={80} radius="xl" /></Table.Td>
+                      <Table.Td><Skeleton height={20} width={50} radius="xl" /></Table.Td>
+                      <Table.Td><Skeleton height={20} width="80%" radius="sm" /></Table.Td>
+                      <Table.Td>
+                        <Group gap="xs" wrap="nowrap">
+                          <Skeleton height={28} width={28} radius="sm" />
+                          <Skeleton height={28} width={28} radius="sm" />
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Box>
+          ) : filteredClients.length === 0 ? (
             <Text c="dimmed" ta="center" py="xl">
               {clients.length === 0 ? 'No clients yet. Click "Add Client" to create one.' : 'No clients match your search or filter.'}
             </Text>
