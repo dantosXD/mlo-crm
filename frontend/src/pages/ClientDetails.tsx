@@ -382,7 +382,7 @@ export default function ClientDetails() {
   });
   const [selectedScenarios, setSelectedScenarios] = useState<string[]>([]);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
-  const [scenarioFormErrors, setScenarioFormErrors] = useState<{ amount?: string; interestRate?: string }>({});
+  const [scenarioFormErrors, setScenarioFormErrors] = useState<{ name?: string; amount?: string; interestRate?: string; termYears?: string }>({});
 
   // Document state
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -1182,6 +1182,37 @@ export default function ClientDetails() {
   };
 
   const handleCalculateScenario = async () => {
+    // Validate required fields for calculation
+    const errors: { name?: string; amount?: string; interestRate?: string; termYears?: string } = {};
+
+    if (!newScenarioForm.name.trim()) {
+      errors.name = 'Scenario name is required';
+    }
+
+    if (newScenarioForm.amount <= 0) {
+      errors.amount = 'Loan amount must be greater than 0';
+    }
+
+    if (newScenarioForm.interestRate <= 0) {
+      errors.interestRate = 'Interest rate must be greater than 0%';
+    } else if (newScenarioForm.interestRate > 30) {
+      errors.interestRate = 'Interest rate cannot exceed 30%';
+    }
+
+    if (!newScenarioForm.termYears || newScenarioForm.termYears <= 0) {
+      errors.termYears = 'Term is required and must be greater than 0';
+    } else if (newScenarioForm.termYears > 40) {
+      errors.termYears = 'Term cannot exceed 40 years';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setScenarioFormErrors(errors);
+      return;
+    }
+
+    // Clear errors
+    setScenarioFormErrors({});
+
     try {
       const response = await fetch(`${API_URL}/loan-scenarios/calculate`, {
         method: 'POST',
@@ -1225,15 +1256,10 @@ export default function ClientDetails() {
 
   const handleCreateScenario = async () => {
     // Validate required fields
-    const errors: { amount?: string; interestRate?: string } = {};
+    const errors: { name?: string; amount?: string; interestRate?: string; termYears?: string } = {};
 
     if (!newScenarioForm.name.trim()) {
-      notifications.show({
-        title: 'Validation Error',
-        message: 'Scenario name is required',
-        color: 'red',
-      });
-      return;
+      errors.name = 'Scenario name is required';
     }
 
     // Validate loan amount - must be positive
@@ -1246,6 +1272,13 @@ export default function ClientDetails() {
       errors.interestRate = 'Interest rate must be greater than 0%';
     } else if (newScenarioForm.interestRate > 30) {
       errors.interestRate = 'Interest rate cannot exceed 30%';
+    }
+
+    // Validate term years
+    if (!newScenarioForm.termYears || newScenarioForm.termYears <= 0) {
+      errors.termYears = 'Term is required and must be greater than 0';
+    } else if (newScenarioForm.termYears > 40) {
+      errors.termYears = 'Term cannot exceed 40 years';
     }
 
     if (Object.keys(errors).length > 0) {
@@ -2896,7 +2929,11 @@ export default function ClientDetails() {
             placeholder="e.g., 30-Year Fixed 6.5%"
             required
             value={newScenarioForm.name}
-            onChange={(e) => setNewScenarioForm({ ...newScenarioForm, name: e.target.value })}
+            onChange={(e) => {
+              setNewScenarioForm({ ...newScenarioForm, name: e.target.value });
+              if (scenarioFormErrors.name) setScenarioFormErrors({ ...scenarioFormErrors, name: undefined });
+            }}
+            error={scenarioFormErrors.name}
           />
 
           <Select
@@ -2957,8 +2994,12 @@ export default function ClientDetails() {
               min={1}
               max={40}
               value={newScenarioForm.termYears}
-              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, termYears: Number(value) || 30 })}
+              onChange={(value) => {
+                setNewScenarioForm({ ...newScenarioForm, termYears: Number(value) || 0 });
+                if (scenarioFormErrors.termYears) setScenarioFormErrors({ ...scenarioFormErrors, termYears: undefined });
+              }}
               leftSection={<IconCalendar size={16} />}
+              error={scenarioFormErrors.termYears}
             />
             <NumberInput
               label="Down Payment"
