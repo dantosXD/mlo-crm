@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
+import { decrypt } from '../utils/crypto.js';
 
 const router = Router();
 
@@ -24,10 +25,22 @@ router.get('/', async (req: AuthRequest, res: Response) => {
           select: { id: true, name: true },
         },
         subtasks: true,
+        client: {
+          select: { id: true, nameEncrypted: true },
+        },
       },
     });
 
-    res.json(tasks);
+    // Decrypt client names and add to response
+    const tasksWithClientName = tasks.map(task => ({
+      ...task,
+      client: task.client ? {
+        id: task.client.id,
+        name: decrypt(task.client.nameEncrypted),
+      } : null,
+    }));
+
+    res.json(tasksWithClientName);
   } catch (error) {
     console.error('Error fetching tasks:', error);
     res.status(500).json({

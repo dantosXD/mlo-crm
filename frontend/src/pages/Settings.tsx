@@ -15,6 +15,7 @@ import {
   Avatar,
   PasswordInput,
   Card,
+  Alert,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -24,6 +25,7 @@ import {
   IconPalette,
   IconSettings,
   IconDeviceFloppy,
+  IconAlertCircle,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -55,6 +57,15 @@ export default function Settings() {
     compactMode: false,
     showWelcome: true,
   });
+
+  // Password change state
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordError, setPasswordError] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
 
   const handleProfileSave = async () => {
     try {
@@ -96,6 +107,71 @@ export default function Settings() {
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    // Clear previous errors
+    setPasswordError('');
+
+    // Validation
+    if (!passwordForm.currentPassword) {
+      setPasswordError('Current password is required');
+      return;
+    }
+
+    if (!passwordForm.newPassword) {
+      setPasswordError('New password is required');
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters');
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+
+    try {
+      setSavingPassword(true);
+      const response = await fetch(`${API_URL}/auth/password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setPasswordError(data.message || 'Failed to change password');
+        return;
+      }
+
+      // Clear form and show success
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+
+      notifications.show({
+        title: 'Password Changed',
+        message: 'Your password has been updated successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      setPasswordError('An error occurred while changing password');
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -190,23 +266,38 @@ export default function Settings() {
 
               <Divider />
 
+              {passwordError && (
+                <Alert icon={<IconAlertCircle size={16} />} color="red" title="Error">
+                  {passwordError}
+                </Alert>
+              )}
+
               <PasswordInput
                 label="Current Password"
                 placeholder="Enter current password"
+                value={passwordForm.currentPassword}
+                onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                error={passwordError && !passwordForm.currentPassword ? 'Required' : undefined}
               />
 
               <PasswordInput
                 label="New Password"
                 placeholder="Enter new password"
+                value={passwordForm.newPassword}
+                onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                error={passwordError && passwordForm.newPassword.length > 0 && passwordForm.newPassword.length < 8 ? 'Must be at least 8 characters' : undefined}
               />
 
               <PasswordInput
                 label="Confirm New Password"
                 placeholder="Confirm new password"
+                value={passwordForm.confirmPassword}
+                onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                error={passwordError && passwordForm.confirmPassword && passwordForm.newPassword !== passwordForm.confirmPassword ? 'Passwords do not match' : undefined}
               />
 
               <Group justify="flex-end" mt="md">
-                <Button leftSection={<IconDeviceFloppy size={16} />}>
+                <Button leftSection={<IconDeviceFloppy size={16} />} onClick={handlePasswordChange} loading={savingPassword}>
                   Update Password
                 </Button>
               </Group>

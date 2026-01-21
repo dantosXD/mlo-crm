@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Container,
   Title,
@@ -12,6 +13,7 @@ import {
   Badge,
   Loader,
   Center,
+  Checkbox,
 } from '@mantine/core';
 import {
   IconUsers,
@@ -23,6 +25,16 @@ import {
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../stores/authStore';
+
+interface Task {
+  id: string;
+  text: string;
+  status: string;
+  priority: string;
+  dueDate: string | null;
+  clientId: string | null;
+  clientName?: string;
+}
 
 interface DashboardStats {
   totalClients: number;
@@ -37,6 +49,7 @@ interface DashboardStats {
     createdAt: string;
   }>;
   pendingTasks: number;
+  pendingTasksList: Task[];
 }
 
 const statusColors: Record<string, string> = {
@@ -51,6 +64,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { accessToken } = useAuthStore();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,9 +118,10 @@ export default function Dashboard() {
         // Documents API may not exist yet
       }
 
-      // Fetch tasks count
+      // Fetch tasks count and pending tasks list
       let totalTasks = 0;
       let pendingTasks = 0;
+      let pendingTasksList: Task[] = [];
       try {
         const tasksRes = await fetch('http://localhost:3000/api/tasks', {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -114,7 +129,18 @@ export default function Dashboard() {
         if (tasksRes.ok) {
           const tasks = await tasksRes.json();
           totalTasks = tasks.length;
-          pendingTasks = tasks.filter((t: { status: string }) => t.status !== 'COMPLETE').length;
+          const pending = tasks.filter((t: { status: string }) => t.status !== 'COMPLETE');
+          pendingTasks = pending.length;
+          // Get up to 5 pending tasks for the widget
+          pendingTasksList = pending.slice(0, 5).map((t: Task & { client?: { id: string; name: string } | null }) => ({
+            id: t.id,
+            text: t.text,
+            status: t.status,
+            priority: t.priority,
+            dueDate: t.dueDate,
+            clientId: t.clientId,
+            clientName: t.client?.name || undefined,
+          }));
         }
       } catch {
         // Tasks API may not exist yet
@@ -142,6 +168,7 @@ export default function Dashboard() {
         clientsByStatus,
         recentClients,
         pendingTasks,
+        pendingTasksList,
       });
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
@@ -152,6 +179,45 @@ export default function Dashboard() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTaskComplete = async (taskId: string) => {
+    try {
+      const res = await fetch(`http://localhost:3000/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ status: 'COMPLETE' }),
+      });
+
+      if (res.ok) {
+        // Update local state to remove completed task
+        setStats(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            pendingTasks: prev.pendingTasks - 1,
+            pendingTasksList: prev.pendingTasksList.filter(t => t.id !== taskId),
+          };
+        });
+        notifications.show({
+          title: 'Task completed',
+          message: 'Task has been marked as complete',
+          color: 'green',
+        });
+      } else {
+        throw new Error('Failed to update task');
+      }
+    } catch (error) {
+      console.error('Error completing task:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to complete task',
+        color: 'red',
+      });
     }
   };
 
@@ -264,6 +330,51 @@ export default function Dashboard() {
           </Group>
         </Paper>
 
+        {/* Pending Tasks */}
+        <Paper shadow="sm" p="md" radius="md" withBorder>
+          <Title order={4} mb="md">
+            <Group gap="xs">
+              <IconChecklist size={20} />
+              Pending Tasks
+            </Group>
+          </Title>
+          {stats?.pendingTasksList && stats.pendingTasksList.length > 0 ? (
+            <Stack gap="xs">
+              {stats.pendingTasksList.map((task) => (
+                <Card key={task.id} p="sm" withBorder>
+                  <Group justify="space-between" wrap="nowrap">
+                    <Group gap="sm" wrap="nowrap" style={{ flex: 1 }}>
+                      <Checkbox
+                        aria-label={`Complete task: ${task.text}`}
+                        onChange={() => handleTaskComplete(task.id)}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Text fw={500} truncate>{task.text}</Text>
+                        {task.clientName && (
+                          <Text size="xs" c="dimmed" truncate>
+                            Client: {task.clientName}
+                          </Text>
+                        )}
+                      </div>
+                    </Group>
+                    <Badge
+                      size="sm"
+                      color={
+                        task.priority === 'HIGH' ? 'red' :
+                        task.priority === 'MEDIUM' ? 'yellow' : 'blue'
+                      }
+                    >
+                      {task.priority}
+                    </Badge>
+                  </Group>
+                </Card>
+              ))}
+            </Stack>
+          ) : (
+            <Text c="dimmed" size="sm">No pending tasks. Great job!</Text>
+          )}
+        </Paper>
+
         {/* Recent Clients */}
         <Paper shadow="sm" p="md" radius="md" withBorder>
           <Title order={4} mb="md">
@@ -275,7 +386,14 @@ export default function Dashboard() {
           {stats?.recentClients && stats.recentClients.length > 0 ? (
             <Stack gap="xs">
               {stats.recentClients.map((client) => (
-                <Card key={client.id} p="sm" withBorder>
+                <Card
+                  key={client.id}
+                  p="sm"
+                  withBorder
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/clients/${client.id}`)}
+                  aria-label={`View details for ${client.name}`}
+                >
                   <Group justify="space-between">
                     <div>
                       <Text fw={500}>{client.name}</Text>

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { login, register, refresh, logout, getMe, updateProfile } from '../controllers/authController.js';
+import { login, register, refresh, logout, getMe, updateProfile, changePassword } from '../controllers/authController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = Router();
@@ -41,5 +41,6 @@ router.post('/logout', logout);
 // Protected routes
 router.get('/me', authenticateToken, getMe);
 router.put('/profile', authenticateToken, updateProfile);
+router.put('/password', authenticateToken, changePassword);
 
 export default router;
