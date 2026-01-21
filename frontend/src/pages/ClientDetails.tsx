@@ -350,6 +350,7 @@ export default function ClientDetails() {
   const [addTaskModalOpen, setAddTaskModalOpen] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
+  const [taskPriorityFilter, setTaskPriorityFilter] = useState<string | null>(null);
   const [newTaskForm, setNewTaskForm] = useState({
     text: '',
     description: '',
@@ -2317,20 +2318,36 @@ export default function ClientDetails() {
         <Tabs.Panel value="tasks" pt="md">
           <Group justify="space-between" mb="md">
             <Title order={4}>Tasks</Title>
-            <Button
-              leftSection={<IconPlus size={16} />}
-              onClick={() => setAddTaskModalOpen(true)}
-            >
-              Add Task
-            </Button>
+            <Group>
+              <Select
+                placeholder="Filter by priority"
+                clearable
+                data={[
+                  { value: 'LOW', label: 'Low' },
+                  { value: 'MEDIUM', label: 'Medium' },
+                  { value: 'HIGH', label: 'High' },
+                ]}
+                value={taskPriorityFilter}
+                onChange={setTaskPriorityFilter}
+                style={{ width: 160 }}
+              />
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setAddTaskModalOpen(true)}
+              >
+                Add Task
+              </Button>
+            </Group>
           </Group>
           {loadingTasks ? (
             <Text c="dimmed">Loading tasks...</Text>
           ) : tasks.length === 0 ? (
             <Text c="dimmed">No tasks yet. Click "Add Task" to create one.</Text>
+          ) : tasks.filter(task => !taskPriorityFilter || task.priority === taskPriorityFilter).length === 0 ? (
+            <Text c="dimmed">No tasks match the selected priority filter.</Text>
           ) : (
             <Stack gap="md">
-              {tasks.map((task) => {
+              {tasks.filter(task => !taskPriorityFilter || task.priority === taskPriorityFilter).map((task) => {
                 const overdue = isTaskOverdue(task);
                 return (
                   <Paper
