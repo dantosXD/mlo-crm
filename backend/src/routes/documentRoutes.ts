@@ -318,6 +318,47 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
   }
 });
 
+// GET /api/documents/:id/download - Download a document file
+router.get('/:id/download', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.userId;
+    const userRole = req.user!.role;
+
+    const document = await prisma.document.findUnique({
+      where: { id },
+      include: { client: true },
+    });
+
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Check access permission
+    if (userRole !== 'ADMIN' && userRole !== 'MANAGER') {
+      if (document.client?.createdById !== userId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+
+    // Check if file exists
+    if (!document.filePath || !fs.existsSync(document.filePath)) {
+      return res.status(404).json({ error: 'File not found on server' });
+    }
+
+    // Set headers for download
+    res.setHeader('Content-Disposition', `attachment; filename="${document.fileName}"`);
+    res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
+
+    // Stream the file
+    const fileStream = fs.createReadStream(document.filePath);
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error('Error downloading document:', error);
+    res.status(500).json({ error: 'Failed to download document' });
+  }
+});
+
 // DELETE /api/documents/:id - Delete a document
 router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {

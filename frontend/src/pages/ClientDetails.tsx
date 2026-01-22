@@ -1963,6 +1963,48 @@ export default function ClientDetails() {
     }
   };
 
+  const handleDownloadDocument = async (documentId: string, fileName: string) => {
+    try {
+      const response = await fetch(`${API_URL}/documents/${documentId}/download`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to download document');
+      }
+
+      // Get the blob from response
+      const blob = await response.blob();
+
+      // Create a temporary URL and trigger download
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+
+      // Clean up
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      notifications.show({
+        title: 'Success',
+        message: 'Document downloaded successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error downloading document:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to download document',
+        color: 'red',
+      });
+    }
+  };
+
   const handleDeleteDocument = (documentId: string) => {
     const doc = documents.find(d => d.id === documentId);
     if (doc) {
@@ -2376,6 +2418,14 @@ export default function ClientDetails() {
                             },
                           }}
                         />
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          onClick={() => handleDownloadDocument(doc.id, doc.fileName)}
+                          aria-label={`Download document ${doc.name}`}
+                        >
+                          <IconDownload size={16} />
+                        </ActionIcon>
                         <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteDocument(doc.id)} aria-label={`Delete document ${doc.name}`}>
                           <IconTrash size={16} />
                         </ActionIcon>
