@@ -73,6 +73,16 @@ router.get('/statuses', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// TEST ENDPOINT: GET /api/clients/test-500-error - Intentionally returns 500 error for testing
+// This endpoint is used to verify that the frontend handles 500 errors gracefully
+// NOTE: This must be defined BEFORE the /:id route to avoid being caught as an ID parameter
+router.get('/test-500-error', (req: AuthRequest, res: Response) => {
+  res.status(500).json({
+    error: 'Internal Server Error',
+    message: 'This is a test error to verify graceful error handling',
+  });
+});
+
 // GET /api/clients/:id - Get single client
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
@@ -392,15 +402,6 @@ router.patch('/bulk', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReq
       message: 'Failed to bulk update clients',
     });
   }
-});
-
-// TEST ENDPOINT: GET /api/clients/test-500-error - Intentionally returns 500 error for testing
-// This endpoint is used to verify that the frontend handles 500 errors gracefully
-router.get('/test-500-error', (req: AuthRequest, res: Response) => {
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: 'This is a test error to verify graceful error handling',
-  });
 });
 
 export default router;
