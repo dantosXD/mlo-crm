@@ -73,8 +73,13 @@ function getApiErrorMessage(error: ApiError, context: string): string {
     return getServerErrorMessage(context);
   }
 
-  // Client errors (4xx)
+  // Client errors (4xx) - use backend error message if available, otherwise use generic
   if (error.status && error.status >= 400 && error.status < 500) {
+    // If the error message is from the backend (not just "HTTP 409: Conflict"), use it
+    if (error.message && !error.message.startsWith('HTTP ')) {
+      return error.message;
+    }
+    // Otherwise fall back to generic client error messages
     return getClientErrorMessage(error.status, context);
   }
 
@@ -186,7 +191,18 @@ export async function fetchWithErrorHandling(
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      const error: ApiError = new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Try to read error message from response body
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch {
+        // If response is not JSON, use status text
+      }
+
+      const error: ApiError = new Error(errorMessage);
       error.status = response.status;
       error.isServerError = response.status >= 500;
       throw error;
