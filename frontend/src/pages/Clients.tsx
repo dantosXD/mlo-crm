@@ -665,8 +665,7 @@ export default function Clients() {
                   setSearchQuery('');
                   setStatusFilter(null);
                   setTagFilter(null);
-                  setDateRangeFilter(null);
-                  updateUrlParams({});
+                  setDateFilter(null);
                 }}
               />
             )
