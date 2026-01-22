@@ -108,7 +108,9 @@ export async function runDocumentReminderJob() {
 }
 
 // Allow running this file directly
-if (require.main === module) {
+const isMainModule = import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
+
+if (isMainModule) {
   runDocumentReminderJob()
     .then(() => {
       console.log('Document reminder job completed successfully');
