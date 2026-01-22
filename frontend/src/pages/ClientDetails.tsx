@@ -2403,6 +2403,16 @@ export default function ClientDetails() {
                 onChange={setTaskPriorityFilter}
                 style={{ width: 160 }}
               />
+              <Select
+                placeholder="Due date"
+                clearable
+                data={[
+                  { value: 'today', label: 'Due Today' },
+                ]}
+                value={taskDateFilter}
+                onChange={setTaskDateFilter}
+                style={{ width: 140 }}
+              />
               <Button
                 leftSection={<IconPlus size={16} />}
                 onClick={() => setAddTaskModalOpen(true)}
@@ -2421,13 +2431,17 @@ export default function ClientDetails() {
               ctaLabel="Add Task"
               onCtaClick={() => setAddTaskModalOpen(true)}
             />
-          ) : tasks.filter(task => !taskPriorityFilter || task.priority === taskPriorityFilter).length === 0 ? (
+          ) : tasks.filter(task => {
+          const matchesPriority = !taskPriorityFilter || task.priority === taskPriorityFilter;
+          const matchesDate = !taskDateFilter || (taskDateFilter === 'today' && isTaskDueToday(task));
+          return matchesPriority && matchesDate;
+        }).length === 0 ? (
             <EmptyState
               iconType="tasks"
               title="No matching tasks"
-              description="No tasks match the selected priority filter. Try changing the filter or add a new task."
+              description="No tasks match the selected filters. Try changing the filters or add a new task."
               ctaLabel="Clear Filter"
-              onCtaClick={() => setTaskPriorityFilter(null)}
+              onCtaClick={() => { setTaskPriorityFilter(null); setTaskDateFilter(null); }}
             />
           ) : (
             <Stack gap="md">
