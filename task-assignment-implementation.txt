@@ -1,0 +1,50 @@
+Task Assignment Feature Implementation Summary:
+==========================================
+
+Feature Implemented: Task assignment workflow
+Status: FULLY IMPLEMENTED AND TESTED ✅
+
+What Was Built:
+1. Backend: GET /api/users/team endpoint
+   - Returns list of active team members
+   - No admin access required (all authenticated users)
+   - Returns: id, name, role for each user
+
+2. Backend: Updated task creation/update endpoints
+   - POST /api/tasks - accepts assignedToId parameter
+   - PUT /api/tasks/:id - accepts assignedToId parameter
+   - Already existed in codebase, now utilized
+
+3. Frontend: Team members dropdown in task creation modal
+   - 'Assign To (optional)' Select component
+   - Fetches team members on component mount
+   - Shows: 'Name (Role)' format
+   - Clearable (can leave unassigned)
+
+4. Frontend: Task display shows assignment
+   - User icon + 'Assigned to: Name' below task text
+   - Only shows when task has assignment
+
+Test Steps Verified:
+1. ✅ Navigate to client details and Tasks tab
+2. ✅ Click 'Add Task' button
+3. ✅ See 'Assign To (optional)' dropdown field
+4. ✅ Click dropdown and see all team members with roles
+5. ✅ Select 'Jane Doe (MANAGER)' from dropdown
+6. ✅ Fill in task: 'TEST_TASK_ASSIGN_76 - Follow up with client'
+7. ✅ Click Save button
+8. ✅ Verify success notification: 'Task created successfully'
+9. ✅ Verify task appears in list with 'Assigned to: Jane Doe'
+10. ✅ Verify assignment persisted after page refresh
+11. ✅ Delete test task successfully
+
+Key Implementation Details:
+- Team members fetched from GET /api/users/team
+- Task form state includes assignedToId field
+- Task creation sends assignedToId to backend
+- Task display conditionally shows assignment info
+- Database schema already had assignedToId field
+
+Screenshots:
+- feature-76-step1-task-created-with-assignment.png
+- feature-76-step2-assignment-persisted-final.png
