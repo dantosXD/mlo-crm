@@ -18,6 +18,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconSearch, IconPin, IconEye, IconNotes } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
+import { EmptyState } from '../components/EmptyState';
 
 // Helper function to format relative time (e.g., "just now", "5 minutes ago", "2 hours ago")
 const formatRelativeTime = (dateString: string): string => {
@@ -149,9 +150,21 @@ export default function Notes() {
       {/* Notes List */}
       <Paper shadow="xs" p="md" withBorder>
         {sortedNotes.length === 0 ? (
-          <Text c="dimmed" ta="center" py="xl">
-            {searchQuery ? 'No notes match your search.' : 'No notes yet.'}
-          </Text>
+          searchQuery ? (
+            <EmptyState
+              iconType="notes"
+              title="No matching notes"
+              description="No notes match your search. Try a different search term."
+              ctaLabel="Clear Search"
+              onCtaClick={() => setSearchQuery('')}
+            />
+          ) : (
+            <EmptyState
+              iconType="notes"
+              title="No notes yet"
+              description="Notes from all clients will appear here. Create notes from a client's detail page."
+            />
+          )
         ) : (
           <Stack gap="md">
             {sortedNotes.map((note) => (

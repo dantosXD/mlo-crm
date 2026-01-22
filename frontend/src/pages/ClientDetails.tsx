@@ -64,6 +64,7 @@ import {
   IconUpload,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
+import { EmptyState } from '../components/EmptyState';
 
 // Helper function to format relative time (e.g., "just now", "5 minutes ago", "2 hours ago")
 const formatRelativeTime = (dateString: string): string => {
@@ -2195,7 +2196,16 @@ export default function ClientDetails() {
           {loadingNotes ? (
             <Text c="dimmed">Loading notes...</Text>
           ) : notes.length === 0 ? (
-            <Text c="dimmed">No notes yet. Click "Add Note" to create one.</Text>
+            <EmptyState
+              iconType="notes"
+              title="No notes yet"
+              description="Add notes to keep track of important information about this client."
+              ctaLabel="Add Note"
+              onCtaClick={() => {
+                fetchNoteTemplates();
+                setAddNoteModalOpen(true);
+              }}
+            />
           ) : (
             <Stack gap="md">
               {sortedNotes.map((note) => (
@@ -2250,7 +2260,13 @@ export default function ClientDetails() {
           {loadingDocuments ? (
             <Text c="dimmed">Loading documents...</Text>
           ) : documents.length === 0 ? (
-            <Text c="dimmed">No documents yet. Click "Add Document" to create one.</Text>
+            <EmptyState
+              iconType="documents"
+              title="No documents yet"
+              description="Upload and manage documents for this client's loan application."
+              ctaLabel="Add Document"
+              onCtaClick={() => setAddDocumentModalOpen(true)}
+            />
           ) : (
             <Stack gap="md">
               {documents.map((doc) => {
@@ -2364,9 +2380,21 @@ export default function ClientDetails() {
           {loadingTasks ? (
             <Text c="dimmed">Loading tasks...</Text>
           ) : tasks.length === 0 ? (
-            <Text c="dimmed">No tasks yet. Click "Add Task" to create one.</Text>
+            <EmptyState
+              iconType="tasks"
+              title="No tasks yet"
+              description="Create tasks to track what needs to be done for this client."
+              ctaLabel="Add Task"
+              onCtaClick={() => setAddTaskModalOpen(true)}
+            />
           ) : tasks.filter(task => !taskPriorityFilter || task.priority === taskPriorityFilter).length === 0 ? (
-            <Text c="dimmed">No tasks match the selected priority filter.</Text>
+            <EmptyState
+              iconType="tasks"
+              title="No matching tasks"
+              description="No tasks match the selected priority filter. Try changing the filter or add a new task."
+              ctaLabel="Clear Filter"
+              onCtaClick={() => setTaskPriorityFilter(null)}
+            />
           ) : (
             <Stack gap="md">
               {tasks.filter(task => !taskPriorityFilter || task.priority === taskPriorityFilter).map((task) => {
@@ -2451,7 +2479,13 @@ export default function ClientDetails() {
           {loadingScenarios ? (
             <Text c="dimmed">Loading loan scenarios...</Text>
           ) : loanScenarios.length === 0 ? (
-            <Text c="dimmed">No loan scenarios yet. Click "Add Scenario" to create one.</Text>
+            <EmptyState
+              iconType="scenarios"
+              title="No loan scenarios yet"
+              description="Create loan scenarios to compare different financing options for this client."
+              ctaLabel="Add Scenario"
+              onCtaClick={() => setAddScenarioModalOpen(true)}
+            />
           ) : (
             <>
               {loanScenarios.length > 1 && (
@@ -2587,7 +2621,11 @@ export default function ClientDetails() {
           {loadingActivities ? (
             <Text c="dimmed">Loading activities...</Text>
           ) : activities.length === 0 ? (
-            <Text c="dimmed">No activity recorded yet.</Text>
+            <EmptyState
+              iconType="activity"
+              title="No activity recorded yet"
+              description="Activity will appear here as you work with this client's records."
+            />
           ) : (
             <Stack gap="md">
               {activities.map((activity) => (

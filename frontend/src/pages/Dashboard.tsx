@@ -25,6 +25,7 @@ import {
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../stores/authStore';
+import { EmptyState } from '../components/EmptyState';
 
 interface Task {
   id: string;
@@ -371,7 +372,11 @@ export default function Dashboard() {
               ))}
             </Stack>
           ) : (
-            <Text c="dimmed" size="sm">No pending tasks. Great job!</Text>
+            <EmptyState
+              iconType="tasks"
+              title="No pending tasks"
+              description="Great job! You're all caught up."
+            />
           )}
         </Paper>
 

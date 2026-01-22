@@ -42,6 +42,15 @@ coverage/
 *.tmp
 *.temp
 .cache/
+tmpclaude-*
+
+# Tool artifacts
+.playwright-mcp/
+windsurf_sanity/
+
+# Local exports
+autocoder-master/
+*.zip
 
 # Database files (for SQLite development)
 *.db

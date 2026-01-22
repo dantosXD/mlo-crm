@@ -25,6 +25,7 @@ import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar, IconDownload, IconEyeOff } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
+import { EmptyState } from '../components/EmptyState';
 
 interface Client {
   id: string;
@@ -558,9 +559,29 @@ export default function Clients() {
               </Table>
             </Box>
           ) : filteredClients.length === 0 ? (
-            <Text c="dimmed" ta="center" py="xl">
-              {clients.length === 0 ? 'No clients yet. Click "Add Client" to create one.' : 'No clients match your search or filter.'}
-            </Text>
+            clients.length === 0 ? (
+              <EmptyState
+                iconType="clients"
+                title="No clients yet"
+                description="Get started by adding your first client to the system."
+                ctaLabel="Add Client"
+                onCtaClick={() => setCreateModalOpen(true)}
+              />
+            ) : (
+              <EmptyState
+                iconType="clients"
+                title="No matching clients"
+                description="No clients match your search or filter criteria. Try adjusting your search or clearing filters."
+                ctaLabel="Clear Filters"
+                onCtaClick={() => {
+                  setSearchQuery('');
+                  setStatusFilter(null);
+                  setTagFilter(null);
+                  setDateRangeFilter(null);
+                  updateUrlParams({});
+                }}
+              />
+            )
           ) : (
             <>
             <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>

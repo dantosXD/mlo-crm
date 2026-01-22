@@ -19,6 +19,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconSearch, IconFilter, IconX, IconEye, IconFile, IconFileText, IconAlertTriangle } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
+import { EmptyState } from '../components/EmptyState';
 
 interface Document {
   id: string;
@@ -220,11 +221,25 @@ export default function Documents() {
       {/* Documents Table */}
       <Paper shadow="xs" p="md" withBorder>
         {filteredDocuments.length === 0 ? (
-          <Text c="dimmed" ta="center" py="xl">
-            {documents.length === 0
-              ? 'No documents yet. Upload documents from a client\'s detail page.'
-              : 'No documents match your search or filters.'}
-          </Text>
+          documents.length === 0 ? (
+            <EmptyState
+              iconType="documents"
+              title="No documents yet"
+              description="Documents from all clients will appear here. Upload documents from a client's detail page."
+            />
+          ) : (
+            <EmptyState
+              iconType="documents"
+              title="No matching documents"
+              description="No documents match your search or filter criteria. Try adjusting your filters."
+              ctaLabel="Clear Filters"
+              onCtaClick={() => {
+                setSearchQuery('');
+                setStatusFilter('');
+                setCategoryFilter('');
+              }}
+            />
+          )
         ) : (
           <Table striped highlightOnHover>
             <Table.Thead>
