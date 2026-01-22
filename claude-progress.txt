@@ -1,6 +1,58 @@
 # MLO Dashboard - Development Progress
 
-## Session 23 Summary (Current)
+## Session 25 Summary (Current)
+Date: January 22, 2026
+
+### What Was Accomplished
+
+#### Feature #50: Change document status (PASSED) ✅
+- **All Test Steps Verified**:
+  1. ✅ Upload a document (status: Uploaded)
+  2. ✅ Change status to 'Under Review'
+  3. ✅ Verify status badge updates with color change
+  4. ✅ Change status to 'Approved'
+  5. ✅ Verify green badge color for Approved status
+  6. ✅ Refresh page - status persists in database
+- **Implementation Details**:
+  - Document status dropdown already implemented in ClientDetails.tsx (lines 2400-2420)
+  - handleUpdateDocumentStatus function calls PUT /api/documents/:id
+  - Status options: Required, Requested, Uploaded, Under Review, Approved, Rejected, Expired
+  - Color-coded badges based on status (green for Approved, orange for Under Review, etc.)
+  - Immediate UI updates after status change
+  - Success notifications shown on each status update
+  - Full database persistence verified
+- **Regression Test**: Feature #36 (Create client) - PASSED ✅
+- **Mock Data Check**: NO mock data patterns found in codebase
+- **Screenshots**:
+  - feature-50-step1-uploaded.png - Initial document with Uploaded status
+  - feature-50-step2-under-review.png - Status changed to Under Review
+  - feature-50-step3-approved.png - Status changed to Approved (green badge)
+  - feature-50-step4-after-refresh.png - Status persists after page refresh
+
+### Features Passing: 227/251 (90.4%)
+
+New features passed this session:
+- #50: Change document status
+
+### Files Modified This Session
+
+```
+(No new files - functionality already existed)
+```
+
+### Commits Made
+1. feat: Complete Feature #50 - Change document status workflow
+
+### Testing Performed
+1. **Regression Testing**: Feature #36 (Create client) - PASSED ✅
+2. **Feature Testing**: Feature #50 (Document status workflow) - PASSED ✅
+3. **Database Persistence**: Status persists after page refresh - VERIFIED ✅
+4. **Cleanup**: Test document deleted successfully - VERIFIED ✅
+5. **Mock Data Check**: NO mock data patterns found - VERIFIED ✅
+
+---
+
+## Session 23 Summary
 Date: January 22, 2026
 
 ### What Was Accomplished
