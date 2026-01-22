@@ -283,4 +283,74 @@ router.delete('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReq
   }
 });
 
+// PATCH /api/clients/bulk - Bulk update client status
+// Only ADMIN, MANAGER, MLO can bulk update clients
+router.patch('/bulk', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest, res: Response) => {
+  try {
+    const { clientIds, status } = req.body;
+    const userId = req.user?.userId;
+
+    if (!Array.isArray(clientIds) || clientIds.length === 0) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'clientIds must be a non-empty array',
+      });
+    }
+
+    if (!status) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'status is required',
+      });
+    }
+
+    // Verify all clients belong to the user and exist
+    const clients = await prisma.client.findMany({
+      where: {
+        id: { in: clientIds },
+        createdById: userId,
+      },
+    });
+
+    if (clients.length !== clientIds.length) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Some clients do not exist or you do not have access to them',
+      });
+    }
+
+    // Bulk update
+    await prisma.client.updateMany({
+      where: {
+        id: { in: clientIds },
+        createdById: userId,
+      },
+      data: { status },
+    });
+
+    // Log activities
+    for (const client of clients) {
+      await prisma.activity.create({
+        data: {
+          clientId: client.id,
+          userId: userId!,
+          type: 'CLIENT_UPDATED',
+          description: `Client ${client.nameEncrypted} status changed to ${status}`,
+        },
+      });
+    }
+
+    res.json({
+      message: `${clientIds.length} client(s) updated successfully`,
+      updatedCount: clientIds.length,
+    });
+  } catch (error) {
+    console.error('Error bulk updating clients:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to bulk update clients',
+    });
+  }
+});
+
 export default router;

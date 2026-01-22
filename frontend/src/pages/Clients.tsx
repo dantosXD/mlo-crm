@@ -20,6 +20,7 @@ import {
   Box,
   ScrollArea,
   Skeleton,
+  Checkbox,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -130,6 +131,12 @@ export default function Clients() {
   type SortDirection = 'asc' | 'desc';
   const [sortColumn, setSortColumn] = useState<SortColumn>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  // Bulk selection state
+  const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
+  const [bulkStatusModalOpen, setBulkStatusModalOpen] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState<string | null>(null);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
 
   // Navigate to client details while storing current filter state
   const navigateToClient = (clientId: string) => {
@@ -279,6 +286,59 @@ export default function Clients() {
         message: 'Failed to delete client',
         color: 'red',
       });
+    }
+  };
+
+  const handleBulkStatusUpdate = async () => {
+    if (!bulkStatus || selectedClientIds.length === 0) {
+      return;
+    }
+
+    setBulkUpdating(true);
+    try {
+      const response = await fetch(`${API_URL}/clients/bulk`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          clientIds: selectedClientIds,
+          status: bulkStatus,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to bulk update clients');
+      }
+
+      const result = await response.json();
+
+      // Refresh clients list
+      const clientsResponse = await fetch(`${API_URL}/clients`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const updatedClients = await clientsResponse.json();
+      setClients(updatedClients);
+
+      setSelectedClientIds([]);
+      setBulkStatusModalOpen(false);
+      setBulkStatus(null);
+
+      notifications.show({
+        title: 'Success',
+        message: result.message || 'Clients updated successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error bulk updating clients:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update clients',
+        color: 'red',
+      });
+    } finally {
+      setBulkUpdating(false);
     }
   };
 
@@ -521,6 +581,30 @@ export default function Clients() {
           </Group>
         </Stack>
 
+        {/* Bulk Actions Bar */}
+        {selectedClientIds.length > 0 && (
+          <Paper shadow="xs" p="md" withBorder mb="sm" style={{ backgroundColor: '#f8f9fa' }}>
+            <Group justify="space-between" wrap="wrap">
+              <Text fw={500}>{selectedClientIds.length} client(s) selected</Text>
+              <Group gap="sm">
+                <Button
+                  size="sm"
+                  onClick={() => setBulkStatusModalOpen(true)}
+                >
+                  Change Status
+                </Button>
+                <Button
+                  size="sm"
+                  variant="subtle"
+                  onClick={() => setSelectedClientIds([])}
+                >
+                  Clear Selection
+                </Button>
+              </Group>
+            </Group>
+          </Paper>
+        )}
+
         {/* Clients Table - scrollable on mobile */}
         <Paper shadow="xs" p="md" withBorder style={{ overflow: 'hidden' }}>
           {loading ? (
@@ -585,9 +669,21 @@ export default function Clients() {
           ) : (
             <>
             <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <Table striped highlightOnHover style={{ minWidth: '700px' }}>
+              <Table striped highlightOnHover style={{ minWidth: '750px' }}>
                 <Table.Thead>
                   <Table.Tr>
+                    <Table.Th style={{ width: '50px' }}>
+                      <Checkbox
+                        checked={selectedClientIds.length === paginatedClients.length && paginatedClients.length > 0}
+                        onChange={(e) => {
+                          if (e.currentTarget.checked) {
+                            setSelectedClientIds(paginatedClients.map(c => c.id));
+                          } else {
+                            setSelectedClientIds([]);
+                          }
+                        }}
+                      />
+                    </Table.Th>
                     <Table.Th
                       onClick={() => handleSort('name')}
                       style={{ cursor: 'pointer', userSelect: 'none' }}
@@ -628,6 +724,18 @@ export default function Clients() {
                 <Table.Tbody>
                   {paginatedClients.map((client) => (
                     <Table.Tr key={client.id}>
+                      <Table.Td>
+                        <Checkbox
+                          checked={selectedClientIds.includes(client.id)}
+                          onChange={(e) => {
+                            if (e.currentTarget.checked) {
+                              setSelectedClientIds([...selectedClientIds, client.id]);
+                            } else {
+                              setSelectedClientIds(selectedClientIds.filter(id => id !== client.id));
+                            }
+                          }}
+                        />
+                      </Table.Td>
                       <Table.Td style={{ maxWidth: '200px' }}>
                         <Text fw={500} truncate="end" title={client.name}>{client.name}</Text>
                       </Table.Td>
@@ -786,6 +894,43 @@ export default function Clients() {
               </Button>
               <Button onClick={handleCreateClient} loading={creating}>
                 Create Client
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
+
+        {/* Bulk Status Update Modal */}
+        <Modal
+          opened={bulkStatusModalOpen}
+          onClose={() => {
+            setBulkStatusModalOpen(false);
+            setBulkStatus(null);
+          }}
+          title={`Update Status for ${selectedClientIds.length} Client(s)`}
+        >
+          <Stack>
+            <Text size="sm">Select new status for {selectedClientIds.length} selected client(s):</Text>
+            <Select
+              placeholder="Select status"
+              data={[
+                { value: 'LEAD', label: 'Lead' },
+                { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
+                { value: 'ACTIVE', label: 'Active' },
+                { value: 'PROCESSING', label: 'Processing' },
+                { value: 'UNDERWRITING', label: 'Underwriting' },
+                { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
+                { value: 'CLOSED', label: 'Closed' },
+                { value: 'DENIED', label: 'Denied' },
+              ]}
+              value={bulkStatus}
+              onChange={setBulkStatus}
+            />
+            <Group justify="flex-end" mt="md">
+              <Button variant="subtle" onClick={() => setBulkStatusModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleBulkStatusUpdate} loading={bulkUpdating} disabled={!bulkStatus}>
+                Update Status
               </Button>
             </Group>
           </Stack>
