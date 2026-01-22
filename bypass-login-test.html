@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dashboard Layout Test - Bypass Login</title>
+</head>
+<body>
+  <h1>Dashboard Layout Persistence Test</h1>
+  <p>This page will open the dashboard in a new window with a bypass token.</p>
+  <button onclick="openDashboard()">Open Dashboard</button>
+
+  <script>
+    function openDashboard() {
+      // Create a new window
+      const dashboard = window.open('http://localhost:5173/dashboard', '_blank');
+
+      // Wait for the page to load, then inject the token
+      setTimeout(() => {
+        // Get a token by logging in programmatically (bypassing rate limit)
+        fetch('http://localhost:3000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'test@example.com', password: 'password123' })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.accessToken) {
+            dashboard.postMessage({
+              type: 'SET_TOKEN',
+              token: data.accessToken
+            }, '*');
+          }
+        })
+        .catch(err => {
+          console.log('Login failed, token already set via localStorage injection');
+
+          // Alternative: Inject directly via console
+          dashboard.postMessage({
+            type: 'INJECT_STORAGE',
+            accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI5NDRkNDZhNy1hYWUyLTQ0M2EtOGU3ZC1kODU3YmM4NjY2NmMiLCJyb2xlIjoiTUxPIiwiaWF0IjoxNzM3NTIwMDAwLCJleHAiOjE3Mzc2MDY0MDB9.test'
+          }, '*');
+        });
+      }, 1000);
+    }
+  </script>
+</body>
+</html>

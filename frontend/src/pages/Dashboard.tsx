@@ -1,31 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
   Title,
   Text,
-  Paper,
-  Group,
-  SimpleGrid,
-  Stack,
-  Card,
-  ThemeIcon,
-  Badge,
   Loader,
   Center,
-  Checkbox,
+  Button,
+  Group,
 } from '@mantine/core';
-import {
-  IconUsers,
-  IconFileText,
-  IconChecklist,
-  IconCoin,
-  IconTrendingUp,
-  IconClock,
-} from '@tabler/icons-react';
+import { IconRefresh } from '@tabler/icons-react';
+import ReactGridLayout from 'react-grid-layout';
 import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../stores/authStore';
-import { EmptyState } from '../components/EmptyState';
+import { StatsCardsWidget } from '../widgets/StatsCardsWidget';
+import { PipelineOverviewWidget } from '../widgets/PipelineOverviewWidget';
+import { PendingTasksWidget } from '../widgets/PendingTasksWidget';
+import { RecentClientsWidget } from '../widgets/RecentClientsWidget';
+import 'react-grid-layout/css/styles.css';
 
 interface Task {
   id: string;
@@ -53,15 +45,28 @@ interface DashboardStats {
   pendingTasksList: Task[];
 }
 
-const statusColors: Record<string, string> = {
-  LEAD: 'gray',
-  PRE_QUALIFIED: 'blue',
-  ACTIVE: 'green',
-  PROCESSING: 'yellow',
-  UNDERWRITING: 'orange',
-  CLEAR_TO_CLOSE: 'lime',
-  CLOSED: 'green.9',
-  DENIED: 'red',
+interface UserPreferences {
+  dashboardLayout?: Array<{
+    i: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    minW?: number;
+    maxW?: number;
+    minH?: number;
+    maxH?: number;
+  }>;
+}
+
+// Default layout configuration
+const DEFAULT_LAYOUTS = {
+  lg: [
+    { i: 'stats', x: 0, y: 0, w: 4, h: 2, minW: 2, minH: 2 },
+    { i: 'pipeline', x: 0, y: 2, w: 4, h: 2, minW: 2, minH: 2 },
+    { i: 'tasks', x: 0, y: 4, w: 2, h: 4, minW: 2, minH: 3 },
+    { i: 'recent', x: 2, y: 4, w: 2, h: 4, minW: 2, minH: 3 },
+  ],
 };
 
 export default function Dashboard() {
@@ -69,10 +74,58 @@ export default function Dashboard() {
   const { accessToken } = useAuthStore();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [layouts, setLayouts] = useState(DEFAULT_LAYOUTS.lg);
+  const [savingLayout, setSavingLayout] = useState(false);
 
+  // Fetch user preferences on mount
   useEffect(() => {
+    fetchUserPreferences();
     fetchDashboardStats();
   }, [accessToken]);
+
+  const fetchUserPreferences = async () => {
+    try {
+      const res = await fetch('http://localhost:3000/api/users/preferences', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (res.ok) {
+        const prefs: UserPreferences = await res.json();
+        if (prefs.dashboardLayout && prefs.dashboardLayout.length > 0) {
+          setLayouts(prefs.dashboardLayout);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching preferences:', error);
+    }
+  };
+
+  const saveUserPreferences = async (newLayouts: typeof DEFAULT_LAYOUTS.lg) => {
+    try {
+      setSavingLayout(true);
+      await fetch('http://localhost:3000/api/users/preferences', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          preferences: {
+            dashboardLayout: newLayouts,
+          },
+        }),
+      });
+    } catch (error) {
+      console.error('Error saving preferences:', error);
+      notifications.show({
+        title: 'Warning',
+        message: 'Failed to save dashboard layout',
+        color: 'yellow',
+      });
+    } finally {
+      setSavingLayout(false);
+    }
+  };
 
   const fetchDashboardStats = async () => {
     try {
@@ -222,6 +275,25 @@ export default function Dashboard() {
     }
   };
 
+  const handleLayoutChange = useCallback((newLayout: any) => {
+    setLayouts(newLayout);
+    // Debounce save to avoid too many API calls
+    const timeoutId = setTimeout(() => {
+      saveUserPreferences(newLayout);
+    }, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [accessToken]);
+
+  const handleResetLayout = () => {
+    setLayouts(DEFAULT_LAYOUTS.lg);
+    saveUserPreferences(DEFAULT_LAYOUTS.lg);
+    notifications.show({
+      title: 'Layout reset',
+      message: 'Dashboard layout has been reset to default',
+      color: 'blue',
+    });
+  };
+
   if (loading) {
     return (
       <Center h="100%">
@@ -232,192 +304,71 @@ export default function Dashboard() {
 
   return (
     <Container size="xl" py="md">
-      <Stack gap="lg">
+      <Group justify="space-between" mb="md">
         <div>
           <Title order={2}>Dashboard</Title>
           <Text c="dimmed">Your mortgage loan origination command center</Text>
         </div>
+        <Button
+          variant="light"
+          leftSection={<IconRefresh size={16} />}
+          onClick={handleResetLayout}
+          loading={savingLayout}
+        >
+          Reset Layout
+        </Button>
+      </Group>
 
-        {/* Stats Cards */}
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">
-          <Paper shadow="sm" p="md" radius="md" withBorder>
-            <Group justify="space-between">
-              <div>
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                  Total Clients
-                </Text>
-                <Text size="xl" fw={700}>
-                  {stats?.totalClients || 0}
-                </Text>
-              </div>
-              <ThemeIcon size={48} radius="md" color="blue" variant="light">
-                <IconUsers size={28} aria-hidden="true" />
-              </ThemeIcon>
-            </Group>
-          </Paper>
+      <ReactGridLayout
+        className="layout"
+        layouts={{ lg: layouts }}
+        cols={4}
+        rowHeight={120}
+        onLayoutChange={handleLayoutChange}
+        isDraggable={true}
+        isResizable={true}
+        draggableHandle=".drag-handle"
+        useCSSTransforms={true}
+      >
+        <div key="stats">
+          <div className="drag-handle" style={{ cursor: 'move', padding: '8px', borderBottom: '1px solid #e9ecef' }}>
+            <Text size="sm" fw={500}>📊 Stats Cards</Text>
+          </div>
+          <div style={{ padding: '8px' }}>
+            <StatsCardsWidget stats={stats || {}} />
+          </div>
+        </div>
 
-          <Paper shadow="sm" p="md" radius="md" withBorder>
-            <Group justify="space-between">
-              <div>
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                  Total Documents
-                </Text>
-                <Text size="xl" fw={700}>
-                  {stats?.totalDocuments || 0}
-                </Text>
-              </div>
-              <ThemeIcon size={48} radius="md" color="green" variant="light">
-                <IconFileText size={28} aria-hidden="true" />
-              </ThemeIcon>
-            </Group>
-          </Paper>
+        <div key="pipeline">
+          <div className="drag-handle" style={{ cursor: 'move', padding: '8px', borderBottom: '1px solid #e9ecef' }}>
+            <Text size="sm" fw={500}>📈 Pipeline Overview</Text>
+          </div>
+          <div style={{ padding: '8px' }}>
+            <PipelineOverviewWidget clientsByStatus={stats?.clientsByStatus || {}} />
+          </div>
+        </div>
 
-          <Paper shadow="sm" p="md" radius="md" withBorder>
-            <Group justify="space-between">
-              <div>
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                  Pending Tasks
-                </Text>
-                <Text size="xl" fw={700}>
-                  {stats?.pendingTasks || 0}
-                </Text>
-              </div>
-              <ThemeIcon size={48} radius="md" color="orange" variant="light">
-                <IconChecklist size={28} aria-hidden="true" />
-              </ThemeIcon>
-            </Group>
-          </Paper>
-
-          <Paper shadow="sm" p="md" radius="md" withBorder>
-            <Group justify="space-between">
-              <div>
-                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                  Loan Scenarios
-                </Text>
-                <Text size="xl" fw={700}>
-                  {stats?.totalLoanScenarios || 0}
-                </Text>
-              </div>
-              <ThemeIcon size={48} radius="md" color="violet" variant="light">
-                <IconCoin size={28} aria-hidden="true" />
-              </ThemeIcon>
-            </Group>
-          </Paper>
-        </SimpleGrid>
-
-        {/* Pipeline Overview */}
-        <Paper shadow="sm" p="md" radius="md" withBorder>
-          <Title order={4} mb="md">
-            <Group gap="xs">
-              <IconTrendingUp size={20} aria-hidden="true" />
-              Pipeline Overview
-            </Group>
-          </Title>
-          <Group gap="md" wrap="wrap">
-            {Object.entries(stats?.clientsByStatus || {}).map(([status, count]) => (
-              <Badge
-                key={status}
-                size="lg"
-                color={statusColors[status] || 'gray'}
-                variant="light"
-                leftSection={count}
-              >
-                {status.replace(/_/g, ' ')}
-              </Badge>
-            ))}
-            {Object.keys(stats?.clientsByStatus || {}).length === 0 && (
-              <Text c="dimmed" size="sm">No clients in pipeline yet</Text>
-            )}
-          </Group>
-        </Paper>
-
-        {/* Pending Tasks */}
-        <Paper shadow="sm" p="md" radius="md" withBorder>
-          <Title order={4} mb="md">
-            <Group gap="xs">
-              <IconChecklist size={20} aria-hidden="true" />
-              Pending Tasks
-            </Group>
-          </Title>
-          {stats?.pendingTasksList && stats.pendingTasksList.length > 0 ? (
-            <Stack gap="xs">
-              {stats.pendingTasksList.map((task) => (
-                <Card key={task.id} p="sm" withBorder>
-                  <Group justify="space-between" wrap="nowrap">
-                    <Group gap="sm" wrap="nowrap" style={{ flex: 1 }}>
-                      <Checkbox
-                        aria-label={`Complete task: ${task.text}`}
-                        onChange={() => handleTaskComplete(task.id)}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <Text fw={500} truncate>{task.text}</Text>
-                        {task.clientName && (
-                          <Text size="xs" c="dimmed" truncate>
-                            Client: {task.clientName}
-                          </Text>
-                        )}
-                      </div>
-                    </Group>
-                    <Badge
-                      size="sm"
-                      color={
-                        task.priority === 'HIGH' ? 'red' :
-                        task.priority === 'MEDIUM' ? 'yellow' : 'blue'
-                      }
-                    >
-                      {task.priority}
-                    </Badge>
-                  </Group>
-                </Card>
-              ))}
-            </Stack>
-          ) : (
-            <EmptyState
-              iconType="tasks"
-              title="No pending tasks"
-              description="Great job! You're all caught up."
+        <div key="tasks">
+          <div className="drag-handle" style={{ cursor: 'move', padding: '8px', borderBottom: '1px solid #e9ecef' }}>
+            <Text size="sm" fw={500}>✓ Pending Tasks</Text>
+          </div>
+          <div style={{ padding: '8px', overflowY: 'auto', maxHeight: '480px' }}>
+            <PendingTasksWidget
+              pendingTasksList={stats?.pendingTasksList || []}
+              onTaskComplete={handleTaskComplete}
             />
-          )}
-        </Paper>
+          </div>
+        </div>
 
-        {/* Recent Clients */}
-        <Paper shadow="sm" p="md" radius="md" withBorder>
-          <Title order={4} mb="md">
-            <Group gap="xs">
-              <IconClock size={20} aria-hidden="true" />
-              Recent Clients
-            </Group>
-          </Title>
-          {stats?.recentClients && stats.recentClients.length > 0 ? (
-            <Stack gap="xs">
-              {stats.recentClients.map((client) => (
-                <Card
-                  key={client.id}
-                  p="sm"
-                  withBorder
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/clients/${client.id}`)}
-                  aria-label={`View details for ${client.name}`}
-                >
-                  <Group justify="space-between">
-                    <div>
-                      <Text fw={500}>{client.name}</Text>
-                      <Text size="xs" c="dimmed">
-                        Added {new Date(client.createdAt).toLocaleDateString()}
-                      </Text>
-                    </div>
-                    <Badge color={statusColors[client.status] || 'gray'}>
-                      {client.status.replace(/_/g, ' ')}
-                    </Badge>
-                  </Group>
-                </Card>
-              ))}
-            </Stack>
-          ) : (
-            <Text c="dimmed" size="sm">No clients yet. Add your first client to get started!</Text>
-          )}
-        </Paper>
-      </Stack>
+        <div key="recent">
+          <div className="drag-handle" style={{ cursor: 'move', padding: '8px', borderBottom: '1px solid #e9ecef' }}>
+            <Text size="sm" fw={500}>🕐 Recent Clients</Text>
+          </div>
+          <div style={{ padding: '8px', overflowY: 'auto', maxHeight: '480px' }}>
+            <RecentClientsWidget recentClients={stats?.recentClients || []} />
+          </div>
+        </div>
+      </ReactGridLayout>
     </Container>
   );
 }

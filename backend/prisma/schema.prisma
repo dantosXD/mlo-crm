@@ -18,6 +18,7 @@ model User {
   name          String
   role          String    @default("MLO") // ADMIN, MANAGER, MLO, PROCESSOR, UNDERWRITER, VIEWER
   isActive      Boolean   @default(true) @map("is_active")
+  preferences   String?   @default("{}") // JSON string for user preferences (dashboard layout, etc.)
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   lastLoginAt   DateTime? @map("last_login_at")

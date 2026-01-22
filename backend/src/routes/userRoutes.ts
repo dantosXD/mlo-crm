@@ -34,6 +34,72 @@ router.get('/team', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// GET /api/users/preferences - Get current user's preferences
+router.get('/preferences', async (req: AuthRequest, res: Response) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { preferences: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'User not found',
+      });
+    }
+
+    // Parse preferences or return empty object
+    const preferences = user.preferences ? JSON.parse(user.preferences) : {};
+    res.json(preferences);
+  } catch (error) {
+    console.error('Error fetching user preferences:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch preferences',
+    });
+  }
+});
+
+// PUT /api/users/preferences - Update current user's preferences
+router.put('/preferences', async (req: AuthRequest, res: Response) => {
+  try {
+    const { preferences } = req.body;
+
+    // Validate preferences is an object
+    if (typeof preferences !== 'object' || preferences === null) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Preferences must be an object',
+      });
+    }
+
+    // Update user preferences
+    const user = await prisma.user.update({
+      where: { id: req.user!.userId },
+      data: {
+        preferences: JSON.stringify(preferences),
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        preferences: true,
+      },
+    });
+
+    // Return parsed preferences
+    const parsedPreferences = user.preferences ? JSON.parse(user.preferences) : {};
+    res.json(parsedPreferences);
+  } catch (error) {
+    console.error('Error updating user preferences:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to update preferences',
+    });
+  }
+});
+
 // Middleware to check for admin role
 function requireAdmin(req: AuthRequest, res: Response, next: () => void) {
   if (req.user?.role !== 'ADMIN') {

@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { authenticateToken, authorizeRoles, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
 
@@ -16,11 +16,34 @@ const CLIENT_WRITE_ROLES = ['ADMIN', 'MANAGER', 'MLO'];
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
+    const { sortBy, sortOrder } = req.query;
+
+    console.log(`[API] GET /api/clients - sortBy: ${sortBy}, sortOrder: ${sortOrder}`);
+
+    // Build orderBy object based on query parameters
+    let orderBy: any = { createdAt: 'desc' }; // default sort
+    if (sortBy && typeof sortBy === 'string') {
+      const direction = sortOrder === 'asc' ? 'asc' : 'desc';
+      // Map frontend field names to database field names
+      const fieldMap: { [key: string]: string } = {
+        name: 'nameEncrypted',
+        email: 'emailEncrypted',
+        status: 'status',
+        createdAt: 'createdAt',
+      };
+      const dbField = fieldMap[sortBy];
+      if (dbField) {
+        orderBy = { [dbField]: direction };
+        console.log(`[API] Using orderBy:`, orderBy);
+      }
+    } else {
+      console.log(`[API] Using default orderBy:`, orderBy);
+    }
 
     // Users can only see their own clients (data isolation)
     const clients = await prisma.client.findMany({
       where: { createdById: userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       take: 100,
     });
 
