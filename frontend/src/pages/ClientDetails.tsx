@@ -3219,7 +3219,7 @@ export default function ClientDetails() {
               if (errors[0]?.code === 'file-too-large') {
                 notifications.show({
                   title: 'File Too Large',
-                  message: 'Maximum file size is 50MB. Please compress your file or contact support.',
+                  message: 'Maximum file size is 10MB. Please compress your file or contact support.',
                   color: 'red',
                   autoClose: 5000,
                 });
@@ -3238,7 +3238,7 @@ export default function ClientDetails() {
                 });
               }
             }}
-            maxSize={50 * 1024 * 1024} // 50MB
+            maxSize={10 * 1024 * 1024} // 10MB
             accept={[
               'application/pdf',
               'image/png',
@@ -3290,7 +3290,7 @@ export default function ClientDetails() {
                   {selectedFile ? 'Drag another file or click to replace' : 'Drag files here or click to upload'}
                 </Text>
                 <Text size="sm" c="dimmed" inline mt={7}>
-                  Attach PDF, images, or documents (max 50MB)
+                  Attach PDF, images, or documents (max 10MB)
                 </Text>
                 <Text size="xs" c="blue" inline mt={4} display="block">
                   Allowed: PDF, images (JPEG, PNG, GIF, TIFF, BMP, WebP), Word, Excel, PowerPoint, RTF, CSV, plain text

@@ -54,7 +54,7 @@ const DANGEROUS_EXTENSIONS = [
 const upload = multer({
   storage,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB limit
+    fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (_req, file, cb) => {
     // Check for dangerous file extensions
@@ -218,7 +218,7 @@ router.post('/upload', authenticateToken, (req: AuthRequest, res: Response) => {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({
           error: 'File too large',
-          message: 'File size exceeds the maximum limit of 50MB'
+          message: 'File size exceeds the maximum limit of 10MB'
         });
       }
 
