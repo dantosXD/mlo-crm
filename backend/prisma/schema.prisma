@@ -28,6 +28,7 @@ model User {
   notes         Note[]
   tasks         Task[]
   activities    Activity[]
+  notifications Notification[]
 
   @@map("users")
 }
@@ -262,4 +263,24 @@ model RefreshToken {
   @@index([userId])
   @@index([token])
   @@map("refresh_tokens")
+}
+
+// Notifications for users
+model Notification {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String    // DOCUMENT_DUE, TASK_DUE, DOCUMENT_REMINDER, etc.
+  title       String
+  message     String
+  link        String?   // Optional link to related resource
+  isRead      Boolean   @default(false) @map("is_read")
+  readAt      DateTime? @map("read_at")
+  metadata    String?   // JSON string for additional data
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
 }

@@ -11,6 +11,7 @@ import documentRoutes from './routes/documentRoutes.js';
 import documentPackageRoutes from './routes/documentPackageRoutes.js';
 import loanScenarioRoutes from './routes/loanScenarioRoutes.js';
 import activityRoutes from './routes/activityRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 
 // Load environment variables
 config();
@@ -93,6 +94,9 @@ app.use('/api/loan-scenarios', loanScenarioRoutes);
 
 // Activity routes
 app.use('/api/activities', activityRoutes);
+
+// Notification routes
+app.use('/api/notifications', notificationRoutes);
 
 // TODO: Implement remaining route modules
 // app.use('/api/analytics', analyticsRoutes);

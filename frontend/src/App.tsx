@@ -20,6 +20,7 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import { QuickCapture } from './components/QuickCapture';
+import { NotificationCenter } from './components/NotificationCenter';
 import Login from './pages/Login';
 import Admin from './pages/Admin';
 import AccessDenied from './pages/AccessDenied';
@@ -314,7 +315,10 @@ function ProtectedLayout() {
               </Tooltip>
             )}
           </Group>
-          <UserMenu />
+          <Group gap="sm">
+            <NotificationCenter />
+            <UserMenu />
+          </Group>
         </Group>
       </AppShell.Header>
 
