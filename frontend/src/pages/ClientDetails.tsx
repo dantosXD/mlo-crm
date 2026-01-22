@@ -64,6 +64,7 @@ import {
   IconCheck,
   IconDownload,
   IconUpload,
+  IconPackage,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
@@ -403,6 +404,18 @@ export default function ClientDetails() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [deleteDocumentModalOpen, setDeleteDocumentModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
+  const [assignPackageModalOpen, setAssignPackageModalOpen] = useState(false);
+  const [assigningPackage, setAssigningPackage] = useState(false);
+  const [availablePackages, setAvailablePackages] = useState<any[]>([]);
+  const [selectedPackageId, setSelectedPackageId] = useState<string>('');
+  const [requestDocumentModalOpen, setRequestDocumentModalOpen] = useState(false);
+  const [requestingDocument, setRequestingDocument] = useState(false);
+  const [requestDocumentForm, setRequestDocumentForm] = useState({
+    documentName: '',
+    category: 'OTHER' as Document['category'],
+    dueDate: null as Date | null,
+    message: '',
+  });
   const [newDocumentForm, setNewDocumentForm] = useState({
     name: '',
     fileName: '',
@@ -2053,6 +2066,152 @@ export default function ClientDetails() {
     setDocumentToDelete(null);
   };
 
+  // Fetch available document packages
+  const fetchPackages = async () => {
+    try {
+      const response = await fetch(`${API_URL}/document-packages`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch packages');
+      }
+
+      const packages = await response.json();
+      setAvailablePackages(packages);
+    } catch (error) {
+      console.error('Error fetching packages:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to load document packages',
+        color: 'red',
+      });
+    }
+  };
+
+  // Assign a package to the client
+  const handleAssignPackage = async () => {
+    if (!selectedPackageId) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Please select a package',
+        color: 'red',
+      });
+      return;
+    }
+
+    setAssigningPackage(true);
+
+    try {
+      const response = await fetch(`${API_URL}/document-packages/assign`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          clientId: id,
+          packageId: selectedPackageId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to assign package');
+      }
+
+      const data = await response.json();
+
+      // Refresh documents list
+      await fetchDocuments();
+
+      notifications.show({
+        title: 'Success',
+        message: `${data.documents.length} documents created from ${data.package.name}`,
+        color: 'green',
+      });
+
+      // Reset and close modal
+      setSelectedPackageId('');
+      setAssignPackageModalOpen(false);
+    } catch (error) {
+      console.error('Error assigning package:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to assign package',
+        color: 'red',
+      });
+    } finally {
+      setAssigningPackage(false);
+    }
+  };
+
+  const handleRequestDocument = async () => {
+    if (!requestDocumentForm.documentName.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Please enter a document name',
+        color: 'red',
+      });
+      return;
+    }
+
+    setRequestingDocument(true);
+
+    try {
+      const response = await fetch(`${API_URL}/documents/request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          clientId: id,
+          documentName: requestDocumentForm.documentName,
+          category: requestDocumentForm.category,
+          dueDate: requestDocumentForm.dueDate ? requestDocumentForm.dueDate.toISOString() : null,
+          message: requestDocumentForm.message || null,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to request document');
+      }
+
+      const data = await response.json();
+
+      // Refresh documents list
+      await fetchDocuments();
+
+      notifications.show({
+        title: 'Success',
+        message: data.emailLogged
+          ? 'Document request logged to terminal (dev mode)'
+          : 'Document request sent to client',
+        color: 'green',
+      });
+
+      // Reset form and close modal
+      setRequestDocumentForm({
+        documentName: '',
+        category: 'OTHER',
+        dueDate: null,
+        message: '',
+      });
+      setRequestDocumentModalOpen(false);
+    } catch (error) {
+      console.error('Error requesting document:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to request document',
+        color: 'red',
+      });
+    } finally {
+      setRequestingDocument(false);
+    }
+  };
+
   if (loading) {
     return (
       <Container size="xl" py="md">
@@ -2342,12 +2501,28 @@ export default function ClientDetails() {
         <Tabs.Panel value="documents" pt="md">
           <Group justify="space-between" mb="md">
             <Title order={4}>Documents</Title>
-            <Button
-              leftSection={<IconPlus size={16} />}
-              onClick={() => setAddDocumentModalOpen(true)}
-            >
-              Add Document
-            </Button>
+            <Group gap="sm">
+              <Button
+                variant="light"
+                leftSection={<IconPackage size={16} />}
+                onClick={() => setAssignPackageModalOpen(true)}
+              >
+                Assign Package
+              </Button>
+              <Button
+                variant="light"
+                leftSection={<IconUpload size={16} />}
+                onClick={() => setRequestDocumentModalOpen(true)}
+              >
+                Request Document
+              </Button>
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setAddDocumentModalOpen(true)}
+              >
+                Add Document
+              </Button>
+            </Group>
           </Group>
           {loadingDocuments ? (
             <Text c="dimmed">Loading documents...</Text>
@@ -3092,6 +3267,80 @@ export default function ClientDetails() {
             </Button>
             <Button onClick={handleCreateDocument} loading={savingDocument}>
               {selectedFile ? 'Upload' : 'Save'}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Request Document Modal */}
+      <Modal
+        opened={requestDocumentModalOpen}
+        onClose={() => {
+          if (!requestingDocument) {
+            setRequestDocumentModalOpen(false);
+            setRequestDocumentForm({ documentName: '', category: 'OTHER', dueDate: null, message: '' });
+          }
+        }}
+        title="Request Document from Client"
+        closeOnClickOutside={!requestingDocument}
+        closeOnEscape={!requestingDocument}
+      >
+        <Stack>
+          <TextInput
+            label="Document Name"
+            placeholder="e.g., W-2 Tax Form 2025"
+            required
+            value={requestDocumentForm.documentName}
+            onChange={(e) => setRequestDocumentForm({ ...requestDocumentForm, documentName: e.target.value })}
+            disabled={requestingDocument}
+          />
+          <Select
+            label="Category"
+            data={[
+              { value: 'INCOME', label: 'Income' },
+              { value: 'EMPLOYMENT', label: 'Employment' },
+              { value: 'ASSETS', label: 'Assets' },
+              { value: 'PROPERTY', label: 'Property' },
+              { value: 'INSURANCE', label: 'Insurance' },
+              { value: 'CREDIT', label: 'Credit' },
+              { value: 'OTHER', label: 'Other' },
+            ]}
+            value={requestDocumentForm.category}
+            onChange={(value) => setRequestDocumentForm({ ...requestDocumentForm, category: (value as Document['category']) || 'OTHER' })}
+            disabled={requestingDocument}
+          />
+          <DateInput
+            label="Due Date (optional)"
+            placeholder="Select due date"
+            value={requestDocumentForm.dueDate}
+            onChange={(value) => setRequestDocumentForm({ ...requestDocumentForm, dueDate: value })}
+            clearable
+            disabled={requestingDocument}
+          />
+          <Textarea
+            label="Message to Client (optional)"
+            placeholder="Add any additional instructions for the client..."
+            minRows={3}
+            value={requestDocumentForm.message}
+            onChange={(e) => setRequestDocumentForm({ ...requestDocumentForm, message: e.target.value })}
+            disabled={requestingDocument}
+          />
+          <Text size="sm" c="dimmed" style={{ fontStyle: 'italic' }}>
+            In development mode, the email will be logged to the terminal instead of being sent.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="subtle"
+              onClick={() => {
+                setRequestDocumentModalOpen(false);
+                setRequestDocumentForm({ documentName: '', category: 'OTHER', dueDate: null, message: '' });
+              }}
+              disabled={requestingDocument}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleRequestDocument} loading={requestingDocument}>
+              Send Request
             </Button>
           </Group>
         </Stack>

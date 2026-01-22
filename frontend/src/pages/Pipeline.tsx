@@ -19,6 +19,19 @@ import { notifications } from '@mantine/notifications';
 import { IconUser, IconMail, IconPhone, IconLayoutKanban, IconTable } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCorners,
+  useDroppable,
+  useDraggable,
+} from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 
 interface Client {
   id: string;
@@ -52,41 +65,71 @@ const PIPELINE_STAGES = [
 
 const API_URL = 'http://localhost:3000/api';
 
-// Client card component
-function ClientCard({ client, onClick }: { client: Client; onClick: () => void }) {
+// Draggable client card component
+function DraggableClientCard({ client, onClick }: { client: Client; onClick: () => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useDraggable({
+    id: client.id,
+    data: {
+      type: 'client',
+      client,
+    },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    cursor: 'grab',
+  };
+
   return (
-    <Card
-      shadow="sm"
-      padding="sm"
-      radius="md"
-      withBorder
-      onClick={onClick}
-      style={{ cursor: 'pointer' }}
-      className="pipeline-card"
-    >
-      <Stack gap="xs">
-        <Group gap="xs">
-          <IconUser size={14} />
-          <Text fw={500} size="sm" lineClamp={1}>
-            {client.name}
-          </Text>
-        </Group>
-        <Group gap="xs">
-          <IconMail size={12} color="gray" />
-          <Text size="xs" c="dimmed" lineClamp={1}>
-            {client.email}
-          </Text>
-        </Group>
-        {client.phone && (
+    <div ref={setNodeRef} style={style} {...listeners}>
+      <Card
+        shadow="sm"
+        padding="sm"
+        radius="md"
+        withBorder
+        onClick={(e) => {
+          // Prevent navigation when dragging
+          e.stopPropagation();
+          if (!isDragging) {
+            onClick();
+          }
+        }}
+        className="pipeline-card"
+        {...attributes}
+      >
+        <Stack gap="xs">
           <Group gap="xs">
-            <IconPhone size={12} color="gray" />
-            <Text size="xs" c="dimmed">
-              {client.phone}
+            <IconUser size={14} />
+            <Text fw={500} size="sm" lineClamp={1}>
+              {client.name}
             </Text>
           </Group>
-        )}
-      </Stack>
-    </Card>
+          <Group gap="xs">
+            <IconMail size={12} color="gray" />
+            <Text size="xs" c="dimmed" lineClamp={1}>
+              {client.email}
+            </Text>
+          </Group>
+          {client.phone && (
+            <Group gap="xs">
+              <IconPhone size={12} color="gray" />
+              <Text size="xs" c="dimmed">
+                {client.phone}
+              </Text>
+            </Group>
+          )}
+        </Stack>
+      </Card>
+    </div>
   );
 }
 
@@ -100,11 +143,13 @@ function PipelineColumn({
   clients: Client[];
   onClientClick: (client: Client) => void;
 }) {
+  const { setNodeRef } = useDroppable({
+    id: stage.key,
+  });
+
   return (
-    <Paper
-      shadow="xs"
-      p="md"
-      withBorder
+    <div
+      ref={setNodeRef}
       style={{
         minWidth: 280,
         maxWidth: 280,
@@ -113,34 +158,46 @@ function PipelineColumn({
         flexDirection: 'column',
       }}
     >
-      <Group justify="space-between" mb="md">
-        <Badge color={stage.color} size="lg" variant="light">
-          {stage.label}
-        </Badge>
-        <Text size="sm" c="dimmed">
-          {clients.length}
-        </Text>
-      </Group>
-      <ScrollArea style={{ flex: 1 }}>
-        <Stack gap="sm">
-          {clients.length === 0 ? (
-            <EmptyState
-              iconType="clients"
-              title={`No ${stage.label.toLowerCase()} clients`}
-              description="Clients will appear here as they progress through the pipeline"
-            />
-          ) : (
-            clients.map((client) => (
-              <ClientCard
-                key={client.id}
-                client={client}
-                onClick={() => onClientClick(client)}
+      <Paper
+        shadow="xs"
+        p="md"
+        withBorder
+        style={{
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+        data-stage={stage.key}
+      >
+        <Group justify="space-between" mb="md">
+          <Badge color={stage.color} size="lg" variant="light">
+            {stage.label}
+          </Badge>
+          <Text size="sm" c="dimmed">
+            {clients.length}
+          </Text>
+        </Group>
+        <ScrollArea style={{ flex: 1 }}>
+          <Stack gap="sm">
+            {clients.length === 0 ? (
+              <EmptyState
+                iconType="clients"
+                title={`No ${stage.label.toLowerCase()} clients`}
+                description="Clients will appear here as they progress through the pipeline"
               />
-            ))
-          )}
-        </Stack>
-      </ScrollArea>
-    </Paper>
+            ) : (
+              clients.map((client) => (
+                <DraggableClientCard
+                  key={client.id}
+                  client={client}
+                  onClick={() => onClientClick(client)}
+                />
+              ))
+            )}
+          </Stack>
+        </ScrollArea>
+      </Paper>
+    </div>
   );
 }
 
@@ -151,6 +208,16 @@ export default function Pipeline() {
   const [loanScenarios, setLoanScenarios] = useState<LoanScenario[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Configure sensors for drag detection
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px movement before drag starts
+      },
+    })
+  );
 
   useEffect(() => {
     fetchData();
@@ -179,6 +246,93 @@ export default function Pipeline() {
       notifications.show({ title: 'Error', message: 'Failed to load pipeline data', color: 'red' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle drag start
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  // Handle drag end
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over) return;
+
+    const clientId = active.id as string;
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return;
+
+    // Get the drop target ID
+    const dropTargetId = over.id as string;
+
+    console.log('Drag end:', { clientId, dropTargetId, currentStatus: client.status });
+
+    // Check if we dropped on a valid stage (column)
+    const isValidStage = PIPELINE_STAGES.some(s => s.key === dropTargetId);
+
+    if (!isValidStage) {
+      // If we dropped on a card instead, find which column that card is in
+      const droppedOnClient = clients.find((c) => c.id === dropTargetId);
+      if (droppedOnClient) {
+        const newStatus = droppedOnClient.status;
+        console.log('Dropped on client, using status:', newStatus);
+        if (newStatus === client.status) {
+          console.log('Status unchanged:', newStatus);
+          return;
+        }
+
+        // Update the client status to match the column we dropped into
+        await updateClientStatus(clientId, newStatus);
+      }
+      return;
+    }
+
+    console.log('Dropped on stage:', dropTargetId);
+
+    // Check if status actually changed
+    if (dropTargetId === client.status) {
+      console.log('Status unchanged:', dropTargetId);
+      return;
+    }
+
+    // Update the client status
+    await updateClientStatus(clientId, dropTargetId);
+  };
+
+  // Helper function to update client status
+  const updateClientStatus = async (clientId: string, newStatus: string) => {
+    try {
+      const response = await fetch(`${API_URL}/clients/${clientId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update client status');
+
+      // Update local state
+      setClients((prev) =>
+        prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c))
+      );
+
+      notifications.show({
+        title: 'Status updated',
+        message: `Client moved to ${PIPELINE_STAGES.find(s => s.key === newStatus)?.label}`,
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error updating client status:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update client status',
+        color: 'red',
+      });
     }
   };
 
@@ -268,20 +422,27 @@ export default function Pipeline() {
       </Group>
 
       {viewMode === 'kanban' ? (
-        <Box style={{ height: 'calc(100vh - 200px)' }}>
-          <ScrollArea type="auto" style={{ width: '100%', height: '100%' }}>
-            <Group gap="md" align="stretch" wrap="nowrap" style={{ minHeight: '100%' }}>
-              {PIPELINE_STAGES.map((stage) => (
-                <PipelineColumn
-                  key={stage.key}
-                  stage={stage}
-                  clients={clientsByStatus[stage.key] || []}
-                  onClientClick={handleClientClick}
-                />
-              ))}
-            </Group>
-          </ScrollArea>
-        </Box>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <Box style={{ height: 'calc(100vh - 200px)' }}>
+            <ScrollArea type="auto" style={{ width: '100%', height: '100%' }}>
+              <Group gap="md" align="stretch" wrap="nowrap" style={{ minHeight: '100%' }}>
+                {PIPELINE_STAGES.map((stage) => (
+                  <PipelineColumn
+                    key={stage.key}
+                    stage={stage}
+                    clients={clientsByStatus[stage.key] || []}
+                    onClientClick={handleClientClick}
+                  />
+                ))}
+              </Group>
+            </ScrollArea>
+          </Box>
+        </DndContext>
       ) : (
         <Paper shadow="xs" withBorder>
           <Table striped highlightOnHover>

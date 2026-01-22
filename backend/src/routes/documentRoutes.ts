@@ -359,6 +359,89 @@ router.get('/:id/download', authenticateToken, async (req: AuthRequest, res: Res
   }
 });
 
+// POST /api/documents/request - Request a document from a client
+router.post('/request', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { clientId, documentName, category, dueDate, message } = req.body;
+    const userId = req.user!.userId;
+    const userRole = req.user!.role;
+
+    if (!clientId || !documentName) {
+      return res.status(400).json({ error: 'clientId and documentName are required' });
+    }
+
+    // Check if user has access to this client
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+    });
+
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    if (userRole !== 'ADMIN' && userRole !== 'MANAGER' && client.createdById !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Decrypt client email for the request
+    const clientEmail = decrypt(client.emailEncrypted);
+    const clientName = decrypt(client.nameEncrypted);
+
+    // Create a document record with REQUESTED status
+    const document = await prisma.document.create({
+      data: {
+        clientId,
+        name: documentName,
+        fileName: '', // Will be filled when client uploads
+        filePath: '',
+        fileSize: 0,
+        mimeType: 'application/octet-stream',
+        status: 'REQUESTED',
+        category: category || 'OTHER',
+        dueDate: dueDate ? new Date(dueDate) : null,
+        notes: message || null,
+      },
+    });
+
+    // Log activity
+    await prisma.activity.create({
+      data: {
+        clientId,
+        type: 'DOCUMENT_REQUESTED',
+        description: `Document "${documentName}" requested from client`,
+        userId,
+      },
+    });
+
+    // In development mode, log the email to terminal instead of sending
+    if (process.env.NODE_ENV === 'development') {
+      console.log('\n========================================');
+      console.log('📧 DOCUMENT REQUEST EMAIL (DEV MODE)');
+      console.log('========================================');
+      console.log(`To: ${clientEmail}`);
+      console.log(`Subject: Document Request: ${documentName}`);
+      console.log('\nBody:');
+      console.log(`Dear ${clientName},`);
+      console.log(`\nWe need you to provide the following document:`);
+      console.log(`\nDocument: ${documentName}`);
+      if (category) console.log(`Category: ${category}`);
+      if (dueDate) console.log(`Due Date: ${new Date(dueDate).toLocaleDateString()}`);
+      if (message) console.log(`\nMessage: ${message}`);
+      console.log(`\nPlease upload this document through your client portal or contact us.`);
+      console.log('\n========================================\n');
+    }
+
+    res.status(201).json({
+      document,
+      message: 'Document request sent successfully',
+      emailLogged: process.env.NODE_ENV === 'development',
+    });
+  } catch (error) {
+    console.error('Error requesting document:', error);
+    res.status(500).json({ error: 'Failed to request document' });
+  }
+});
+
 // DELETE /api/documents/:id - Delete a document
 router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
