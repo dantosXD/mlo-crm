@@ -3189,6 +3189,22 @@ export default function ClientDetails() {
           <Dropzone
             onDrop={(files: FileWithPath[]) => {
               const file = files[0];
+
+              // Check for dangerous file extensions
+              const dangerousExtensions = ['.exe', '.bat', '.cmd', '.com', '.scr', '.pif', '.vbs', '.js', '.jar', '.app', '.deb', '.rpm', '.dmg', '.pkg', '.sh', '.ps1', '.vb', '.wsf'];
+              const fileName = file.name.toLowerCase();
+              const hasDangerousExtension = dangerousExtensions.some(ext => fileName.endsWith(ext));
+
+              if (hasDangerousExtension) {
+                notifications.show({
+                  title: 'File Type Not Allowed',
+                  message: `Dangerous file types (${dangerousExtensions.join(', ')}) are not permitted for security reasons. Allowed types: PDF, images, and documents.`,
+                  color: 'red',
+                  autoClose: 5000,
+                });
+                return;
+              }
+
               setSelectedFile(file);
               // Auto-fill document name from file name if empty
               if (file && !newDocumentForm.name) {
@@ -3197,11 +3213,30 @@ export default function ClientDetails() {
               }
             }}
             onReject={(files) => {
-              notifications.show({
-                title: 'File Upload Error',
-                message: 'Some files were rejected. Please check the file format and size.',
-                color: 'red',
-              });
+              const rejectedFile = files[0];
+              const errors = rejectedFile.errors;
+
+              if (errors[0]?.code === 'file-too-large') {
+                notifications.show({
+                  title: 'File Too Large',
+                  message: 'Maximum file size is 50MB. Please compress your file or contact support.',
+                  color: 'red',
+                  autoClose: 5000,
+                });
+              } else if (errors[0]?.code === 'file-invalid-type') {
+                notifications.show({
+                  title: 'Invalid File Type',
+                  message: 'Allowed file types: PDF, images (JPEG, PNG, GIF, TIFF, BMP, WebP), and documents (Word, Excel, PowerPoint, RTF, CSV, plain text). Dangerous file types (.exe, .bat, .cmd, etc.) are not permitted.',
+                  color: 'red',
+                  autoClose: 7000,
+                });
+              } else {
+                notifications.show({
+                  title: 'File Upload Error',
+                  message: 'Some files were rejected. Please check the file format and size.',
+                  color: 'red',
+                });
+              }
             }}
             maxSize={50 * 1024 * 1024} // 50MB
             accept={[
@@ -3210,7 +3245,18 @@ export default function ClientDetails() {
               'image/jpeg',
               'image/jpg',
               'image/gif',
+              'image/tiff',
+              'image/bmp',
               'image/webp',
+              'application/msword',
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              'application/vnd.ms-excel',
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              'application/vnd.ms-powerpoint',
+              'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+              'text/plain',
+              'text/csv',
+              'application/rtf',
             ]}
             disabled={savingDocument}
             style={{
@@ -3244,7 +3290,10 @@ export default function ClientDetails() {
                   {selectedFile ? 'Drag another file or click to replace' : 'Drag files here or click to upload'}
                 </Text>
                 <Text size="sm" c="dimmed" inline mt={7}>
-                  Attach PDF or images (max 50MB)
+                  Attach PDF, images, or documents (max 50MB)
+                </Text>
+                <Text size="xs" c="blue" inline mt={4} display="block">
+                  Allowed: PDF, images (JPEG, PNG, GIF, TIFF, BMP, WebP), Word, Excel, PowerPoint, RTF, CSV, plain text
                 </Text>
               </Box>
             </Group>

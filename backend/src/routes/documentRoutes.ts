@@ -25,10 +25,58 @@ const storage = multer.diskStorage({
   }
 });
 
+// Define allowed MIME types and dangerous file extensions
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/gif',
+  'image/tiff',
+  'image/bmp',
+  'image/webp',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'text/csv',
+  'application/rtf',
+];
+
+const DANGEROUS_EXTENSIONS = [
+  '.exe', '.bat', '.cmd', '.com', '.scr', '.pif', '.vbs', '.js', '.jar',
+  '.app', '.deb', '.rpm', '.dmg', '.pkg', '.sh', '.ps1', '.vb', '.wsf',
+];
+
 const upload = multer({
   storage,
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB limit
+  },
+  fileFilter: (_req, file, cb) => {
+    // Check for dangerous file extensions
+    const fileName = file.originalname.toLowerCase();
+    const hasDangerousExtension = DANGEROUS_EXTENSIONS.some(ext =>
+      fileName.endsWith(ext)
+    );
+
+    if (hasDangerousExtension) {
+      return cb(new Error(
+        `File type not allowed. Dangerous file types (${DANGEROUS_EXTENSIONS.join(', ')}) are not permitted for security reasons.`
+      ));
+    }
+
+    // Check MIME type
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      return cb(new Error(
+        `File type not allowed. Allowed types: PDF, images (JPEG, PNG, GIF, TIFF, BMP, WebP), documents (Word, Excel, PowerPoint, RTF, CSV, plain text).`
+      ));
+    }
+
+    cb(null, true);
   },
 });
 
@@ -161,71 +209,98 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
 });
 
 // POST /api/documents/upload - Upload a file with progress support
-router.post('/upload', authenticateToken, upload.single('file'), async (req: AuthRequest, res: Response) => {
-  try {
-    const { clientId, name, category, status, notes } = req.body;
-    const userId = req.user!.userId;
-    const userRole = req.user!.role;
-    const file = req.file;
+router.post('/upload', authenticateToken, (req: AuthRequest, res: Response) => {
+  upload.single('file')(req, res, async (err: any) => {
+    // Handle multer errors (including file filter errors)
+    if (err) {
+      console.error('File upload error:', err.message);
 
-    if (!file) {
-      return res.status(400).json({ error: 'No file provided' });
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          error: 'File too large',
+          message: 'File size exceeds the maximum limit of 50MB'
+        });
+      }
+
+      // File type validation errors
+      if (err.message && err.message.includes('File type not allowed')) {
+        return res.status(400).json({
+          error: 'Invalid file type',
+          message: err.message
+        });
+      }
+
+      return res.status(400).json({
+        error: 'Upload failed',
+        message: err.message || 'Failed to upload file'
+      });
     }
 
-    if (!clientId) {
-      return res.status(400).json({ error: 'clientId is required' });
+    try {
+      const { clientId, name, category, status, notes } = req.body;
+      const userId = req.user!.userId;
+      const userRole = req.user!.role;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ error: 'No file provided' });
+      }
+
+      if (!clientId) {
+        return res.status(400).json({ error: 'clientId is required' });
+      }
+
+      // Check if user has access to this client
+      const client = await prisma.client.findUnique({
+        where: { id: clientId },
+      });
+
+      if (!client) {
+        // Clean up uploaded file
+        fs.unlinkSync(file.path);
+        return res.status(404).json({ error: 'Client not found' });
+      }
+
+      if (userRole !== 'ADMIN' && userRole !== 'MANAGER' && client.createdById !== userId) {
+        // Clean up uploaded file
+        fs.unlinkSync(file.path);
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const document = await prisma.document.create({
+        data: {
+          clientId,
+          name: name || file.originalname,
+          fileName: file.originalname,
+          filePath: file.path,
+          fileSize: file.size,
+          mimeType: file.mimetype,
+          status: status || 'UPLOADED',
+          category: category || 'OTHER',
+          notes: notes || null,
+        },
+      });
+
+      // Log activity
+      await prisma.activity.create({
+        data: {
+          clientId,
+          type: 'DOCUMENT_UPLOADED',
+          description: `Document "${document.name}" uploaded`,
+          userId,
+        },
+      });
+
+      res.status(201).json(document);
+    } catch (error) {
+      console.error('Error uploading document:', error);
+      // Clean up file if it exists
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      res.status(500).json({ error: 'Failed to upload document' });
     }
-
-    // Check if user has access to this client
-    const client = await prisma.client.findUnique({
-      where: { id: clientId },
-    });
-
-    if (!client) {
-      // Clean up uploaded file
-      fs.unlinkSync(file.path);
-      return res.status(404).json({ error: 'Client not found' });
-    }
-
-    if (userRole !== 'ADMIN' && userRole !== 'MANAGER' && client.createdById !== userId) {
-      // Clean up uploaded file
-      fs.unlinkSync(file.path);
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    const document = await prisma.document.create({
-      data: {
-        clientId,
-        name: name || file.originalname,
-        fileName: file.originalname,
-        filePath: file.path,
-        fileSize: file.size,
-        mimeType: file.mimetype,
-        status: status || 'UPLOADED',
-        category: category || 'OTHER',
-        notes: notes || null,
-      },
-    });
-
-    // Log activity
-    await prisma.activity.create({
-      data: {
-        clientId,
-        type: 'DOCUMENT_UPLOADED',
-        description: `Document "${document.name}" uploaded`,
-        userId,
-      },
-    });
-
-    res.status(201).json(document);
-  } catch (error) {
-    console.error('Error uploading document:', error);
-    // Clean up file if it exists
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-    res.status(500).json({ error: 'Failed to upload document' });
-  }
+  });
 });
 
 // POST /api/documents - Create a document record (metadata only)
