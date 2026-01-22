@@ -894,3 +894,34 @@ Implementation complete (pending testing):
 - Continue with remaining 13 features (5.2% remaining)
 
 [Testing] Feature #104 verified - still passing - Malformed UUID in URL handled
+
+## Session 38 Summary (SINGLE FEATURE MODE - Feature #91)
+Date: January 22, 2026
+Agent: Assigned to Feature #91 ONLY
+
+### What Was Accomplished
+
+#### Regression Testing: Feature #99 (Unsaved Changes Warning) ✅
+- All 6 test steps verified successfully
+- Feature working correctly - NO REGRESSION DETECTED
+
+#### Feature #91: Sort order sent to API correctly (VERIFIED & MARKED PASSING) ✅
+- Network requests confirmed: sortBy=name&sortOrder=asc and desc
+- Data returned in correct order (A-Z and Z-A)
+- All 4 test steps verified via browser automation
+
+### Commit Made
+1. feat: Verify and mark Feature #91 as passing - Sort order sent to API correctly
+
+### Features Passing: 240/251 (95.6%)
+
+New features passed this session:
+- #91: Sort order sent to API correctly
+
+Regression tests completed:
+- #99: Unsaved changes warning on navigation - STILL PASSING ✅
+
+### Next Steps
+- 11 features remaining (4.4%)
+- 4 features currently in-progress
+
