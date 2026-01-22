@@ -65,7 +65,6 @@ import {
   IconDownload,
   IconUpload,
   IconPackage,
-  IconUser,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';

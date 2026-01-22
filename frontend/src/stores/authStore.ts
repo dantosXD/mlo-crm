@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { getUserFriendlyErrorMessage } from '../utils/errorHandler';
 
 interface User {
   id: string;
@@ -73,7 +74,7 @@ export const useAuthStore = create<AuthState>()(
         } catch (error) {
           set({
             isLoading: false,
-            error: error instanceof Error ? error.message : 'An error occurred',
+            error: getUserFriendlyErrorMessage(error, 'logging in'),
           });
           return false;
         }

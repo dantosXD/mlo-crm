@@ -8,6 +8,32 @@ const router = Router();
 // All routes require authentication
 router.use(authenticateToken);
 
+// GET /api/users/team - Get list of active team members (for task assignment)
+// This route does NOT require admin access - all authenticated users can see team members
+router.get('/team', async (req: AuthRequest, res: Response) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching team members:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch team members',
+    });
+  }
+});
+
 // Middleware to check for admin role
 function requireAdmin(req: AuthRequest, res: Response, next: () => void) {
   if (req.user?.role !== 'ADMIN') {
@@ -19,11 +45,8 @@ function requireAdmin(req: AuthRequest, res: Response, next: () => void) {
   next();
 }
 
-// Apply admin check to all routes
-router.use(requireAdmin);
-
 // GET /api/users - List all users (Admin only)
-router.get('/', async (req: AuthRequest, res: Response) => {
+router.get('/', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const users = await prisma.user.findMany({
       select: {
@@ -51,7 +74,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 });
 
 // GET /api/users/:id - Get single user (Admin only)
-router.get('/:id', async (req: AuthRequest, res: Response) => {
+router.get('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -88,7 +111,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/users - Create new user (Admin only)
-router.post('/', async (req: AuthRequest, res: Response) => {
+router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { email, password, name, role } = req.body;
 
@@ -153,7 +176,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 });
 
 // PUT /api/users/:id - Update user (Admin only)
-router.put('/:id', async (req: AuthRequest, res: Response) => {
+router.put('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { email, name, role, isActive, password } = req.body;
@@ -220,7 +243,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
 });
 
 // DELETE /api/users/:id - Delete user (Admin only)
-router.delete('/:id', async (req: AuthRequest, res: Response) => {
+router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
 
