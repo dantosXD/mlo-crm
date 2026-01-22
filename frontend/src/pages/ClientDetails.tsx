@@ -3272,6 +3272,71 @@ export default function ClientDetails() {
         </Stack>
       </Modal>
 
+      {/* Assign Package Modal */}
+      <Modal
+        opened={assignPackageModalOpen}
+        onClose={() => {
+          if (!assigningPackage) {
+            setAssignPackageModalOpen(false);
+            setSelectedPackageId('');
+          }
+        }}
+        onOpen={() => {
+          fetchPackages();
+        }}
+        title="Assign Document Package"
+        closeOnClickOutside={!assigningPackage}
+        closeOnEscape={!assigningPackage}
+      >
+        <Stack>
+          <Text size="sm">
+            Select a document package to assign to this client. All documents in the package will be created with "Required" status.
+          </Text>
+          <Select
+            label="Document Package"
+            placeholder="Select a package"
+            required
+            data={availablePackages.map((pkg) => ({ value: pkg.id, label: pkg.name }))}
+            value={selectedPackageId}
+            onChange={(value) => setSelectedPackageId(value || '')}
+            disabled={assigningPackage}
+            nothingFoundMessage="No packages available"
+          />
+          {availablePackages.find((pkg) => pkg.id === selectedPackageId)?.description && (
+            <Text size="sm" c="dimmed">
+              {availablePackages.find((pkg) => pkg.id === selectedPackageId)?.description}
+            </Text>
+          )}
+          {selectedPackageId && availablePackages.find((pkg) => pkg.id === selectedPackageId) && (
+            <Paper withBorder p="sm" bg="gray.0">
+              <Text size="sm" fw={500} mb="xs">Documents included:</Text>
+              <Stack gap="xs">
+                {JSON.parse(
+                  availablePackages.find((pkg) => pkg.id === selectedPackageId)?.documents || '[]'
+                ).map((doc: any, idx: number) => (
+                  <Text key={idx} size="sm">• {doc.name}</Text>
+                ))}
+              </Stack>
+            </Paper>
+          )}
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="subtle"
+              onClick={() => {
+                setAssignPackageModalOpen(false);
+                setSelectedPackageId('');
+              }}
+              disabled={assigningPackage}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleAssignPackage} loading={assigningPackage} disabled={!selectedPackageId}>
+              Assign Package
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       {/* Request Document Modal */}
       <Modal
         opened={requestDocumentModalOpen}
