@@ -401,6 +401,8 @@ export default function ClientDetails() {
   const [savingDocument, setSavingDocument] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [deleteDocumentModalOpen, setDeleteDocumentModalOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
   const [newDocumentForm, setNewDocumentForm] = useState({
     name: '',
     fileName: '',
@@ -1961,13 +1963,19 @@ export default function ClientDetails() {
     }
   };
 
-  const handleDeleteDocument = async (documentId: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) {
-      return;
+  const handleDeleteDocument = (documentId: string) => {
+    const doc = documents.find(d => d.id === documentId);
+    if (doc) {
+      setDocumentToDelete(doc);
+      setDeleteDocumentModalOpen(true);
     }
+  };
+
+  const confirmDeleteDocument = async () => {
+    if (!documentToDelete) return;
 
     try {
-      const response = await fetch(`${API_URL}/documents/${documentId}`, {
+      const response = await fetch(`${API_URL}/documents/${documentToDelete.id}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -1978,13 +1986,16 @@ export default function ClientDetails() {
         throw new Error('Failed to delete document');
       }
 
-      setDocuments(documents.filter(d => d.id !== documentId));
+      setDocuments(documents.filter(d => d.id !== documentToDelete.id));
 
       notifications.show({
         title: 'Success',
         message: 'Document deleted successfully',
         color: 'green',
       });
+
+      setDeleteDocumentModalOpen(false);
+      setDocumentToDelete(null);
     } catch (error) {
       console.error('Error deleting document:', error);
       notifications.show({
@@ -1993,6 +2004,11 @@ export default function ClientDetails() {
         color: 'red',
       });
     }
+  };
+
+  const cancelDeleteDocument = () => {
+    setDeleteDocumentModalOpen(false);
+    setDocumentToDelete(null);
   };
 
   if (loading) {
@@ -3026,6 +3042,31 @@ export default function ClientDetails() {
             </Button>
             <Button onClick={handleCreateDocument} loading={savingDocument}>
               {selectedFile ? 'Upload' : 'Save'}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Delete Document Confirmation Modal */}
+      <Modal
+        opened={deleteDocumentModalOpen}
+        onClose={cancelDeleteDocument}
+        title="Delete Document"
+        centered
+      >
+        <Stack>
+          <Text>
+            Are you sure you want to delete the document <Text fw={700}>"{documentToDelete?.name}"</Text>?
+          </Text>
+          <Text size="sm" c="dimmed">
+            This action cannot be undone.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={cancelDeleteDocument}>
+              Cancel
+            </Button>
+            <Button color="red" onClick={confirmDeleteDocument}>
+              Delete Document
             </Button>
           </Group>
         </Stack>
