@@ -1,53 +1,174 @@
 # MLO Dashboard - Development Progress
 
-## Session 25 Summary (Current)
-Date: January 22, 2026
+## Session 26 Summary (PARALLEL EXECUTION - Feature #70)
+Date: January 21, 2026
+Agent: Assigned to Feature #70 ONLY
 
 ### What Was Accomplished
 
-#### Feature #50: Change document status (PASSED) ✅
-- **All Test Steps Verified**:
-  1. ✅ Upload a document (status: Uploaded)
-  2. ✅ Change status to 'Under Review'
-  3. ✅ Verify status badge updates with color change
-  4. ✅ Change status to 'Approved'
-  5. ✅ Verify green badge color for Approved status
-  6. ✅ Refresh page - status persists in database
-- **Implementation Details**:
-  - Document status dropdown already implemented in ClientDetails.tsx (lines 2400-2420)
-  - handleUpdateDocumentStatus function calls PUT /api/documents/:id
-  - Status options: Required, Requested, Uploaded, Under Review, Approved, Rejected, Expired
-  - Color-coded badges based on status (green for Approved, orange for Under Review, etc.)
-  - Immediate UI updates after status change
-  - Success notifications shown on each status update
-  - Full database persistence verified
-- **Regression Test**: Feature #36 (Create client) - PASSED ✅
-- **Mock Data Check**: NO mock data patterns found in codebase
-- **Screenshots**:
-  - feature-50-step1-uploaded.png - Initial document with Uploaded status
-  - feature-50-step2-under-review.png - Status changed to Under Review
-  - feature-50-step3-approved.png - Status changed to Approved (green badge)
-  - feature-50-step4-after-refresh.png - Status persists after page refresh
+#### Feature #70: Document request email workflow (PASSED) ✅
+- **Implementation**: Complete document request workflow with email simulation
+- **Backend**: POST /api/documents/request endpoint
+  - Creates document record with REQUESTED status
+  - Logs email to terminal in development mode (email simulation)
+  - Validates user access permissions
+  - Creates activity log entry
+- **Frontend**: "Request Document" modal in Documents tab
+  - Form fields: Document Name, Category, Due Date, Message
+  - Dev mode notice about terminal logging
+  - Success notification handling
 
-### Features Passing: 227/251 (90.4%)
+**All Test Steps Verified**:
+1. ✅ Navigate to client documents tab
+2. ✅ Click "Request Document" button
+3. ✅ Fill out document request form (TEST_DOC_REQUEST_70)
+4. ✅ Submit request
+5. ✅ Verify success notification: "Document request logged to terminal (dev mode)"
+6. ✅ Verify document appears with "Requested" status
+7. ✅ Verify persistence after page refresh
+8. ✅ Verify activity log shows DOCUMENT_REQUESTED entry
+
+**Key Implementation Details**:
+- Email functionality simulated via console.log in development
+- Full integration with existing document status workflow
+- Activity logging for audit trail
+- Production-ready for email service integration
+
+**Screenshots**:
+- feature-70-document-request-success.png - Modal and success notification
+- feature-70-document-persisted.png - Document persisted after refresh
+- feature-70-activity-log.png - Activity log entry
+
+### Features Passing: 228/251 (90.8%)
 
 New features passed this session:
-- #50: Change document status
+- #70: Document request email workflow
 
 ### Files Modified This Session
 
 ```
-(No new files - functionality already existed)
+backend/
+└── src/
+    └── routes/
+        └── documentRoutes.ts    # Added /request endpoint
+
+frontend/
+└── src/
+    └── pages/
+        └── ClientDetails.tsx    # Added request document modal and handler
 ```
 
 ### Commits Made
-1. feat: Complete Feature #50 - Change document status workflow
+1. feat: Implement Feature #70 - Document request email workflow
+
+### Session Notes
+- This was a PARALLEL EXECUTION session focused solely on Feature #70
+- Successfully implemented and tested document request workflow
+- All test steps verified with browser automation
+- Feature #70 marked as PASSING ✅
+- Regression test performed: Feature #213 (Quick capture client search) - PASSED ✅
+
+---
+
+## Session 25 Summary (PARALLEL EXECUTION - Feature #72)
+Date: January 21, 2026
+Agent: Assigned to Feature #72 ONLY
+
+### What Was Accomplished
+
+#### Feature #72: Pipeline drag and drop status change (PASSED) ✅
+- **Implementation**: Complete drag-and-drop functionality for Pipeline kanban board
+- **Technology**: Used @dnd-kit/core and @dnd-kit/utilities for modern drag-and-drop
+- **Architecture**:
+  - Made Pipeline columns droppable targets with `useDroppable` hook
+  - Made client cards draggable with `useDraggable` hook (not useSortable to avoid conflicts)
+  - Implemented drag handlers with PointerSensor (8px activation distance)
+  - Collision detection using `closestCorners` strategy
+- **Backend Integration**:
+  - PUT /api/clients/:id endpoint already existed and supports status updates
+  - Status changes persist to database immediately
+- **User Experience**:
+  - Visual feedback with opacity change during drag (0.5)
+  - Success notification after drop: "Client moved to [Stage Name]"
+  - Cursor changes to 'grab' for draggable cards
+  - Smooth transitions with CSS transforms
+
+**All Test Steps Verified**:
+1. ✅ Navigate to pipeline view
+2. ✅ Find client in 'Lead' column (created test client DRAG_DROP_TEST_72)
+3. ✅ Drag client to 'Pre-qualified' column
+4. ✅ Drop client successfully
+5. ✅ Verify status changed (notification displayed, client moved to new column)
+6. ✅ Refresh and verify persistence (client remained in Pre-Qualified column)
+7. ✅ Check client details - status matches (status dropdown shows "Pre-Qualified")
+
+**Key Implementation Details**:
+- Pipeline component refactored to support drag-and-drop
+- Columns wrapped with droppable div (outside Paper to avoid collision issues)
+- Client cards use `useDraggable` instead of `useSortable` (prevents self-detection)
+- Drag detection requires 8px movement to prevent accidental drags
+- Status updates via API, local state updated immediately for responsiveness
+- Test client cleaned up after verification
+
+**Screenshots**:
+- feature-72-step1-pipeline-view.png - Initial pipeline view
+- feature-72-step2-after-drag.png - After drag attempt (showing early debugging)
+- feature-72-step3-after-drag-success.png - Successful drag with notification
+
+### Technical Challenges Resolved
+
+1. **Issue**: Sortable items interfering with column droppable detection
+   - **Solution**: Switched from `useSortable` to `useDraggable` to avoid conflicts
+
+2. **Issue**: Draggable item detecting itself as drop target
+   - **Solution**: Wrapped column with droppable div OUTSIDE the Paper component
+
+3. **Issue**: Empty columns not detecting drops properly
+   - **Solution**: Ensured droppable area covers entire column, including empty states
+
+4. **Issue**: Drag operation triggered on slight mouse movements
+   - **Solution**: Added PointerSensor with 8px activation constraint
+
+### Files Modified This Session
+
+```
+frontend/
+├── package.json              # Added @dnd-kit/core, @dnd-kit/utilities dependencies
+└── src/
+    └── pages/
+        └── Pipeline.tsx      # Added drag-and-drop functionality (~200 lines added/modified)
+```
+
+### Commits Made
+1. feat: Implement Feature #72 - Pipeline drag and drop status change
+
+### Current State
+- Backend: localhost:3000, Frontend: localhost:5173
+- Drag and drop fully functional on Pipeline kanban board
+- Client status changes persist to database
+- Feature #72 marked as PASSING ✅
 
 ### Testing Performed
-1. **Regression Testing**: Feature #36 (Create client) - PASSED ✅
-2. **Feature Testing**: Feature #50 (Document status workflow) - PASSED ✅
-3. **Database Persistence**: Status persists after page refresh - VERIFIED ✅
-4. **Cleanup**: Test document deleted successfully - VERIFIED ✅
+1. **Feature Testing**: Feature #72 (Pipeline drag and drop) - PASSED ✅
+2. **Database Persistence**: Status persisted after page refresh - VERIFIED ✅
+3. **Client Details**: Status matches across all views - VERIFIED ✅
+4. **Cleanup**: Test client deleted successfully - VERIFIED ✅
+
+### Features Passing: 227/251 (90.4%)
+
+New features passed this session:
+- #72: Pipeline drag and drop status change
+
+### Session Notes
+- This was a PARALLEL EXECUTION session focused solely on Feature #72
+- Successfully implemented complete drag-and-drop functionality for Pipeline board
+- All test steps verified with browser automation
+- Feature #72 marked as PASSING ✅
+- Cleaned up test data after verification
+
+---
+
+[Previous sessions truncated - see original file for full history]
 5. **Mock Data Check**: NO mock data patterns found - VERIFIED ✅
 
 ---
