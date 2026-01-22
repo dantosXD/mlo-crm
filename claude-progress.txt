@@ -143,3 +143,55 @@ Agent: Assigned to Feature #20 ONLY
 - Feature #20 marked as PASSING ✅
 
 [Testing] Feature #222 verified - Loan calculator DTI calculation still passing
+[Testing] Feature #107 verified - Deep link to deleted entity shows error - STILL PASSING ✅
+
+Test Steps Verified:
+1. Created test client DEEP_LINK_TEST_107
+2. Captured client URL before deletion
+3. Deleted client successfully
+4. Navigated to deleted client URL
+5. Verified 'Client Not Found' message displayed
+6. Verified 'Back to Clients' button works
+
+[Testing] Session Complete - Feature #36 Regression Test PASSED ✅
+Date: January 21, 2026
+
+### Feature #36: Create new client via UI - REGRESSION TEST PASSED ✅
+
+**Test Summary:**
+- All 11 verification steps completed successfully
+- No regressions detected
+- Feature working as expected
+
+**Test Steps Verified:**
+1. ✅ Login and go to /clients
+2. ✅ Click 'Add Client' button
+3. ✅ Verify create client modal/form opens
+4. ✅ Enter client name: 'TEST_CREATE_12345'
+5. ✅ Enter email: 'test12345@example.com'
+6. ✅ Enter phone: '555-123-4567'
+7. ✅ Select status: 'Lead' (default)
+8. ✅ Click 'Create Client' button
+9. ✅ Verify success message appears ("Client created successfully")
+10. ✅ Verify new client appears in list (count increased from 21 to 22)
+11. ✅ Verify client name matches exactly ("TEST_CREATE_12345")
+
+**Additional Verification:**
+- ✅ Client details page shows all correct information (email, phone, status, created date)
+- ✅ Zero console errors during entire test
+- ✅ Test client successfully deleted after verification
+- ✅ Client count returned to 21 after deletion
+
+**Quality Metrics:**
+- Browser automation: 100% successful
+- Form validation: Working correctly
+- API calls: All successful
+- UI responsiveness: Excellent
+- Data persistence: Confirmed
+
+**Screenshots:**
+- feature-36-client-created-successfully.png
+
+**Conclusion:**
+Feature #36 remains fully functional with no regressions detected. The client creation workflow is working perfectly.
+
