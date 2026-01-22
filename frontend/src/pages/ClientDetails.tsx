@@ -665,6 +665,22 @@ export default function ClientDetails() {
         body: JSON.stringify(editForm),
       });
 
+      // Handle deleted client scenario (404)
+      if (response.status === 404) {
+        notifications.show({
+          title: 'Client Not Found',
+          message: 'This client has been deleted by another user. You will be redirected to the clients list.',
+          color: 'orange',
+          autoClose: 4000,
+        });
+        setEditModalOpen(false);
+        // Redirect to clients list after a short delay
+        setTimeout(() => {
+          navigate('/clients');
+        }, 4000);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error('Failed to update client');
       }
@@ -746,6 +762,21 @@ export default function ClientDetails() {
           status: newStatus,
         }),
       });
+
+      // Handle deleted client scenario (404)
+      if (response.status === 404) {
+        notifications.show({
+          title: 'Client Not Found',
+          message: 'This client has been deleted by another user. You will be redirected to the clients list.',
+          color: 'orange',
+          autoClose: 4000,
+        });
+        // Redirect to clients list after a short delay
+        setTimeout(() => {
+          navigate('/clients');
+        }, 4000);
+        return;
+      }
 
       if (!response.ok) {
         throw new Error('Failed to update status');
