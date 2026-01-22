@@ -1170,7 +1170,14 @@ export default function ClientDetails() {
     }
 
     const newStatus = task.status === 'COMPLETE' ? 'TODO' : 'COMPLETE';
+    const oldStatus = task.status;
+    const oldCompletedAt = task.completedAt;
+
     setTogglingTaskId(task.id);
+
+    // OPTIMISTIC UPDATE: Update UI immediately before server responds
+    const optimisticCompletedAt = newStatus === 'COMPLETE' ? new Date().toISOString() : null;
+    setTasks(tasks.map(t => t.id === task.id ? { ...t, status: newStatus, completedAt: optimisticCompletedAt } : t));
 
     try {
       const response = await fetch(`${API_URL}/tasks/${task.id}/status`, {
@@ -1186,7 +1193,9 @@ export default function ClientDetails() {
         throw new Error('Failed to update task');
       }
 
+      // Server confirmed the update - no rollback needed
       const updatedTask = await response.json();
+      // Update with server data (may have slight differences like server timestamp)
       setTasks(tasks.map(t => t.id === task.id ? { ...t, status: updatedTask.status, completedAt: updatedTask.completedAt } : t));
 
       notifications.show({
@@ -1196,9 +1205,13 @@ export default function ClientDetails() {
       });
     } catch (error) {
       console.error('Error updating task:', error);
+
+      // ROLLBACK: Revert the optimistic update on error
+      setTasks(tasks.map(t => t.id === task.id ? { ...t, status: oldStatus, completedAt: oldCompletedAt } : t));
+
       notifications.show({
         title: 'Error',
-        message: 'Failed to update task',
+        message: 'Failed to update task. Please try again.',
         color: 'red',
       });
     } finally {
