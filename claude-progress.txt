@@ -66,3 +66,80 @@ frontend/
 ---
 
 [Previous sessions truncated - see original file for full history]
+
+---
+
+## Session 22 Summary (PARALLEL EXECUTION)
+Date: January 22, 2026
+Agent: Assigned to Feature #20 ONLY
+
+### What Was Accomplished
+
+#### Feature #20: Session expires after inactivity (PASSED) ✅
+- Implemented automatic session timeout after period of inactivity
+- **Implementation Details:**
+  1. Added inactivity timeout configuration
+     - Environment variable: SESSION_TIMEOUT_MINUTES (default: 15 minutes)
+     - Frontend variable: VITE_SESSION_TIMEOUT_MINUTES
+  2. Implemented inactivity tracking in authStore
+     - Added `lastActivity` timestamp to track user activity
+     - `updateLastActivity()` function resets timer on user interactions
+     - `checkSessionTimeout()` function verifies if session expired
+     - Persisted `lastActivity` in localStorage
+  3. Added auto-logout timer in App.tsx
+     - 30-second interval checks for session timeout
+     - Tracks user activity: mousedown, keydown, scroll, touchstart
+     - Auto-logout when inactivity exceeded
+     - Used refs to prevent interval resets on re-renders
+  4. Added session expiry notification
+     - Orange notification: "Your session has expired due to inactivity. Please log in again."
+     - Redirects to login after 5 seconds
+- **Test Steps Completed:**
+  1. ✅ Login successfully - Tested with admin@example.com
+  2. ✅ Note current time - lastActivity timestamp stored in localStorage
+  3. ✅ Wait for session timeout - Tested with 1-minute timeout (70+ seconds wait)
+  4. ✅ Attempt to access protected route - Interval check every 30 seconds
+  5. ✅ Verify redirect to login - Confirmed redirect to /login works
+  6. ✅ Verify session expired message - Notification displayed before redirect
+- **Technical Challenges Resolved:**
+  - Issue: Interval was being reset on every component re-render
+  - Solution: Used refs to store function references and only depended on SESSION_TIMEOUT_MINUTES
+  - Issue: Environment variable not loading from root .env
+  - Solution: Created frontend/.env file and used import.meta.env
+  - Issue: Logout function call caused immediate component unmount
+  - Solution: Moved logout logic to useEffect and used refs for stable references
+- **Screenshots:**
+  - feature-20-step1-dashboard.png - Dashboard view
+  - feature-20-step2-logged-in.png - Logged in state
+  - feature-20-step3-logged-in-before-timeout.png - Before timeout
+  - feature-20-step4-after-timeout.png - After redirect to login
+
+### Files Modified This Session
+
+**Frontend:**
+- frontend/src/App.tsx
+  - Added session timeout tracking logic
+  - Added activity event listeners
+  - Added session expiry notification component
+  - Used refs for stable function references
+  - Fixed duplicate useNavigate import (lines 2-3)
+- frontend/src/stores/authStore.ts
+  - Added lastActivity state field
+  - Added updateLastActivity() action
+  - Added checkSessionTimeout() action
+  - Updated persist configuration to include lastActivity
+
+**Configuration:**
+- .env - Added SESSION_TIMEOUT_MINUTES=15
+- frontend/.env - Added VITE_SESSION_TIMEOUT_MINUTES=1 (for testing)
+
+### Commits Made
+- feat: Implement session timeout after inactivity (Feature #20)
+
+### Session Notes
+- This was a PARALLEL EXECUTION session focused solely on Feature #20
+- Successfully implemented and tested session timeout functionality
+- All test steps verified with browser automation
+- Feature #20 marked as PASSING ✅
+
+[Testing] Feature #222 verified - Loan calculator DTI calculation still passing
