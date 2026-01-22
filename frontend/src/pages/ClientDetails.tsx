@@ -65,6 +65,7 @@ import {
   IconDownload,
   IconUpload,
   IconPackage,
+  IconUser,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
@@ -361,11 +362,14 @@ export default function ClientDetails() {
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
   const [taskPriorityFilter, setTaskPriorityFilter] = useState<string | null>(null);
   const [taskDateFilter, setTaskDateFilter] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<{ id: string; name: string; role: string }[]>([]);
+  const [loadingTeamMembers, setLoadingTeamMembers] = useState(false);
   const [newTaskForm, setNewTaskForm] = useState({
     text: '',
     description: '',
     priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH',
     dueDate: null as Date | null,
+    assignedToId: '' as string | undefined,
   });
 
   // Loan scenario state
@@ -459,6 +463,7 @@ export default function ClientDetails() {
       fetchLoanScenarios();
       fetchDocuments();
       fetchActivities();
+      fetchTeamMembers();
     }
   }, [id]);
 
@@ -1052,6 +1057,25 @@ export default function ClientDetails() {
     }
   };
 
+  const fetchTeamMembers = async () => {
+    setLoadingTeamMembers(true);
+    try {
+      const response = await fetch(`${API_URL}/users/team`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTeamMembers(data);
+      }
+    } catch (error) {
+      console.error('Error fetching team members:', error);
+    } finally {
+      setLoadingTeamMembers(false);
+    }
+  };
+
   const handleCreateTask = async () => {
     if (!newTaskForm.text.trim()) {
       notifications.show({
@@ -1076,6 +1100,7 @@ export default function ClientDetails() {
           description: newTaskForm.description || undefined,
           priority: newTaskForm.priority,
           dueDate: newTaskForm.dueDate ? newTaskForm.dueDate.toISOString() : undefined,
+          assignedToId: newTaskForm.assignedToId || undefined,
         }),
       });
 
@@ -1091,6 +1116,7 @@ export default function ClientDetails() {
         description: '',
         priority: 'MEDIUM',
         dueDate: null,
+        assignedToId: '',
       });
 
       notifications.show({
@@ -2505,7 +2531,10 @@ export default function ClientDetails() {
               <Button
                 variant="light"
                 leftSection={<IconPackage size={16} />}
-                onClick={() => setAssignPackageModalOpen(true)}
+                onClick={async () => {
+                  await fetchPackages();
+                  setAssignPackageModalOpen(true);
+                }}
               >
                 Assign Package
               </Button>
@@ -2712,6 +2741,14 @@ export default function ClientDetails() {
                           </Text>
                           {task.description && (
                             <Text size="sm" c="dimmed" mt="xs">{task.description}</Text>
+                          )}
+                          {task.assignedTo && (
+                            <Group gap="xs" mt="xs">
+                              <IconUser size={14} />
+                              <Text size="xs" c="blue">
+                                Assigned to: {task.assignedTo.name}
+                              </Text>
+                            </Group>
                           )}
                         </div>
                       </Group>
@@ -3281,9 +3318,6 @@ export default function ClientDetails() {
             setSelectedPackageId('');
           }
         }}
-        onOpen={() => {
-          fetchPackages();
-        }}
         title="Assign Document Package"
         closeOnClickOutside={!assigningPackage}
         closeOnEscape={!assigningPackage}
@@ -3441,7 +3475,7 @@ export default function ClientDetails() {
         opened={addTaskModalOpen}
         onClose={() => {
           setAddTaskModalOpen(false);
-          setNewTaskForm({ text: '', description: '', priority: 'MEDIUM', dueDate: null });
+          setNewTaskForm({ text: '', description: '', priority: 'MEDIUM', dueDate: null, assignedToId: '' });
         }}
         title="Add Task"
       >
@@ -3470,6 +3504,18 @@ export default function ClientDetails() {
             value={newTaskForm.priority}
             onChange={(value) => setNewTaskForm({ ...newTaskForm, priority: (value as 'LOW' | 'MEDIUM' | 'HIGH') || 'MEDIUM' })}
           />
+          <Select
+            label="Assign To (optional)"
+            placeholder="Select team member"
+            clearable
+            disabled={loadingTeamMembers}
+            data={teamMembers.map(member => ({
+              value: member.id,
+              label: `${member.name} (${member.role})`,
+            }))}
+            value={newTaskForm.assignedToId}
+            onChange={(value) => setNewTaskForm({ ...newTaskForm, assignedToId: value as string || '' })}
+          />
           <DateInput
             label="Due Date (optional)"
             placeholder="Select due date"
@@ -3483,7 +3529,7 @@ export default function ClientDetails() {
               variant="subtle"
               onClick={() => {
                 setAddTaskModalOpen(false);
-                setNewTaskForm({ text: '', description: '', priority: 'MEDIUM', dueDate: null });
+                setNewTaskForm({ text: '', description: '', priority: 'MEDIUM', dueDate: null, assignedToId: '' });
               }}
             >
               Cancel

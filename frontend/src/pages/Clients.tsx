@@ -28,6 +28,7 @@ import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, 
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
 import { canWriteClients } from '../utils/roleUtils';
+import { handleFetchError, fetchWithErrorHandling } from '../utils/errorHandler';
 
 interface Client {
   id: string;
@@ -170,27 +171,19 @@ export default function Clients() {
     try {
       // Minimum loading time to ensure skeleton is visible (better UX)
       const [response] = await Promise.all([
-        fetch(`${API_URL}/clients`, {
+        fetchWithErrorHandling(`${API_URL}/clients`, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
-        }),
+        }, 'loading clients'),
         new Promise(resolve => setTimeout(resolve, 300)), // Minimum 300ms loading state for smooth UX
       ]);
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch clients');
-      }
 
       const data = await response.json();
       setClients(data);
     } catch (error) {
       console.error('Error fetching clients:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load clients',
-        color: 'red',
-      });
+      handleFetchError(error, 'loading clients');
     } finally {
       setLoading(false);
     }
@@ -222,18 +215,14 @@ export default function Clients() {
 
     setCreating(true);
     try {
-      const response = await fetch(`${API_URL}/clients`, {
+      const response = await fetchWithErrorHandling(`${API_URL}/clients`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify(newClient),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create client');
-      }
+      }, 'creating client');
 
       const createdClient = await response.json();
       setClients([createdClient, ...clients]);
@@ -248,11 +237,7 @@ export default function Clients() {
       });
     } catch (error) {
       console.error('Error creating client:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to create client',
-        color: 'red',
-      });
+      handleFetchError(error, 'creating client');
     } finally {
       setCreating(false);
     }
@@ -264,16 +249,12 @@ export default function Clients() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/clients/${id}`, {
+      const response = await fetchWithErrorHandling(`${API_URL}/clients/${id}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete client');
-      }
+      }, 'deleting client');
 
       setClients(clients.filter(c => c.id !== id));
       notifications.show({
@@ -283,11 +264,7 @@ export default function Clients() {
       });
     } catch (error) {
       console.error('Error deleting client:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete client',
-        color: 'red',
-      });
+      handleFetchError(error, 'deleting client');
     }
   };
 
@@ -298,7 +275,7 @@ export default function Clients() {
 
     setBulkUpdating(true);
     try {
-      const response = await fetch(`${API_URL}/clients/bulk`, {
+      const response = await fetchWithErrorHandling(`${API_URL}/clients/bulk`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -308,18 +285,14 @@ export default function Clients() {
           clientIds: selectedClientIds,
           status: bulkStatus,
         }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to bulk update clients');
-      }
+      }, 'updating clients');
 
       const result = await response.json();
 
       // Refresh clients list
-      const clientsResponse = await fetch(`${API_URL}/clients`, {
+      const clientsResponse = await fetchWithErrorHandling(`${API_URL}/clients`, {
         headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      }, 'loading clients');
       const updatedClients = await clientsResponse.json();
       setClients(updatedClients);
 
@@ -334,11 +307,7 @@ export default function Clients() {
       });
     } catch (error) {
       console.error('Error bulk updating clients:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to update clients',
-        color: 'red',
-      });
+      handleFetchError(error, 'updating clients');
     } finally {
       setBulkUpdating(false);
     }
