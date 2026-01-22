@@ -71,7 +71,7 @@ export function Login() {
             <Stack gap="md">
               {error && (
                 <Alert
-                  icon={<IconAlertCircle size={16} />}
+                  icon={<IconAlertCircle size={16} aria-hidden="true" />}
                   title="Error"
                   color="red"
                   variant="light"

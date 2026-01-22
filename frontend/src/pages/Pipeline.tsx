@@ -108,20 +108,20 @@ function DraggableClientCard({ client, onClick }: { client: Client; onClick: () 
       >
         <Stack gap="xs">
           <Group gap="xs">
-            <IconUser size={14} />
+            <IconUser size={14} aria-hidden="true" />
             <Text fw={500} size="sm" lineClamp={1}>
               {client.name}
             </Text>
           </Group>
           <Group gap="xs">
-            <IconMail size={12} color="gray" />
+            <IconMail size={12} color="gray" aria-hidden="true" />
             <Text size="xs" c="dimmed" lineClamp={1}>
               {client.email}
             </Text>
           </Group>
           {client.phone && (
             <Group gap="xs">
-              <IconPhone size={12} color="gray" />
+              <IconPhone size={12} color="gray" aria-hidden="true" />
               <Text size="xs" c="dimmed">
                 {client.phone}
               </Text>
@@ -399,7 +399,7 @@ export default function Pipeline() {
                 value: 'kanban',
                 label: (
                   <Group gap={4}>
-                    <IconLayoutKanban size={16} />
+                    <IconLayoutKanban size={16} aria-hidden="true" />
                     <span>Board</span>
                   </Group>
                 ),
@@ -408,7 +408,7 @@ export default function Pipeline() {
                 value: 'table',
                 label: (
                   <Group gap={4}>
-                    <IconTable size={16} />
+                    <IconTable size={16} aria-hidden="true" />
                     <span>Table</span>
                   </Group>
                 ),

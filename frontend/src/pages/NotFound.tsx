@@ -18,14 +18,14 @@ export function NotFound() {
         </Text>
         <Group gap="md" mt="md">
           <Button
-            leftSection={<IconArrowLeft size={16} />}
+            leftSection={<IconArrowLeft size={16} aria-hidden="true" />}
             variant="light"
             onClick={() => navigate(-1)}
           >
             Go Back
           </Button>
           <Button
-            leftSection={<IconHome size={16} />}
+            leftSection={<IconHome size={16} aria-hidden="true" />}
             onClick={() => navigate('/')}
           >
             Go to Dashboard

@@ -47,6 +47,32 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// GET /api/clients/statuses - Get available client statuses
+router.get('/statuses', async (req: AuthRequest, res: Response) => {
+  try {
+    // Return all valid client statuses with their labels
+    const statuses = [
+      { value: 'LEAD', label: 'Lead' },
+      { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
+      { value: 'ACTIVE', label: 'Active' },
+      { value: 'PROCESSING', label: 'Processing' },
+      { value: 'UNDERWRITING', label: 'Underwriting' },
+      { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
+      { value: 'CLOSED', label: 'Closed' },
+      { value: 'DENIED', label: 'Denied' },
+      { value: 'INACTIVE', label: 'Inactive' },
+    ];
+
+    res.json(statuses);
+  } catch (error) {
+    console.error('Error fetching client statuses:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch client statuses',
+    });
+  }
+});
+
 // GET /api/clients/:id - Get single client
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
@@ -127,6 +153,21 @@ router.post('/', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest,
       return res.status(400).json({
         error: 'Validation Error',
         message: 'Please enter a valid email address',
+      });
+    }
+
+    // Check for duplicate email (same user)
+    const existingClient = await prisma.client.findFirst({
+      where: {
+        createdById: userId,
+        emailHash: trimmedEmail.toLowerCase(),
+      },
+    });
+
+    if (existingClient) {
+      return res.status(409).json({
+        error: 'Duplicate Email',
+        message: 'A client with this email address already exists',
       });
     }
 
@@ -351,6 +392,15 @@ router.patch('/bulk', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReq
       message: 'Failed to bulk update clients',
     });
   }
+});
+
+// TEST ENDPOINT: GET /api/clients/test-500-error - Intentionally returns 500 error for testing
+// This endpoint is used to verify that the frontend handles 500 errors gracefully
+router.get('/test-500-error', (req: AuthRequest, res: Response) => {
+  res.status(500).json({
+    error: 'Internal Server Error',
+    message: 'This is a test error to verify graceful error handling',
+  });
 });
 
 export default router;

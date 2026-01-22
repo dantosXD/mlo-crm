@@ -168,14 +168,14 @@ export default function Documents() {
       <Group mb="md" gap="md">
         <TextInput
           placeholder="Search documents..."
-          leftSection={<IconSearch size={16} />}
+          leftSection={<IconSearch size={16} aria-hidden="true" />}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{ flex: 1 }}
         />
         <Select
           placeholder="Status"
-          leftSection={<IconFilter size={16} />}
+          leftSection={<IconFilter size={16} aria-hidden="true" />}
           clearable
           data={[
             { value: 'REQUIRED', label: 'Required' },
@@ -268,7 +268,7 @@ export default function Documents() {
                   >
                     <Table.Td>
                       <Group gap="xs">
-                        <IconFileText size={16} color="gray" />
+                        <IconFileText size={16} color="gray" aria-hidden="true" />
                         <div>
                           <Text fw={500} size="sm">
                             {doc.name}
@@ -308,7 +308,7 @@ export default function Documents() {
                       {doc.expiresAt ? (
                         <Group gap={4}>
                           {(expired || expiringSoon) && (
-                            <IconAlertTriangle size={14} color={expired ? 'var(--mantine-color-red-6)' : 'var(--mantine-color-yellow-6)'} />
+                            <IconAlertTriangle size={14} color={expired ? 'var(--mantine-color-red-6)' : 'var(--mantine-color-yellow-6)'} aria-hidden="true" />
                           )}
                           <Text size="sm" c={expired ? 'red' : expiringSoon ? 'yellow.7' : 'dimmed'} fw={expired || expiringSoon ? 600 : 400}>
                             {new Date(doc.expiresAt).toLocaleDateString()}
@@ -337,7 +337,7 @@ export default function Documents() {
                             onClick={() => handleClientClick(doc.clientId)}
                             aria-label={`View client for document ${doc.name}`}
                           >
-                            <IconEye size={16} />
+                            <IconEye size={16} aria-hidden="true" />
                           </ActionIcon>
                         </Tooltip>
                       </Group>

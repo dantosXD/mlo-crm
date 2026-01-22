@@ -198,16 +198,16 @@ export default function Settings() {
       <Paper shadow="xs" p="md" withBorder>
         <Tabs value={activeTab} onChange={setActiveTab}>
           <Tabs.List>
-            <Tabs.Tab value="profile" leftSection={<IconUser size={16} />}>
+            <Tabs.Tab value="profile" leftSection={<IconUser size={16} aria-hidden="true" />}>
               Profile
             </Tabs.Tab>
-            <Tabs.Tab value="security" leftSection={<IconLock size={16} />}>
+            <Tabs.Tab value="security" leftSection={<IconLock size={16} aria-hidden="true" />}>
               Security
             </Tabs.Tab>
-            <Tabs.Tab value="notifications" leftSection={<IconBell size={16} />}>
+            <Tabs.Tab value="notifications" leftSection={<IconBell size={16} aria-hidden="true" />}>
               Notifications
             </Tabs.Tab>
-            <Tabs.Tab value="appearance" leftSection={<IconPalette size={16} />}>
+            <Tabs.Tab value="appearance" leftSection={<IconPalette size={16} aria-hidden="true" />}>
               Appearance
             </Tabs.Tab>
           </Tabs.List>
@@ -249,7 +249,7 @@ export default function Settings() {
               />
 
               <Group justify="flex-end" mt="md">
-                <Button leftSection={<IconDeviceFloppy size={16} />} onClick={handleProfileSave} loading={saving}>
+                <Button leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />} onClick={handleProfileSave} loading={saving}>
                   Save Changes
                 </Button>
               </Group>
@@ -267,7 +267,7 @@ export default function Settings() {
               <Divider />
 
               {passwordError && (
-                <Alert icon={<IconAlertCircle size={16} />} color="red" title="Error">
+                <Alert icon={<IconAlertCircle size={16} aria-hidden="true" />} color="red" title="Error">
                   {passwordError}
                 </Alert>
               )}
@@ -297,7 +297,7 @@ export default function Settings() {
               />
 
               <Group justify="flex-end" mt="md">
-                <Button leftSection={<IconDeviceFloppy size={16} />} onClick={handlePasswordChange} loading={savingPassword}>
+                <Button leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />} onClick={handlePasswordChange} loading={savingPassword}>
                   Update Password
                 </Button>
               </Group>
@@ -360,7 +360,7 @@ export default function Settings() {
               />
 
               <Group justify="flex-end" mt="md">
-                <Button leftSection={<IconDeviceFloppy size={16} />} onClick={handleNotificationsSave}>
+                <Button leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />} onClick={handleNotificationsSave}>
                   Save Preferences
                 </Button>
               </Group>
@@ -404,7 +404,7 @@ export default function Settings() {
               />
 
               <Group justify="flex-end" mt="md">
-                <Button leftSection={<IconDeviceFloppy size={16} />} onClick={handleAppearanceSave}>
+                <Button leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />} onClick={handleAppearanceSave}>
                   Save Settings
                 </Button>
               </Group>

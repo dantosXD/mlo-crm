@@ -159,7 +159,7 @@ export default function Calculator() {
     <Container size="xl" py="md">
       <Group mb="lg">
         <ThemeIcon size="xl" variant="light" color="blue">
-          <IconCalculator size={24} />
+          <IconCalculator size={24} aria-hidden="true" />
         </ThemeIcon>
         <Title order={2}>Loan Calculator</Title>
       </Group>
@@ -181,7 +181,7 @@ export default function Calculator() {
                 step={10000}
                 prefix="$"
                 thousandSeparator=","
-                leftSection={<IconCurrencyDollar size={16} />}
+                leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
               />
 
               <NumberInput
@@ -194,7 +194,7 @@ export default function Calculator() {
                 step={0.125}
                 decimalScale={3}
                 suffix="%"
-                leftSection={<IconPercentage size={16} />}
+                leftSection={<IconPercentage size={16} aria-hidden="true" />}
               />
 
               <div>
@@ -216,7 +216,7 @@ export default function Calculator() {
 
               <Accordion variant="contained" radius="md">
                 <Accordion.Item value="advanced">
-                  <Accordion.Control icon={<IconHome size={18} />}>
+                  <Accordion.Control icon={<IconHome size={18} aria-hidden="true" />}>
                     Additional Costs (Optional)
                   </Accordion.Control>
                   <Accordion.Panel>
@@ -271,7 +271,7 @@ export default function Calculator() {
                   </Accordion.Panel>
                 </Accordion.Item>
                 <Accordion.Item value="dti">
-                  <Accordion.Control icon={<IconWallet size={18} />}>
+                  <Accordion.Control icon={<IconWallet size={18} aria-hidden="true" />}>
                     DTI Calculation (Optional)
                   </Accordion.Control>
                   <Accordion.Panel>
@@ -284,7 +284,7 @@ export default function Calculator() {
                         min={0}
                         prefix="$"
                         thousandSeparator=","
-                        leftSection={<IconCurrencyDollar size={16} />}
+                        leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
                       />
 
                       <NumberInput
@@ -295,7 +295,7 @@ export default function Calculator() {
                         min={0}
                         prefix="$"
                         thousandSeparator=","
-                        leftSection={<IconCurrencyDollar size={16} />}
+                        leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
                       />
                     </Stack>
                   </Accordion.Panel>
@@ -305,7 +305,7 @@ export default function Calculator() {
               <Button
                 size="lg"
                 fullWidth
-                leftSection={<IconCalculator size={20} />}
+                leftSection={<IconCalculator size={20} aria-hidden="true" />}
                 onClick={calculateLoan}
               >
                 Calculate
@@ -329,7 +329,7 @@ export default function Calculator() {
                     <Text size="sm" c="dimmed">per month</Text>
                   </div>
                   <ThemeIcon size={60} variant="light" color="blue" radius="xl">
-                    <IconReceipt size={32} />
+                    <IconReceipt size={32} aria-hidden="true" />
                   </ThemeIcon>
                 </Group>
               </Paper>
@@ -391,7 +391,7 @@ export default function Calculator() {
                               {formatPercent(result.dti)}
                             </Text>
                             {result.dti > 43 ? (
-                              <Badge color="red" size="sm" leftSection={<IconAlertTriangle size={12} />}>
+                              <Badge color="red" size="sm" leftSection={<IconAlertTriangle size={12} aria-hidden="true" />}>
                                 High DTI
                               </Badge>
                             ) : result.dti > 36 ? (
@@ -473,7 +473,7 @@ export default function Calculator() {
             <Paper shadow="xs" p="xl" withBorder style={{ minHeight: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Stack align="center" gap="md">
                 <ThemeIcon size={80} variant="light" color="gray" radius="xl">
-                  <IconCalculator size={40} />
+                  <IconCalculator size={40} aria-hidden="true" />
                 </ThemeIcon>
                 <Text size="lg" c="dimmed" ta="center">
                   Enter loan details and click Calculate<br />to see your payment breakdown

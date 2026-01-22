@@ -432,16 +432,9 @@ export default function ClientDetails() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
 
-  const statusOptions = [
-    { value: 'LEAD', label: 'Lead' },
-    { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
-    { value: 'ACTIVE', label: 'Active' },
-    { value: 'PROCESSING', label: 'Processing' },
-    { value: 'UNDERWRITING', label: 'Underwriting' },
-    { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
-    { value: 'CLOSED', label: 'Closed' },
-    { value: 'DENIED', label: 'Denied' },
-  ];
+  // Status options fetched from backend
+  const [statusOptions, setStatusOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [loadingStatuses, setLoadingStatuses] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -457,6 +450,7 @@ export default function ClientDetails() {
       setAccessDenied(false);
 
       fetchClient();
+      fetchStatuses();
       fetchNotes();
       fetchTasks();
       fetchLoanScenarios();
@@ -565,6 +559,40 @@ export default function ClientDetails() {
       console.error('Error fetching activities:', error);
     } finally {
       setLoadingActivities(false);
+    }
+  };
+
+  const fetchStatuses = async () => {
+    setLoadingStatuses(true);
+    try {
+      const response = await fetch(`${API_URL}/clients/statuses`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch client statuses');
+      }
+
+      const data = await response.json();
+      setStatusOptions(data);
+    } catch (error) {
+      console.error('Error fetching client statuses:', error);
+      // Fallback to hardcoded options if fetch fails
+      setStatusOptions([
+        { value: 'LEAD', label: 'Lead' },
+        { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
+        { value: 'ACTIVE', label: 'Active' },
+        { value: 'PROCESSING', label: 'Processing' },
+        { value: 'UNDERWRITING', label: 'Underwriting' },
+        { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
+        { value: 'CLOSED', label: 'Closed' },
+        { value: 'DENIED', label: 'Denied' },
+        { value: 'INACTIVE', label: 'Inactive' },
+      ]);
+    } finally {
+      setLoadingStatuses(false);
     }
   };
 
@@ -2250,7 +2278,7 @@ export default function ClientDetails() {
       <Container size="xl" py="md">
         <Center h={400}>
           <Paper p="xl" withBorder shadow="sm" style={{ textAlign: 'center', maxWidth: 500 }}>
-            <IconLock size={64} color="var(--mantine-color-red-6)" style={{ marginBottom: 16 }} />
+            <IconLock size={64} color="var(--mantine-color-red-6)" style={{ marginBottom: 16 }} aria-hidden="true" />
             <Title order={2} mb="sm">Access Denied</Title>
             <Text c="dimmed" mb="lg">
               You do not have permission to view this client. This client belongs to another user.
@@ -2269,7 +2297,7 @@ export default function ClientDetails() {
       <Container size="xl" py="md">
         <Center h={400}>
           <Paper p="xl" withBorder shadow="sm" style={{ textAlign: 'center', maxWidth: 500 }}>
-            <IconAlertCircle size={64} color="var(--mantine-color-orange-6)" style={{ marginBottom: 16 }} />
+            <IconAlertCircle size={64} color="var(--mantine-color-orange-6)" style={{ marginBottom: 16 }} aria-hidden="true" />
             <Title order={2} mb="sm">Client Not Found</Title>
             <Text c="dimmed" mb="lg">
               {error || 'The requested client could not be found.'}
@@ -2287,7 +2315,7 @@ export default function ClientDetails() {
     <Container size="xl" py="md">
       {/* Breadcrumb Navigation */}
       <Breadcrumbs
-        separator={<IconChevronRight size={14} color="gray" />}
+        separator={<IconChevronRight size={14} color="gray" aria-hidden="true" />}
         mb="md"
       >
         <Anchor onClick={() => safeNavigate('/')} style={{ cursor: 'pointer' }}>
@@ -2322,7 +2350,7 @@ export default function ClientDetails() {
             />
             {statusUpdateSuccess && (
               <ThemeIcon color="green" size="md" radius="xl" variant="filled">
-                <IconCheck size={16} />
+                <IconCheck size={16} aria-hidden="true" />
               </ThemeIcon>
             )}
           </Group>
@@ -2330,14 +2358,14 @@ export default function ClientDetails() {
         {canWrite && (
           <Group>
             <Button
-              leftSection={<IconEdit size={16} />}
+              leftSection={<IconEdit size={16} aria-hidden="true" />}
               variant="light"
               onClick={openEditModal}
             >
               Edit
             </Button>
             <Button
-              leftSection={<IconTrash size={16} />}
+              leftSection={<IconTrash size={16} aria-hidden="true" />}
               variant="light"
               color="red"
               onClick={() => setDeleteModalOpen(true)}
@@ -2370,7 +2398,7 @@ export default function ClientDetails() {
           value={client.tags || []}
           onChange={handleTagsChange}
           disabled={updatingTags}
-          leftSection={<IconTag size={16} />}
+          leftSection={<IconTag size={16} aria-hidden="true" />}
           clearable
         />
       </Paper>
@@ -2378,22 +2406,22 @@ export default function ClientDetails() {
       {/* Tabs */}
       <Tabs value={activeTab} onChange={handleTabChange}>
         <Tabs.List>
-          <Tabs.Tab value="overview" leftSection={<IconUser size={16} />}>
+          <Tabs.Tab value="overview" leftSection={<IconUser size={16} aria-hidden="true" />}>
             Overview
           </Tabs.Tab>
-          <Tabs.Tab value="notes" leftSection={<IconNotes size={16} />}>
+          <Tabs.Tab value="notes" leftSection={<IconNotes size={16} aria-hidden="true" />}>
             Notes ({notes.length})
           </Tabs.Tab>
-          <Tabs.Tab value="documents" leftSection={<IconFiles size={16} />}>
+          <Tabs.Tab value="documents" leftSection={<IconFiles size={16} aria-hidden="true" />}>
             Documents ({documents.length})
           </Tabs.Tab>
-          <Tabs.Tab value="tasks" leftSection={<IconChecklist size={16} />}>
+          <Tabs.Tab value="tasks" leftSection={<IconChecklist size={16} aria-hidden="true" />}>
             Tasks ({tasks.length})
           </Tabs.Tab>
-          <Tabs.Tab value="loans" leftSection={<IconCalculator size={16} />}>
+          <Tabs.Tab value="loans" leftSection={<IconCalculator size={16} aria-hidden="true" />}>
             Loan Scenarios ({loanScenarios.length})
           </Tabs.Tab>
-          <Tabs.Tab value="activity" leftSection={<IconTimeline size={16} />}>
+          <Tabs.Tab value="activity" leftSection={<IconTimeline size={16} aria-hidden="true" />}>
             Activity
           </Tabs.Tab>
         </Tabs.List>
@@ -2416,7 +2444,7 @@ export default function ClientDetails() {
               ) : (
                 <Stack align="center" gap="xs" py="md">
                   <ThemeIcon size={40} radius="xl" variant="light" color="blue" style={{ opacity: 0.6 }}>
-                    <IconNotes size={20} stroke={1.5} />
+                    <IconNotes size={20} stroke={1.5} aria-hidden="true" />
                   </ThemeIcon>
                   <Text c="dimmed" size="sm" ta="center">No notes yet</Text>
                   <Text c="dimmed" size="xs" ta="center" maw={200}>
@@ -2444,7 +2472,7 @@ export default function ClientDetails() {
               ) : (
                 <Stack align="center" gap="xs" py="md">
                   <ThemeIcon size={40} radius="xl" variant="light" color="orange" style={{ opacity: 0.6 }}>
-                    <IconChecklist size={20} stroke={1.5} />
+                    <IconChecklist size={20} stroke={1.5} aria-hidden="true" />
                   </ThemeIcon>
                   <Text c="dimmed" size="sm" ta="center">No tasks yet</Text>
                   <Text c="dimmed" size="xs" ta="center" maw={200}>
@@ -2460,7 +2488,7 @@ export default function ClientDetails() {
           <Group justify="space-between" mb="md">
             <Title order={4}>Notes</Title>
             <Button
-              leftSection={<IconPlus size={16} />}
+              leftSection={<IconPlus size={16} aria-hidden="true" />}
               onClick={() => {
                 fetchNoteTemplates();
                 setAddNoteModalOpen(true);
@@ -2488,7 +2516,7 @@ export default function ClientDetails() {
                 <Paper key={note.id} p="md" withBorder style={note.isPinned ? { borderColor: 'var(--mantine-color-blue-5)', borderWidth: 2 } : {}}>
                   <Group justify="space-between" align="flex-start">
                     <Group gap="xs" style={{ flex: 1 }}>
-                      {note.isPinned && <IconPin size={16} color="var(--mantine-color-blue-6)" />}
+                      {note.isPinned && <IconPin size={16} color="var(--mantine-color-blue-6)" aria-hidden="true" />}
                       <Text style={{ whiteSpace: 'pre-wrap', flex: 1 }}>{note.text}</Text>
                     </Group>
                     <Group gap="xs">
@@ -2499,13 +2527,13 @@ export default function ClientDetails() {
                         title={note.isPinned ? 'Unpin note' : 'Pin to top'}
                         aria-label={note.isPinned ? 'Unpin note' : 'Pin note to top'}
                       >
-                        {note.isPinned ? <IconPinnedOff size={16} /> : <IconPin size={16} />}
+                        {note.isPinned ? <IconPinnedOff size={16} aria-hidden="true" /> : <IconPin size={16} aria-hidden="true" />}
                       </ActionIcon>
                       <ActionIcon variant="subtle" color="blue" onClick={() => handleEditNote(note)} aria-label="Edit note">
-                        <IconEdit size={16} />
+                        <IconEdit size={16} aria-hidden="true" />
                       </ActionIcon>
                       <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteNote(note.id)} aria-label="Delete note">
-                        <IconTrash size={16} />
+                        <IconTrash size={16} aria-hidden="true" />
                       </ActionIcon>
                     </Group>
                   </Group>
@@ -2529,7 +2557,7 @@ export default function ClientDetails() {
             <Group gap="sm">
               <Button
                 variant="light"
-                leftSection={<IconPackage size={16} />}
+                leftSection={<IconPackage size={16} aria-hidden="true" />}
                 onClick={async () => {
                   await fetchPackages();
                   setAssignPackageModalOpen(true);
@@ -2539,13 +2567,13 @@ export default function ClientDetails() {
               </Button>
               <Button
                 variant="light"
-                leftSection={<IconUpload size={16} />}
+                leftSection={<IconUpload size={16} aria-hidden="true" />}
                 onClick={() => setRequestDocumentModalOpen(true)}
               >
                 Request Document
               </Button>
               <Button
-                leftSection={<IconPlus size={16} />}
+                leftSection={<IconPlus size={16} aria-hidden="true" />}
                 onClick={() => setAddDocumentModalOpen(true)}
               >
                 Add Document
@@ -2580,13 +2608,13 @@ export default function ClientDetails() {
                     <Group justify="space-between" align="flex-start">
                       <div style={{ flex: 1 }}>
                         <Group gap="sm" mb="xs">
-                          <IconFiles size={20} />
+                          <IconFiles size={20} aria-hidden="true" />
                           <Text fw={500}>{doc.name}</Text>
                           {expired && (
                             <Badge color="red" variant="filled" size="sm">EXPIRED</Badge>
                           )}
                           {expiringSoon && !expired && (
-                            <Badge color="yellow" variant="filled" size="sm" leftSection={<IconAlertTriangle size={12} />}>
+                            <Badge color="yellow" variant="filled" size="sm" leftSection={<IconAlertTriangle size={12} aria-hidden="true" />}>
                               EXPIRING SOON
                             </Badge>
                           )}
@@ -2627,10 +2655,10 @@ export default function ClientDetails() {
                           onClick={() => handleDownloadDocument(doc.id, doc.fileName)}
                           aria-label={`Download document ${doc.name}`}
                         >
-                          <IconDownload size={16} />
+                          <IconDownload size={16} aria-hidden="true" />
                         </ActionIcon>
                         <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteDocument(doc.id)} aria-label={`Delete document ${doc.name}`}>
-                          <IconTrash size={16} />
+                          <IconTrash size={16} aria-hidden="true" />
                         </ActionIcon>
                       </Group>
                     </Group>
@@ -2683,7 +2711,7 @@ export default function ClientDetails() {
                 style={{ width: 140 }}
               />
               <Button
-                leftSection={<IconPlus size={16} />}
+                leftSection={<IconPlus size={16} aria-hidden="true" />}
                 onClick={() => setAddTaskModalOpen(true)}
               >
                 Add Task
@@ -2743,7 +2771,7 @@ export default function ClientDetails() {
                           )}
                           {task.assignedTo && (
                             <Group gap="xs" mt="xs">
-                              <IconUser size={14} />
+                              <IconUser size={14} aria-hidden="true" />
                               <Text size="xs" c="blue">
                                 Assigned to: {task.assignedTo.name}
                               </Text>
@@ -2761,7 +2789,7 @@ export default function ClientDetails() {
                           {task.priority}
                         </Badge>
                         <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteTask(task.id)} aria-label={`Delete task: ${task.text}`}>
-                          <IconTrash size={16} />
+                          <IconTrash size={16} aria-hidden="true" />
                         </ActionIcon>
                       </Group>
                     </Group>
@@ -2786,7 +2814,7 @@ export default function ClientDetails() {
             <Group>
               {selectedScenarios.length >= 2 && (
                 <Button
-                  leftSection={<IconScale size={16} />}
+                  leftSection={<IconScale size={16} aria-hidden="true" />}
                   variant="light"
                   onClick={() => setCompareModalOpen(true)}
                 >
@@ -2794,7 +2822,7 @@ export default function ClientDetails() {
                 </Button>
               )}
               <Button
-                leftSection={<IconPlus size={16} />}
+                leftSection={<IconPlus size={16} aria-hidden="true" />}
                 onClick={() => setAddScenarioModalOpen(true)}
               >
                 Add Scenario
@@ -2838,7 +2866,7 @@ export default function ClientDetails() {
                         />
                         {scenario.isPreferred && (
                           <ThemeIcon color="yellow" size="sm" variant="light">
-                            <IconStarFilled size={14} />
+                            <IconStarFilled size={14} aria-hidden="true" />
                           </ThemeIcon>
                         )}
                         <Text fw={600} size="lg">{scenario.name}</Text>
@@ -2902,7 +2930,7 @@ export default function ClientDetails() {
                       title="Export to PDF"
                       aria-label={`Export ${scenario.name} to PDF`}
                     >
-                      <IconDownload size={16} />
+                      <IconDownload size={16} aria-hidden="true" />
                     </ActionIcon>
                     <ActionIcon
                       variant="subtle"
@@ -2911,7 +2939,7 @@ export default function ClientDetails() {
                       title="Export Amortization Schedule"
                       aria-label={`Export amortization schedule for ${scenario.name}`}
                     >
-                      <IconCalendar size={16} />
+                      <IconCalendar size={16} aria-hidden="true" />
                     </ActionIcon>
                     {!scenario.isPreferred && (
                       <ActionIcon
@@ -2921,7 +2949,7 @@ export default function ClientDetails() {
                         title="Set as preferred"
                         aria-label={`Set ${scenario.name} as preferred scenario`}
                       >
-                        <IconStar size={16} />
+                        <IconStar size={16} aria-hidden="true" />
                       </ActionIcon>
                     )}
                     <ActionIcon
@@ -2931,7 +2959,7 @@ export default function ClientDetails() {
                       title="Delete scenario"
                       aria-label={`Delete scenario: ${scenario.name}`}
                     >
-                      <IconTrash size={16} />
+                      <IconTrash size={16} aria-hidden="true" />
                     </ActionIcon>
                   </Group>
                 </Card>
@@ -3197,17 +3225,17 @@ export default function ClientDetails() {
             <Group justify="center" gap="xl" mih={120} style={{ pointerEvents: 'none' }}>
               <Dropzone.Accept>
                 <ThemeIcon size={60} color="blue" variant="light">
-                  <IconUpload size={30} style={{ width: '30px', height: '30px' }} />
+                  <IconUpload size={30} style={{ width: '30px', height: '30px' }} aria-hidden="true" />
                 </ThemeIcon>
               </Dropzone.Accept>
               <Dropzone.Reject>
                 <ThemeIcon size={60} color="red" variant="light">
-                  <IconUpload size={30} style={{ width: '30px', height: '30px' }} />
+                  <IconUpload size={30} style={{ width: '30px', height: '30px' }} aria-hidden="true" />
                 </ThemeIcon>
               </Dropzone.Reject>
               <Dropzone.Idle>
                 <ThemeIcon size={60} color="gray" variant="light">
-                  <IconUpload size={30} style={{ width: '30px', height: '30px' }} />
+                  <IconUpload size={30} style={{ width: '30px', height: '30px' }} aria-hidden="true" />
                 </ThemeIcon>
               </Dropzone.Idle>
 
@@ -3596,7 +3624,7 @@ export default function ClientDetails() {
                 setNewScenarioForm({ ...newScenarioForm, amount: Number(value) || 0 });
                 if (scenarioFormErrors.amount) setScenarioFormErrors({ ...scenarioFormErrors, amount: undefined });
               }}
-              leftSection={<IconCurrencyDollar size={16} />}
+              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
               thousandSeparator=","
               error={scenarioFormErrors.amount}
             />
@@ -3606,7 +3634,7 @@ export default function ClientDetails() {
               min={0}
               value={newScenarioForm.propertyValue}
               onChange={(value) => setNewScenarioForm({ ...newScenarioForm, propertyValue: Number(value) || 0 })}
-              leftSection={<IconCurrencyDollar size={16} />}
+              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
               thousandSeparator=","
             />
           </SimpleGrid>
@@ -3624,7 +3652,7 @@ export default function ClientDetails() {
                 setNewScenarioForm({ ...newScenarioForm, interestRate: Number(value) || 0 });
                 if (scenarioFormErrors.interestRate) setScenarioFormErrors({ ...scenarioFormErrors, interestRate: undefined });
               }}
-              leftSection={<IconPercentage size={16} />}
+              leftSection={<IconPercentage size={16} aria-hidden="true" />}
               error={scenarioFormErrors.interestRate}
             />
             <NumberInput
@@ -3638,7 +3666,7 @@ export default function ClientDetails() {
                 setNewScenarioForm({ ...newScenarioForm, termYears: Number(value) || 0 });
                 if (scenarioFormErrors.termYears) setScenarioFormErrors({ ...scenarioFormErrors, termYears: undefined });
               }}
-              leftSection={<IconCalendar size={16} />}
+              leftSection={<IconCalendar size={16} aria-hidden="true" />}
               error={scenarioFormErrors.termYears}
             />
             <NumberInput
@@ -3647,7 +3675,7 @@ export default function ClientDetails() {
               min={0}
               value={newScenarioForm.downPayment}
               onChange={(value) => setNewScenarioForm({ ...newScenarioForm, downPayment: Number(value) || 0 })}
-              leftSection={<IconCurrencyDollar size={16} />}
+              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
               thousandSeparator=","
             />
           </SimpleGrid>
@@ -3661,7 +3689,7 @@ export default function ClientDetails() {
               min={0}
               value={newScenarioForm.propertyTaxes}
               onChange={(value) => setNewScenarioForm({ ...newScenarioForm, propertyTaxes: Number(value) || 0 })}
-              leftSection={<IconCurrencyDollar size={16} />}
+              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
               thousandSeparator=","
             />
             <NumberInput
@@ -3670,7 +3698,7 @@ export default function ClientDetails() {
               min={0}
               value={newScenarioForm.homeInsurance}
               onChange={(value) => setNewScenarioForm({ ...newScenarioForm, homeInsurance: Number(value) || 0 })}
-              leftSection={<IconCurrencyDollar size={16} />}
+              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
               thousandSeparator=","
             />
             <NumberInput
@@ -3679,7 +3707,7 @@ export default function ClientDetails() {
               min={0}
               value={newScenarioForm.hoaFees}
               onChange={(value) => setNewScenarioForm({ ...newScenarioForm, hoaFees: Number(value) || 0 })}
-              leftSection={<IconCurrencyDollar size={16} />}
+              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
               thousandSeparator=","
             />
           </SimpleGrid>
@@ -3882,7 +3910,7 @@ export default function ClientDetails() {
         centered
       >
         <Stack>
-          <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+          <Alert color="yellow" icon={<IconAlertCircle size={16} aria-hidden="true" />}>
             You have unsaved changes in the edit form. Are you sure you want to leave? Your changes will be lost.
           </Alert>
           <Group justify="flex-end" mt="md">

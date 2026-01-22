@@ -45,7 +45,7 @@ export function EmptyState({
             color="blue"
             style={{ opacity: 0.8 }}
           >
-            <IconComponent size={40} stroke={1.5} />
+            <IconComponent size={40} stroke={1.5} aria-hidden="true" />
           </ThemeIcon>
         )}
 
@@ -64,7 +64,7 @@ export function EmptyState({
         {/* CTA Button */}
         {ctaLabel && onCtaClick && (
           <Button
-            leftSection={ctaIcon || <IconPlus size={16} />}
+            leftSection={ctaIcon || <IconPlus size={16} aria-hidden="true" />}
             onClick={onCtaClick}
             variant="filled"
             mt="sm"

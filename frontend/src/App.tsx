@@ -85,15 +85,16 @@ function MainNav({ currentPath, collapsed }: { currentPath: string; collapsed: b
               size="lg"
               onClick={() => navigate(item.href)}
               style={{ width: '100%' }}
+              aria-label={item.label}
             >
-              <item.icon size={20} stroke={1.5} />
+              <item.icon size={20} stroke={1.5} aria-hidden="true" />
             </ActionIcon>
           </Tooltip>
         ) : (
           <NavLink
             key={item.href}
             label={item.label}
-            leftSection={<item.icon size={20} stroke={1.5} />}
+            leftSection={<item.icon size={20} stroke={1.5} aria-hidden="true" />}
             active={currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href))}
             onClick={() => navigate(item.href)}
             style={{ borderRadius: 8 }}
@@ -143,18 +144,18 @@ function UserMenu() {
                 {user?.role || 'MLO'}
               </Text>
             </div>
-            <IconChevronDown size={16} />
+            <IconChevronDown size={16} aria-hidden="true" />
           </Group>
         </UnstyledButton>
       </Menu.Target>
 
       <Menu.Dropdown>
         <Menu.Label>Account</Menu.Label>
-        <Menu.Item leftSection={<IconSettings size={14} />} onClick={() => navigate('/settings')}>
+        <Menu.Item leftSection={<IconSettings size={14} aria-hidden="true" />} onClick={() => navigate('/settings')}>
           Settings
         </Menu.Item>
         <Menu.Divider />
-        <Menu.Item color="red" leftSection={<IconLogout size={14} />} onClick={handleLogout}>
+        <Menu.Item color="red" leftSection={<IconLogout size={14} aria-hidden="true" />} onClick={handleLogout}>
           Logout
         </Menu.Item>
       </Menu.Dropdown>
@@ -351,7 +352,7 @@ function ProtectedLayout() {
                 onClick={toggleSidebar}
                 aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               >
-                {sidebarCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
+                {sidebarCollapsed ? <IconChevronRight size={18} aria-hidden="true" /> : <IconChevronLeft size={18} aria-hidden="true" />}
               </ActionIcon>
             </Tooltip>
           </Group>

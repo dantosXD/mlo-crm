@@ -148,14 +148,14 @@ const slashCommands: SlashCommand[] = [
     command: '/task',
     label: 'Create Task',
     description: 'Create a new task',
-    icon: <IconChecklist size={20} />,
+    icon: <IconChecklist size={20} aria-hidden="true" />,
     placeholder: 'Task description...',
   },
   {
     command: '/note',
     label: 'Create Note',
     description: 'Create a quick note',
-    icon: <IconNotes size={20} />,
+    icon: <IconNotes size={20} aria-hidden="true" />,
     placeholder: 'Note content...',
   },
 ];
@@ -198,7 +198,7 @@ export function QuickCapture() {
       id: 'dashboard',
       label: 'Go to Dashboard',
       description: 'View your dashboard',
-      icon: <IconDashboard size={20} />,
+      icon: <IconDashboard size={20} aria-hidden="true" />,
       action: () => { navigate('/'); close(); },
       keywords: ['home', 'main', 'dashboard'],
     },
@@ -206,7 +206,7 @@ export function QuickCapture() {
       id: 'clients',
       label: 'Go to Clients',
       description: 'View all clients',
-      icon: <IconUsers size={20} />,
+      icon: <IconUsers size={20} aria-hidden="true" />,
       action: () => { navigate('/clients'); close(); },
       keywords: ['clients', 'customers', 'contacts'],
     },
@@ -214,7 +214,7 @@ export function QuickCapture() {
       id: 'add-client',
       label: 'Add New Client',
       description: 'Create a new client',
-      icon: <IconPlus size={20} />,
+      icon: <IconPlus size={20} aria-hidden="true" />,
       action: () => { navigate('/clients?action=add'); close(); },
       keywords: ['add', 'new', 'create', 'client'],
     },
@@ -222,7 +222,7 @@ export function QuickCapture() {
       id: 'pipeline',
       label: 'Go to Pipeline',
       description: 'View loan pipeline',
-      icon: <IconLayoutKanban size={20} />,
+      icon: <IconLayoutKanban size={20} aria-hidden="true" />,
       action: () => { navigate('/pipeline'); close(); },
       keywords: ['pipeline', 'kanban', 'board', 'loans'],
     },
@@ -230,7 +230,7 @@ export function QuickCapture() {
       id: 'notes',
       label: 'Go to Notes',
       description: 'View all notes',
-      icon: <IconNotes size={20} />,
+      icon: <IconNotes size={20} aria-hidden="true" />,
       action: () => { navigate('/notes'); close(); },
       keywords: ['notes', 'memo', 'journal'],
     },
@@ -238,7 +238,7 @@ export function QuickCapture() {
       id: 'documents',
       label: 'Go to Documents',
       description: 'View all documents',
-      icon: <IconFileText size={20} />,
+      icon: <IconFileText size={20} aria-hidden="true" />,
       action: () => { navigate('/documents'); close(); },
       keywords: ['documents', 'files', 'uploads'],
     },
@@ -246,7 +246,7 @@ export function QuickCapture() {
       id: 'calculator',
       label: 'Go to Calculator',
       description: 'Open loan calculator',
-      icon: <IconCalculator size={20} />,
+      icon: <IconCalculator size={20} aria-hidden="true" />,
       action: () => { navigate('/calculator'); close(); },
       keywords: ['calculator', 'calc', 'math', 'loan'],
     },
@@ -254,7 +254,7 @@ export function QuickCapture() {
       id: 'analytics',
       label: 'Go to Analytics',
       description: 'View analytics',
-      icon: <IconChartBar size={20} />,
+      icon: <IconChartBar size={20} aria-hidden="true" />,
       action: () => { navigate('/analytics'); close(); },
       keywords: ['analytics', 'reports', 'stats', 'charts'],
     },
@@ -262,7 +262,7 @@ export function QuickCapture() {
       id: 'settings',
       label: 'Go to Settings',
       description: 'Manage settings',
-      icon: <IconSettings size={20} />,
+      icon: <IconSettings size={20} aria-hidden="true" />,
       action: () => { navigate('/settings'); close(); },
       keywords: ['settings', 'preferences', 'config'],
     },
@@ -359,7 +359,7 @@ export function QuickCapture() {
         title: 'Task Created',
         message,
         color: 'green',
-        icon: <IconCheck size={16} />,
+        icon: <IconCheck size={16} aria-hidden="true" />,
       });
 
       close();
@@ -402,7 +402,7 @@ export function QuickCapture() {
         title: 'Note Created',
         message: `Note added to ${client?.name || 'client'}`,
         color: 'green',
-        icon: <IconCheck size={16} />,
+        icon: <IconCheck size={16} aria-hidden="true" />,
       });
 
       close();
@@ -536,9 +536,9 @@ export function QuickCapture() {
       <Box p="sm">
         <Group gap="sm" mb="xs">
           <UnstyledButton onClick={cancelClientSelection}>
-            <IconArrowLeft size={16} />
+            <IconArrowLeft size={16} aria-hidden="true" />
           </UnstyledButton>
-          <Badge color="violet" variant="light" leftSection={<IconNotes size={14} />}>
+          <Badge color="violet" variant="light" leftSection={<IconNotes size={14} aria-hidden="true" />}>
             /note
           </Badge>
           <Text size="sm" c="dimmed" style={{ flex: 1 }} lineClamp={1}>
@@ -551,7 +551,7 @@ export function QuickCapture() {
           value={clientSearchQuery}
           onChange={(e) => setClientSearchQuery(e.currentTarget.value)}
           onKeyDown={handleKeyDown}
-          leftSection={<IconSearch size={16} />}
+          leftSection={<IconSearch size={16} aria-hidden="true" />}
           size="sm"
           autoFocus
           mb="sm"
@@ -591,7 +591,7 @@ export function QuickCapture() {
                       color: 'var(--mantine-color-blue-6)',
                     }}
                   >
-                    <IconUser size={20} />
+                    <IconUser size={20} aria-hidden="true" />
                   </Box>
                   <div style={{ flex: 1 }}>
                     <Text size="sm" fw={500}>{client.name}</Text>
@@ -695,7 +695,7 @@ export function QuickCapture() {
                     color: 'var(--mantine-color-green-6)',
                   }}
                 >
-                  {isCreating ? <Loader size={20} /> : <IconPlus size={20} />}
+                  {isCreating ? <Loader size={20} /> : <IconPlus size={20} aria-hidden="true" />}
                 </Box>
                 <div style={{ flex: 1 }}>
                   <Text size="sm" fw={500}>
@@ -726,7 +726,7 @@ export function QuickCapture() {
                     <Badge
                       variant="light"
                       color="green"
-                      leftSection={<IconUser size={12} />}
+                      leftSection={<IconUser size={12} aria-hidden="true" />}
                     >
                       {parsedTask.detectedClient.name}
                     </Badge>
@@ -735,7 +735,7 @@ export function QuickCapture() {
                     <Badge
                       variant="light"
                       color="blue"
-                      leftSection={<IconCalendar size={12} />}
+                      leftSection={<IconCalendar size={12} aria-hidden="true" />}
                     >
                       {parsedTask.dateLabel} ({parsedTask.detectedDate.toLocaleDateString()})
                     </Badge>
@@ -772,7 +772,7 @@ export function QuickCapture() {
               value={query}
               onChange={(e) => setQuery(e.currentTarget.value)}
               onKeyDown={handleKeyDown}
-              leftSection={activeCommand ? activeCommand.icon : <IconSearch size={18} />}
+              leftSection={activeCommand ? activeCommand.icon : <IconSearch size={18} aria-hidden="true" />}
               size="md"
               autoFocus
               disabled={isCreating}
@@ -836,7 +836,7 @@ export function QuickCapture() {
                             color: 'var(--mantine-color-green-6)',
                           }}
                         >
-                          <IconUser size={20} />
+                          <IconUser size={20} aria-hidden="true" />
                         </Box>
                         <div style={{ flex: 1 }}>
                           <Text size="sm" fw={500}>

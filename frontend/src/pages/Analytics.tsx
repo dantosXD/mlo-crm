@@ -159,7 +159,7 @@ export default function Analytics() {
       <Group mb="lg" justify="space-between">
         <Group>
           <ThemeIcon size="xl" variant="light" color="blue">
-            <IconChartBar size={24} />
+            <IconChartBar size={24} aria-hidden="true" />
           </ThemeIcon>
           <Title order={2}>Analytics</Title>
         </Group>
@@ -167,7 +167,7 @@ export default function Analytics() {
           value={dateRange}
           onChange={(value) => setDateRange(value || 'all')}
           data={DATE_RANGE_OPTIONS}
-          leftSection={<IconCalendar size={16} />}
+          leftSection={<IconCalendar size={16} aria-hidden="true" />}
           style={{ width: 160 }}
           aria-label="Date range filter"
         />
@@ -186,7 +186,7 @@ export default function Analytics() {
               </Text>
             </div>
             <ThemeIcon size="lg" variant="light" color="blue">
-              <IconUsers size={20} />
+              <IconUsers size={20} aria-hidden="true" />
             </ThemeIcon>
           </Group>
         </Card>
@@ -204,7 +204,7 @@ export default function Analytics() {
               </Text>
             </div>
             <ThemeIcon size="lg" variant="light" color="green">
-              <IconTrendingUp size={20} />
+              <IconTrendingUp size={20} aria-hidden="true" />
             </ThemeIcon>
           </Group>
         </Card>
@@ -220,7 +220,7 @@ export default function Analytics() {
               </Text>
             </div>
             <ThemeIcon size="lg" variant="light" color="teal">
-              <IconTrendingUp size={20} />
+              <IconTrendingUp size={20} aria-hidden="true" />
             </ThemeIcon>
           </Group>
         </Card>
@@ -241,11 +241,11 @@ export default function Analytics() {
               color={data.conversionRate >= 50 ? 'green' : data.conversionRate >= 25 ? 'yellow' : 'red'}
             >
               {data.conversionRate >= 50 ? (
-                <IconTrendingUp size={20} />
+                <IconTrendingUp size={20} aria-hidden="true" />
               ) : data.conversionRate >= 25 ? (
-                <IconMinus size={20} />
+                <IconMinus size={20} aria-hidden="true" />
               ) : (
-                <IconTrendingDown size={20} />
+                <IconTrendingDown size={20} aria-hidden="true" />
               )}
             </ThemeIcon>
           </Group>
@@ -328,7 +328,7 @@ export default function Analytics() {
                     {stage.label}: {stage.count}
                   </Badge>
                   {index < arr.length - 1 && (
-                    <IconArrowRight size={16} color="gray" />
+                    <IconArrowRight size={16} color="gray" aria-hidden="true" />
                   )}
                 </Group>
               ))}

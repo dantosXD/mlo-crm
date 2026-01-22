@@ -131,7 +131,7 @@ export default function Notes() {
       {/* Header */}
       <Group justify="space-between" mb="lg">
         <Group gap="sm">
-          <IconNotes size={28} stroke={1.5} />
+          <IconNotes size={28} stroke={1.5} aria-hidden="true" />
           <Title order={2}>Notes Hub</Title>
         </Group>
       </Group>
@@ -140,7 +140,7 @@ export default function Notes() {
       <Group mb="md" gap="md">
         <TextInput
           placeholder="Search all notes..."
-          leftSection={<IconSearch size={16} />}
+          leftSection={<IconSearch size={16} aria-hidden="true" />}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{ flex: 1 }}
@@ -173,7 +173,7 @@ export default function Notes() {
                   <Group gap="xs">
                     {note.isPinned && (
                       <Tooltip label="Pinned">
-                        <IconPin size={16} color="#228be6" />
+                        <IconPin size={16} color="#228be6" aria-hidden="true" />
                       </Tooltip>
                     )}
                     <Anchor
@@ -196,7 +196,7 @@ export default function Notes() {
                         onClick={() => navigate(`/clients/${note.clientId}`)}
                         aria-label={`View client ${note.client?.name || 'details'}`}
                       >
-                        <IconEye size={16} />
+                        <IconEye size={16} aria-hidden="true" />
                       </ActionIcon>
                     </Tooltip>
                   </Group>

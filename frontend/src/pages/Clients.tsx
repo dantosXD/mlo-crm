@@ -93,8 +93,8 @@ function MaskedData({ value, maskFn, label }: { value: string; maskFn: (v: strin
         <Text size="sm" truncate="end" style={{ maxWidth: '150px' }}>
           {revealed ? value : maskFn(value)}
         </Text>
-        <ActionIcon size="xs" variant="subtle" color="gray">
-          {revealed ? <IconEyeOff size={12} /> : <IconEye size={12} />}
+        <ActionIcon size="xs" variant="subtle" color="gray" aria-label={revealed ? `Hide ${label}` : `Reveal ${label}`}>
+          {revealed ? <IconEyeOff size={12} aria-hidden="true" /> : <IconEye size={12} aria-hidden="true" />}
         </ActionIcon>
       </Group>
     </Tooltip>
@@ -110,6 +110,9 @@ export default function Clients() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const isMobile = useMediaQuery('(max-width: 576px)');
+
+  // Status options fetched from backend
+  const [statusOptions, setStatusOptions] = useState<Array<{ value: string; label: string }>>([]);
 
   // Initialize filter state from URL search params for persistence on navigation
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
@@ -164,7 +167,39 @@ export default function Clients() {
   // Fetch clients on mount and when location changes (handles back navigation)
   useEffect(() => {
     fetchClients();
+    fetchStatuses();
   }, [accessToken, location.key]);
+
+  const fetchStatuses = async () => {
+    try {
+      const response = await fetch(`${API_URL}/clients/statuses`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch client statuses');
+      }
+
+      const data = await response.json();
+      setStatusOptions(data);
+    } catch (error) {
+      console.error('Error fetching client statuses:', error);
+      // Fallback to hardcoded options if fetch fails
+      setStatusOptions([
+        { value: 'LEAD', label: 'Lead' },
+        { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
+        { value: 'ACTIVE', label: 'Active' },
+        { value: 'PROCESSING', label: 'Processing' },
+        { value: 'UNDERWRITING', label: 'Underwriting' },
+        { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
+        { value: 'CLOSED', label: 'Closed' },
+        { value: 'DENIED', label: 'Denied' },
+        { value: 'INACTIVE', label: 'Inactive' },
+      ]);
+    }
+  };
 
   const fetchClients = async () => {
     setLoading(true);
@@ -339,11 +374,11 @@ export default function Clients() {
   // Get sort icon for a column
   const getSortIcon = (column: SortColumn) => {
     if (sortColumn !== column) {
-      return <IconArrowsSort size={14} style={{ opacity: 0.3 }} />;
+      return <IconArrowsSort size={14} style={{ opacity: 0.3 }} aria-hidden="true" />;
     }
     return sortDirection === 'asc'
-      ? <IconArrowUp size={14} />
-      : <IconArrowDown size={14} />;
+      ? <IconArrowUp size={14} aria-hidden="true" />
+      : <IconArrowDown size={14} aria-hidden="true" />;
   };
 
   // Helper function to check if client matches date filter
@@ -456,14 +491,14 @@ export default function Clients() {
           <Group gap="sm">
             <Button
               variant="outline"
-              leftSection={<IconDownload size={16} />}
+              leftSection={<IconDownload size={16} aria-hidden="true" />}
               onClick={exportToCSV}
             >
               Export CSV
             </Button>
             {canWrite && (
               <Button
-                leftSection={<IconPlus size={16} />}
+                leftSection={<IconPlus size={16} aria-hidden="true" />}
                 onClick={() => setCreateModalOpen(true)}
               >
                 Add Client
@@ -476,7 +511,7 @@ export default function Clients() {
         <Stack gap="sm" mb="md">
           <TextInput
             placeholder="Search clients..."
-            leftSection={<IconSearch size={16} />}
+            leftSection={<IconSearch size={16} aria-hidden="true" />}
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -487,18 +522,9 @@ export default function Clients() {
           <Group gap="sm" wrap="wrap">
             <Select
               placeholder="Filter by status"
-              leftSection={<IconFilter size={16} />}
+              leftSection={<IconFilter size={16} aria-hidden="true" />}
               clearable
-              data={[
-                { value: 'LEAD', label: 'Lead' },
-                { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
-                { value: 'ACTIVE', label: 'Active' },
-                { value: 'PROCESSING', label: 'Processing' },
-                { value: 'UNDERWRITING', label: 'Underwriting' },
-                { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
-                { value: 'CLOSED', label: 'Closed' },
-                { value: 'DENIED', label: 'Denied' },
-              ]}
+              data={statusOptions}
               value={statusFilter}
               onChange={(value) => {
                 setStatusFilter(value);
@@ -508,7 +534,7 @@ export default function Clients() {
             />
             <Select
               placeholder="Filter by tag"
-              leftSection={<IconTag size={16} />}
+              leftSection={<IconTag size={16} aria-hidden="true" />}
               clearable
               data={allTags.map(tag => ({ value: tag, label: tag }))}
               value={tagFilter}
@@ -520,7 +546,7 @@ export default function Clients() {
             />
             <Select
               placeholder="Date range"
-              leftSection={<IconCalendar size={16} />}
+              leftSection={<IconCalendar size={16} aria-hidden="true" />}
               clearable
               data={[
                 { value: 'last7days', label: 'Last 7 days' },
@@ -751,7 +777,7 @@ export default function Clients() {
                               onClick={() => navigateToClient(client.id)}
                               aria-label={`View details for ${client.name}`}
                             >
-                              <IconEye size={16} />
+                              <IconEye size={16} aria-hidden="true" />
                             </ActionIcon>
                           </Tooltip>
                           {canWrite && (
@@ -762,7 +788,7 @@ export default function Clients() {
                                 onClick={() => handleDeleteClient(client.id)}
                                 aria-label={`Delete ${client.name}`}
                               >
-                                <IconTrash size={16} />
+                                <IconTrash size={16} aria-hidden="true" />
                               </ActionIcon>
                             </Tooltip>
                           )}
@@ -890,16 +916,7 @@ export default function Clients() {
             <Text size="sm">Select new status for {selectedClientIds.length} selected client(s):</Text>
             <Select
               placeholder="Select status"
-              data={[
-                { value: 'LEAD', label: 'Lead' },
-                { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
-                { value: 'ACTIVE', label: 'Active' },
-                { value: 'PROCESSING', label: 'Processing' },
-                { value: 'UNDERWRITING', label: 'Underwriting' },
-                { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
-                { value: 'CLOSED', label: 'Closed' },
-                { value: 'DENIED', label: 'Denied' },
-              ]}
+              data={statusOptions}
               value={bulkStatus}
               onChange={setBulkStatus}
             />

@@ -251,7 +251,7 @@ export default function Dashboard() {
                 </Text>
               </div>
               <ThemeIcon size={48} radius="md" color="blue" variant="light">
-                <IconUsers size={28} />
+                <IconUsers size={28} aria-hidden="true" />
               </ThemeIcon>
             </Group>
           </Paper>
@@ -267,7 +267,7 @@ export default function Dashboard() {
                 </Text>
               </div>
               <ThemeIcon size={48} radius="md" color="green" variant="light">
-                <IconFileText size={28} />
+                <IconFileText size={28} aria-hidden="true" />
               </ThemeIcon>
             </Group>
           </Paper>
@@ -283,7 +283,7 @@ export default function Dashboard() {
                 </Text>
               </div>
               <ThemeIcon size={48} radius="md" color="orange" variant="light">
-                <IconChecklist size={28} />
+                <IconChecklist size={28} aria-hidden="true" />
               </ThemeIcon>
             </Group>
           </Paper>
@@ -299,7 +299,7 @@ export default function Dashboard() {
                 </Text>
               </div>
               <ThemeIcon size={48} radius="md" color="violet" variant="light">
-                <IconCoin size={28} />
+                <IconCoin size={28} aria-hidden="true" />
               </ThemeIcon>
             </Group>
           </Paper>
@@ -309,7 +309,7 @@ export default function Dashboard() {
         <Paper shadow="sm" p="md" radius="md" withBorder>
           <Title order={4} mb="md">
             <Group gap="xs">
-              <IconTrendingUp size={20} />
+              <IconTrendingUp size={20} aria-hidden="true" />
               Pipeline Overview
             </Group>
           </Title>
@@ -335,7 +335,7 @@ export default function Dashboard() {
         <Paper shadow="sm" p="md" radius="md" withBorder>
           <Title order={4} mb="md">
             <Group gap="xs">
-              <IconChecklist size={20} />
+              <IconChecklist size={20} aria-hidden="true" />
               Pending Tasks
             </Group>
           </Title>
@@ -384,7 +384,7 @@ export default function Dashboard() {
         <Paper shadow="sm" p="md" radius="md" withBorder>
           <Title order={4} mb="md">
             <Group gap="xs">
-              <IconClock size={20} />
+              <IconClock size={20} aria-hidden="true" />
               Recent Clients
             </Group>
           </Title>

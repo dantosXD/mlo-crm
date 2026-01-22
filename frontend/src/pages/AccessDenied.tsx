@@ -8,7 +8,7 @@ export function AccessDenied() {
   return (
     <Center h="100%">
       <Stack align="center" gap="md">
-        <IconShieldOff size={64} color="#fa5252" />
+        <IconShieldOff size={64} color="#fa5252" aria-hidden="true" />
         <Title order={2}>Access Denied</Title>
         <Text c="dimmed" ta="center" maw={400}>
           You do not have permission to access this page.

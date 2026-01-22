@@ -257,14 +257,14 @@ export function Admin() {
           <Title order={2}>Admin Panel</Title>
           <Text c="dimmed" size="sm">Manage users and system settings</Text>
         </div>
-        <Button leftSection={<IconUserPlus size={18} />} onClick={() => setCreateModalOpen(true)}>
+        <Button leftSection={<IconUserPlus size={18} aria-hidden="true" />} onClick={() => setCreateModalOpen(true)}>
           Add User
         </Button>
       </Group>
 
       <Paper withBorder p="md">
         <Group mb="md">
-          <IconUsers size={20} />
+          <IconUsers size={20} aria-hidden="true" />
           <Title order={4}>User Management</Title>
         </Group>
 
