@@ -32,9 +32,9 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Public routes with rate limiting (temporarily disabled for regression testing)
-router.post('/login', login); // Rate limiter disabled for testing
-router.post('/register', register); // Rate limiter disabled for testing
+// Public routes with rate limiting
+router.post('/login', loginLimiter, login);
+router.post('/register', registerLimiter, register);
 router.post('/refresh', refresh);
 router.post('/logout', logout);
 
