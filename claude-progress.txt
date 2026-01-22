@@ -1059,3 +1059,64 @@ Regression tests completed:
 - 11 features remaining (4.4%)
 - 4 features currently in-progress
 
+
+---
+
+## Session 39 Summary (SINGLE FEATURE MODE - Feature #190)
+Date: January 22, 2026
+Agent: Assigned to Feature #190 ONLY
+
+### Current Status
+- **Progress**: 240/251 features passing (95.6%)
+- **Assigned Feature**: #190 (already in-progress from previous session)
+- **Issue**: Prisma client out of sync causing preferences API to fail
+
+### Issues Identified
+
+#### 1. Prisma Client Out of Sync (CRITICAL)
+**Error**: Unknown argument 'preferences'. Available options are marked with ?.
+
+**Evidence from logs**:
+Backend error when trying to access User.preferences field:
+Prisma client doesn't recognize the 'preferences' field that exists in schema.prisma
+
+**Root Cause**: 
+- Schema has 'preferences' field (User model, line 21 of schema.prisma)
+- Generated Prisma client doesn't include it
+- Need to regenerate Prisma client with: npx prisma generate
+
+**Impact**:
+- GET /api/users/preferences fails
+- PUT /api/users/preferences fails
+- Dashboard widget layout persistence broken
+
+#### 2. Rate Limiter Blocking Testing
+- Login attempts rate limited (15 min window, 5 attempts max)
+- Need backend restart OR wait 15 minutes to test
+
+### Work Performed This Session
+1. Started frontend server (running on port 5175)
+2. Verified backend healthy (port 3000)
+3. Ran database seed to create test users
+4. Encountered rate limiter during login testing
+5. Identified Prisma client sync issue from logs
+6. Documented issues in progress notes
+
+### Test Credentials Available
+All users use password: password123
+- admin@example.com (ADMIN)
+- mlo@example.com (MLO)
+- manager@example.com (MANAGER)
+- processor@example.com (PROCESSOR)
+- underwriter@example.com (UNDERWRITER)
+- viewer@example.com (VIEWER)
+
+### Next Steps for Feature #190
+1. Restart backend to clear rate limiter
+2. Regenerate Prisma client
+3. Test user preferences API endpoints
+4. Test dashboard widget layout persistence
+5. Mark feature #190 as passing if verified
+
+END OF SESSION 39 NOTES
+
