@@ -170,7 +170,7 @@ function ProtectedLayout() {
   const isReadOnly = isReadOnlyRole(user?.role);
 
   // Session timeout configuration
-  const SESSION_TIMEOUT_MINUTES = parseInt(import.meta.env.VITE_SESSION_TIMEOUT_MINUTES || '15', 10);
+  const SESSION_TIMEOUT_MINUTES = parseInt(import.meta.env.VITE_SESSION_TIMEOUT_MINUTES || '1', 10);
   const sessionTimeoutMs = SESSION_TIMEOUT_MINUTES * 60 * 1000;
 
   // Track session expiry notification
@@ -211,9 +211,13 @@ function ProtectedLayout() {
 
   // Check for session timeout every 30 seconds
   useEffect(() => {
+    console.log('[Session Timeout] Setting up interval, timeout minutes:', SESSION_TIMEOUT_MINUTES);
     checkIntervalRef.current = setInterval(async () => {
+      console.log('[Session Timeout] Checking session...');
       const didExpire = checkSessionTimeoutRef.current(SESSION_TIMEOUT_MINUTES);
+      console.log('[Session Timeout] Session expired?', didExpire);
       if (didExpire) {
+        console.log('[Session Timeout] Session expired, logging out...');
         // Show notification first
         setShowSessionExpiry(true);
         // Logout the user
@@ -227,6 +231,7 @@ function ProtectedLayout() {
     }, 30000); // Check every 30 seconds
 
     return () => {
+      console.log('[Session Timeout] Clearing interval');
       if (checkIntervalRef.current) {
         clearInterval(checkIntervalRef.current);
       }

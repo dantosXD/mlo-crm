@@ -359,6 +359,7 @@ export default function ClientDetails() {
   const [savingTask, setSavingTask] = useState(false);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
   const [taskPriorityFilter, setTaskPriorityFilter] = useState<string | null>(null);
+  const [taskDateFilter, setTaskDateFilter] = useState<string | null>(null);
   const [newTaskForm, setNewTaskForm] = useState({
     text: '',
     description: '',
@@ -1186,6 +1187,17 @@ export default function ClientDetails() {
     dueDate.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
     return dueDate < today;
+  };
+
+  // Helper function to check if a task is due today
+  const isTaskDueToday = (task: Task): boolean => {
+    if (!task.dueDate || task.status === 'COMPLETE') return false;
+    const dueDate = new Date(task.dueDate);
+    const today = new Date();
+    // Set both dates to midnight for accurate comparison
+    dueDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return dueDate.getTime() === today.getTime();
   };
 
   // Loan Scenario functions
