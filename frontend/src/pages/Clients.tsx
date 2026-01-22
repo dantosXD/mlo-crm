@@ -27,6 +27,7 @@ import { notifications } from '@mantine/notifications';
 import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar, IconDownload, IconEyeOff } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
+import { canWriteClients } from '../utils/roleUtils';
 
 interface Client {
   id: string;
@@ -103,7 +104,8 @@ export default function Clients() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { accessToken } = useAuthStore();
+  const { accessToken, user } = useAuthStore();
+  const canWrite = canWriteClients(user?.role);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const isMobile = useMediaQuery('(max-width: 576px)');
@@ -490,12 +492,14 @@ export default function Clients() {
             >
               Export CSV
             </Button>
-            <Button
-              leftSection={<IconPlus size={16} />}
-              onClick={() => setCreateModalOpen(true)}
-            >
-              Add Client
-            </Button>
+            {canWrite && (
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setCreateModalOpen(true)}
+              >
+                Add Client
+              </Button>
+            )}
           </Group>
         </Group>
 
@@ -582,7 +586,7 @@ export default function Clients() {
         </Stack>
 
         {/* Bulk Actions Bar */}
-        {selectedClientIds.length > 0 && (
+        {canWrite && selectedClientIds.length > 0 && (
           <Paper shadow="xs" p="md" withBorder mb="sm" style={{ backgroundColor: '#f8f9fa' }}>
             <Group justify="space-between" wrap="wrap">
               <Text fw={500}>{selectedClientIds.length} client(s) selected</Text>
@@ -647,9 +651,9 @@ export default function Clients() {
               <EmptyState
                 iconType="clients"
                 title="No clients yet"
-                description="Get started by adding your first client to the system."
-                ctaLabel="Add Client"
-                onCtaClick={() => setCreateModalOpen(true)}
+                description={canWrite ? "Get started by adding your first client to the system." : "No clients are available yet."}
+                ctaLabel={canWrite ? "Add Client" : undefined}
+                onCtaClick={canWrite ? () => setCreateModalOpen(true) : undefined}
               />
             ) : (
               <EmptyState
@@ -672,18 +676,20 @@ export default function Clients() {
               <Table striped highlightOnHover style={{ minWidth: '750px' }}>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th style={{ width: '50px' }}>
-                      <Checkbox
-                        checked={selectedClientIds.length === paginatedClients.length && paginatedClients.length > 0}
-                        onChange={(e) => {
-                          if (e.currentTarget.checked) {
-                            setSelectedClientIds(paginatedClients.map(c => c.id));
-                          } else {
-                            setSelectedClientIds([]);
-                          }
-                        }}
-                      />
-                    </Table.Th>
+                    {canWrite && (
+                      <Table.Th style={{ width: '50px' }}>
+                        <Checkbox
+                          checked={selectedClientIds.length === paginatedClients.length && paginatedClients.length > 0}
+                          onChange={(e) => {
+                            if (e.currentTarget.checked) {
+                              setSelectedClientIds(paginatedClients.map(c => c.id));
+                            } else {
+                              setSelectedClientIds([]);
+                            }
+                          }}
+                        />
+                      </Table.Th>
+                    )}
                     <Table.Th
                       onClick={() => handleSort('name')}
                       style={{ cursor: 'pointer', userSelect: 'none' }}
@@ -724,18 +730,20 @@ export default function Clients() {
                 <Table.Tbody>
                   {paginatedClients.map((client) => (
                     <Table.Tr key={client.id}>
-                      <Table.Td>
-                        <Checkbox
-                          checked={selectedClientIds.includes(client.id)}
-                          onChange={(e) => {
-                            if (e.currentTarget.checked) {
-                              setSelectedClientIds([...selectedClientIds, client.id]);
-                            } else {
-                              setSelectedClientIds(selectedClientIds.filter(id => id !== client.id));
-                            }
-                          }}
-                        />
-                      </Table.Td>
+                      {canWrite && (
+                        <Table.Td>
+                          <Checkbox
+                            checked={selectedClientIds.includes(client.id)}
+                            onChange={(e) => {
+                              if (e.currentTarget.checked) {
+                                setSelectedClientIds([...selectedClientIds, client.id]);
+                              } else {
+                                setSelectedClientIds(selectedClientIds.filter(id => id !== client.id));
+                              }
+                            }}
+                          />
+                        </Table.Td>
+                      )}
                       <Table.Td style={{ maxWidth: '200px' }}>
                         <Text fw={500} truncate="end" title={client.name}>{client.name}</Text>
                       </Table.Td>
@@ -778,16 +786,18 @@ export default function Clients() {
                               <IconEye size={16} />
                             </ActionIcon>
                           </Tooltip>
-                          <Tooltip label="Delete">
-                            <ActionIcon
-                              variant="subtle"
-                              color="red"
-                              onClick={() => handleDeleteClient(client.id)}
-                              aria-label={`Delete ${client.name}`}
-                            >
-                              <IconTrash size={16} />
-                            </ActionIcon>
-                          </Tooltip>
+                          {canWrite && (
+                            <Tooltip label="Delete">
+                              <ActionIcon
+                                variant="subtle"
+                                color="red"
+                                onClick={() => handleDeleteClient(client.id)}
+                                aria-label={`Delete ${client.name}`}
+                              >
+                                <IconTrash size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
                         </Group>
                       </Table.Td>
                     </Table.Tr>

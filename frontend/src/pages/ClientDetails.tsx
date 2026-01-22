@@ -65,6 +65,7 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
+import { canWriteClients } from '../utils/roleUtils';
 
 // Helper function to format relative time (e.g., "just now", "5 minutes ago", "2 hours ago")
 const formatRelativeTime = (dateString: string): string => {
@@ -282,7 +283,8 @@ export default function ClientDetails() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { accessToken } = useAuthStore();
+  const { accessToken, user } = useAuthStore();
+  const canWrite = canWriteClients(user?.role);
 
   // Store the referrer URL when coming from clients list with filters
   const clientsListUrl = useMemo(() => {
@@ -2069,23 +2071,25 @@ export default function ClientDetails() {
             )}
           </Group>
         </Group>
-        <Group>
-          <Button
-            leftSection={<IconEdit size={16} />}
-            variant="light"
-            onClick={openEditModal}
-          >
-            Edit
-          </Button>
-          <Button
-            leftSection={<IconTrash size={16} />}
-            variant="light"
-            color="red"
-            onClick={() => setDeleteModalOpen(true)}
-          >
-            Delete
-          </Button>
-        </Group>
+        {canWrite && (
+          <Group>
+            <Button
+              leftSection={<IconEdit size={16} />}
+              variant="light"
+              onClick={openEditModal}
+            >
+              Edit
+            </Button>
+            <Button
+              leftSection={<IconTrash size={16} />}
+              variant="light"
+              color="red"
+              onClick={() => setDeleteModalOpen(true)}
+            >
+              Delete
+            </Button>
+          </Group>
+        )}
       </Group>
 
       {/* Client Info Card */}
