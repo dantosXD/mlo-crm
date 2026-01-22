@@ -2154,7 +2154,15 @@ export default function ClientDetails() {
                   ))}
                 </Stack>
               ) : (
-                <Text c="dimmed" size="sm">No notes yet</Text>
+                <Stack align="center" gap="xs" py="md">
+                  <ThemeIcon size={40} radius="xl" variant="light" color="blue" style={{ opacity: 0.6 }}>
+                    <IconNotes size={20} stroke={1.5} />
+                  </ThemeIcon>
+                  <Text c="dimmed" size="sm" ta="center">No notes yet</Text>
+                  <Text c="dimmed" size="xs" ta="center" maw={200}>
+                    Add notes to track important information
+                  </Text>
+                </Stack>
               )}
             </Card>
 
@@ -2174,7 +2182,15 @@ export default function ClientDetails() {
                   ))}
                 </Stack>
               ) : (
-                <Text c="dimmed" size="sm">No tasks yet</Text>
+                <Stack align="center" gap="xs" py="md">
+                  <ThemeIcon size={40} radius="xl" variant="light" color="orange" style={{ opacity: 0.6 }}>
+                    <IconChecklist size={20} stroke={1.5} />
+                  </ThemeIcon>
+                  <Text c="dimmed" size="sm" ta="center">No tasks yet</Text>
+                  <Text c="dimmed" size="xs" ta="center" maw={200}>
+                    Create tasks to track action items
+                  </Text>
+                </Stack>
               )}
             </Card>
           </SimpleGrid>

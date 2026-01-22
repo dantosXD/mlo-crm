@@ -18,6 +18,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconUser, IconMail, IconPhone, IconLayoutKanban, IconTable } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
+import { EmptyState } from '../components/EmptyState';
 
 interface Client {
   id: string;
@@ -123,9 +124,11 @@ function PipelineColumn({
       <ScrollArea style={{ flex: 1 }}>
         <Stack gap="sm">
           {clients.length === 0 ? (
-            <Text size="sm" c="dimmed" ta="center" py="md">
-              No clients
-            </Text>
+            <EmptyState
+              iconType="clients"
+              title={`No ${stage.label.toLowerCase()} clients`}
+              description="Clients will appear here as they progress through the pipeline"
+            />
           ) : (
             clients.map((client) => (
               <ClientCard
