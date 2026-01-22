@@ -164,11 +164,11 @@ export default function Clients() {
     setSearchParams(params, { replace: true });
   }, [searchQuery, statusFilter, tagFilter, dateFilter, page, setSearchParams]);
 
-  // Fetch clients on mount and when location changes (handles back navigation)
+  // Fetch clients on mount and when location changes (handles back navigation) or sort changes
   useEffect(() => {
     fetchClients();
     fetchStatuses();
-  }, [accessToken, location.key]);
+  }, [accessToken, location.key, sortColumn, sortDirection]);
 
   const fetchStatuses = async () => {
     try {
@@ -204,9 +204,18 @@ export default function Clients() {
   const fetchClients = async () => {
     setLoading(true);
     try {
+      // Build query parameters including sort
+      const params = new URLSearchParams();
+      if (sortColumn) {
+        params.append('sortBy', sortColumn);
+        params.append('sortOrder', sortDirection);
+      }
+
+      const queryString = params.toString() ? `?${params.toString()}` : '';
+
       // Minimum loading time to ensure skeleton is visible (better UX)
       const [response] = await Promise.all([
-        fetchWithErrorHandling(`${API_URL}/clients`, {
+        fetchWithErrorHandling(`${API_URL}/clients${queryString}`, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
@@ -412,45 +421,13 @@ export default function Clients() {
     return matchesSearch && matchesStatus && matchesTag && matchesDate;
   });
 
-  // Sort filtered clients
-  const sortedClients = useMemo(() => {
-    if (!sortColumn) return filteredClients;
+  // NOTE: Sorting is now done server-side via API, no client-side sorting needed
+  // The clients array is already sorted when returned from the API
 
-    return [...filteredClients].sort((a, b) => {
-      let aValue: string | number;
-      let bValue: string | number;
-
-      switch (sortColumn) {
-        case 'name':
-          aValue = a.name.toLowerCase();
-          bValue = b.name.toLowerCase();
-          break;
-        case 'email':
-          aValue = a.email.toLowerCase();
-          bValue = b.email.toLowerCase();
-          break;
-        case 'status':
-          aValue = a.status;
-          bValue = b.status;
-          break;
-        case 'createdAt':
-          aValue = new Date(a.createdAt).getTime();
-          bValue = new Date(b.createdAt).getTime();
-          break;
-        default:
-          return 0;
-      }
-
-      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [filteredClients, sortColumn, sortDirection]);
-
-  // Paginate sorted clients
-  const totalPages = Math.ceil(sortedClients.length / itemsPerPage);
-  const paginatedClients = sortedClients.slice(0, page * itemsPerPage);
-  const hasMore = page * itemsPerPage < sortedClients.length;
+  // Paginate filtered clients
+  const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
+  const paginatedClients = filteredClients.slice(0, page * itemsPerPage);
+  const hasMore = page * itemsPerPage < filteredClients.length;
 
 
   // Export clients to CSV
@@ -805,13 +782,13 @@ export default function Clients() {
                   variant="light"
                   onClick={() => setPage(p => p + 1)}
                 >
-                  Load More ({sortedClients.length - paginatedClients.length} remaining)
+                  Load More ({filteredClients.length - paginatedClients.length} remaining)
                 </Button>
               </Group>
             )}
-            {sortedClients.length > 0 && (
+            {filteredClients.length > 0 && (
               <Text c="dimmed" size="sm" ta="center" mt="sm">
-                Showing {paginatedClients.length} of {sortedClients.length} clients
+                Showing {paginatedClients.length} of {filteredClients.length} clients
                 {statusFilter && ` (filtered by ${statusFilter.replace('_', ' ')})`}
                 {tagFilter && ` (tagged: ${tagFilter})`}
                 {dateFilter && ` (${dateFilter === 'last7days' ? 'Last 7 days' : dateFilter === 'last30days' ? 'Last 30 days' : 'Last 90 days'})`}
