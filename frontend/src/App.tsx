@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { AppShell, Text, Center, NavLink, Group, Avatar, Menu, UnstyledButton, Stack, Divider, Badge, Tooltip, ActionIcon, Burger } from '@mantine/core';
+import { AppShell, Text, Center, NavLink, Group, Avatar, Menu, UnstyledButton, Stack, Divider, Badge, Tooltip, ActionIcon, Burger, Notification } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
   IconDashboard,
@@ -165,8 +165,73 @@ function UserMenu() {
 // Protected layout component
 function ProtectedLayout() {
   const currentPath = window.location.pathname;
-  const { user } = useAuthStore();
+  const navigate = useNavigate();
+  const { user, logout, updateLastActivity, checkSessionTimeout } = useAuthStore();
   const isReadOnly = isReadOnlyRole(user?.role);
+
+  // Session timeout configuration
+  const SESSION_TIMEOUT_MINUTES = parseInt(import.meta.env.VITE_SESSION_TIMEOUT_MINUTES || '15', 10);
+  const sessionTimeoutMs = SESSION_TIMEOUT_MINUTES * 60 * 1000;
+
+  // Track session expiry notification
+  const [showSessionExpiry, setShowSessionExpiry] = useState(false);
+  const expiryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Store the latest checkSessionTimeout function in a ref
+  const checkSessionTimeoutRef = useRef(checkSessionTimeout);
+  const logoutRef = useRef(logout);
+  const navigateRef = useRef(navigate);
+
+  // Keep refs updated
+  useEffect(() => {
+    checkSessionTimeoutRef.current = checkSessionTimeout;
+    logoutRef.current = logout;
+    navigateRef.current = navigate;
+  }, [checkSessionTimeout, logout, navigate]);
+
+  // Update last activity on user interactions
+  const handleUserActivity = useCallback(() => {
+    updateLastActivity();
+  }, [updateLastActivity]);
+
+  // Set up activity listeners
+  useEffect(() => {
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(event => {
+      window.addEventListener(event, handleUserActivity);
+    });
+
+    return () => {
+      events.forEach(event => {
+        window.removeEventListener(event, handleUserActivity);
+      });
+    };
+  }, [handleUserActivity]);
+
+  // Check for session timeout every 30 seconds
+  useEffect(() => {
+    checkIntervalRef.current = setInterval(async () => {
+      const didExpire = checkSessionTimeoutRef.current(SESSION_TIMEOUT_MINUTES);
+      if (didExpire) {
+        // Show notification first
+        setShowSessionExpiry(true);
+        // Logout the user
+        await logoutRef.current();
+        // Hide notification after 5 seconds and redirect to login
+        setTimeout(() => {
+          setShowSessionExpiry(false);
+          navigateRef.current('/login');
+        }, 5000);
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => {
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+      }
+    };
+  }, [SESSION_TIMEOUT_MINUTES]); // Only depend on SESSION_TIMEOUT_MINUTES
 
   // Mobile/tablet detection
   const isMobile = useMediaQuery('(max-width: 768px)');
@@ -195,7 +260,26 @@ function ProtectedLayout() {
   }, [currentPath, closeMobile]);
 
   return (
-    <AppShell
+    <>
+      {/* Session expiry notification */}
+      {showSessionExpiry && (
+        <Notification
+          withCloseButton={false}
+          color="orange"
+          title="Session Expired"
+          style={{
+            position: 'fixed',
+            top: 20,
+            right: 20,
+            zIndex: 9999,
+            maxWidth: 400,
+          }}
+        >
+          Your session has expired due to inactivity. Please log in again.
+        </Notification>
+      )}
+
+      <AppShell
       header={{ height: 60 }}
       navbar={{
         width: sidebarCollapsed ? 70 : 250,
@@ -292,6 +376,7 @@ function ProtectedLayout() {
         </Routes>
       </AppShell.Main>
     </AppShell>
+    </>
   );
 }
 

@@ -15,6 +15,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  lastActivity: number | null; // Timestamp of last user activity
 
   // Actions
   login: (email: string, password: string) => Promise<boolean>;
@@ -23,6 +24,8 @@ interface AuthState {
   setUser: (user: User | null) => void;
   updateUser: (updates: Partial<User>) => void;
   clearError: () => void;
+  updateLastActivity: () => void;
+  checkSessionTimeout: (timeoutMinutes: number) => boolean;
 }
 
 const API_URL = 'http://localhost:3000/api';
@@ -36,6 +39,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      lastActivity: null,
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -62,6 +66,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isLoading: false,
             error: null,
+            lastActivity: Date.now(),
           });
 
           return true;
@@ -95,7 +100,23 @@ export const useAuthStore = create<AuthState>()(
           refreshToken: null,
           isAuthenticated: false,
           error: null,
+          lastActivity: null,
         });
+      },
+
+      updateLastActivity: () => {
+        set({ lastActivity: Date.now() });
+      },
+
+      checkSessionTimeout: (timeoutMinutes: number) => {
+        const { lastActivity } = get();
+        if (!lastActivity) return false;
+
+        const inactiveMs = Date.now() - lastActivity;
+        const timeoutMs = timeoutMinutes * 60 * 1000;
+
+        // Return true if session has expired (don't logout here, let caller handle it)
+        return inactiveMs >= timeoutMs;
       },
 
       refreshAuth: async () => {
@@ -162,6 +183,7 @@ export const useAuthStore = create<AuthState>()(
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
+        lastActivity: state.lastActivity,
       }),
     }
   )

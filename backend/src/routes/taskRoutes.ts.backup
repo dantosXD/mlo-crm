@@ -8,44 +8,15 @@ const router = Router();
 // All routes require authentication
 router.use(authenticateToken);
 
-// GET /api/tasks - List tasks (optionally filtered by client_id, status, or due_date)
+// GET /api/tasks - List tasks (optionally filtered by client_id)
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { client_id, status, due_date } = req.query;
-
-    // Build date filter for due_date parameter
-    let dateFilter: any = {};
-    if (due_date === 'today') {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      dateFilter = {
-        gte: today,
-        lt: tomorrow,
-      };
-    } else if (due_date === 'tomorrow') {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(0, 0, 0, 0);
-      const dayAfter = new Date(tomorrow);
-      dayAfter.setDate(dayAfter.getDate() + 1);
-      dateFilter = {
-        gte: tomorrow,
-        lt: dayAfter,
-      };
-    } else if (due_date === 'overdue') {
-      const now = new Date();
-      dateFilter = {
-        lt: now,
-      };
-    }
+    const { client_id, status } = req.query;
 
     const tasks = await prisma.task.findMany({
       where: {
         ...(client_id && { clientId: client_id as string }),
         ...(status && { status: status as string }),
-        ...(Object.keys(dateFilter).length > 0 && { dueDate: dateFilter }),
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
