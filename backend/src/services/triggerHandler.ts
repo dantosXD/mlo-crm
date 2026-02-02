@@ -240,6 +240,212 @@ export async function checkTimeInStageThreshold(
 }
 
 /**
+ * Fire DOCUMENT_UPLOADED trigger
+ * @param documentId - ID of the uploaded document
+ * @param clientId - ID of the client who owns the document
+ * @param userId - ID of the user who uploaded the document
+ */
+export async function fireDocumentUploadedTrigger(
+  documentId: string,
+  clientId: string,
+  userId: string
+): Promise<void> {
+  await fireTrigger('DOCUMENT_UPLOADED', {
+    documentId,
+    clientId,
+    userId,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+/**
+ * Fire DOCUMENT_STATUS_CHANGED trigger
+ * @param documentId - ID of the document
+ * @param clientId - ID of the client who owns the document
+ * @param userId - ID of the user who changed the status
+ * @param fromStatus - Previous status
+ * @param toStatus - New status
+ */
+export async function fireDocumentStatusChangedTrigger(
+  documentId: string,
+  clientId: string,
+  userId: string,
+  fromStatus: string,
+  toStatus: string
+): Promise<void> {
+  await fireTrigger('DOCUMENT_STATUS_CHANGED', {
+    documentId,
+    clientId,
+    userId,
+    fromStatus,
+    toStatus,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+/**
+ * Check for documents due soon and fire DOCUMENT_DUE_DATE trigger
+ * This should be called by a scheduled job (e.g., daily)
+ * @param daysBefore - Number of days before due date to trigger (default: 3)
+ * @param daysAfter - Number of days after due date to trigger (default: 0)
+ */
+export async function checkDocumentDueDates(
+  daysBefore: number = 3,
+  daysAfter: number = 0
+): Promise<void> {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Calculate date range
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() + daysAfter);
+
+    const endDate = new Date(today);
+    endDate.setDate(endDate.getDate() + daysBefore);
+
+    // Find documents with due dates in the target range
+    const documentsDue = await prisma.document.findMany({
+      where: {
+        dueDate: {
+          gte: startDate,
+          lte: endDate,
+        },
+        status: {
+          notIn: ['APPROVED', 'REJECTED'], // Ignore completed documents
+        },
+      },
+      include: {
+        client: true,
+      },
+      take: 100,
+    });
+
+    // Get workflows with DOCUMENT_DUE_DATE trigger
+    const dueDateWorkflows = await prisma.workflow.findMany({
+      where: {
+        triggerType: 'DOCUMENT_DUE_DATE',
+        isActive: true,
+      },
+    });
+
+    if (dueDateWorkflows.length === 0) {
+      return;
+    }
+
+    // Execute workflows for each due document
+    for (const document of documentsDue) {
+      for (const workflow of dueDateWorkflows) {
+        try {
+          const triggerConfig = workflow.triggerConfig
+            ? JSON.parse(workflow.triggerConfig)
+            : {};
+          const workflowDaysBefore = triggerConfig.daysBefore ?? daysBefore;
+          const workflowDaysAfter = triggerConfig.daysAfter ?? daysAfter;
+
+          // Calculate days until due
+          const daysUntilDue = Math.ceil(
+            (document.dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+          );
+
+          // Check if this document matches the workflow's criteria
+          const matchesBefore = daysUntilDue <= workflowDaysBefore && daysUntilDue >= workflowDaysAfter;
+
+          if (matchesBefore) {
+            await executeWorkflow(workflow.id, {
+              clientId: document.clientId,
+              triggerType: 'DOCUMENT_DUE_DATE',
+              triggerData: {
+                documentId: document.id,
+                clientId: document.clientId,
+                dueDate: document.dueDate.toISOString(),
+                daysUntilDue,
+              },
+              userId: document.client.createdById,
+            });
+          }
+        } catch (error) {
+          console.error(
+            `[Trigger Handler] Failed to execute due date workflow ${workflow.id} for document ${document.id}:`,
+            error
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Trigger Handler] Failed to check document due dates:', error);
+  }
+}
+
+/**
+ * Check for expired documents and fire DOCUMENT_EXPIRED trigger
+ * This should be called by a scheduled job (e.g., daily)
+ */
+export async function checkExpiredDocuments(): Promise<void> {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Find documents with expiration date that has passed
+    // and are not already marked as EXPIRED
+    const expiredDocuments = await prisma.document.findMany({
+      where: {
+        expiresAt: {
+          lt: today,
+        },
+        status: {
+          notIn: ['EXPIRED', 'REJECTED'],
+        },
+      },
+      include: {
+        client: true,
+      },
+      take: 100,
+    });
+
+    // Get workflows with DOCUMENT_EXPIRED trigger
+    const expiredWorkflows = await prisma.workflow.findMany({
+      where: {
+        triggerType: 'DOCUMENT_EXPIRED',
+        isActive: true,
+      },
+    });
+
+    if (expiredWorkflows.length === 0) {
+      return;
+    }
+
+    // Execute workflows for each expired document
+    for (const document of expiredDocuments) {
+      for (const workflow of expiredWorkflows) {
+        try {
+          await executeWorkflow(workflow.id, {
+            clientId: document.clientId,
+            triggerType: 'DOCUMENT_EXPIRED',
+            triggerData: {
+              documentId: document.id,
+              clientId: document.clientId,
+              expirationDate: document.expiresAt!.toISOString(),
+              daysExpired: Math.floor(
+                (Date.now() - document.expiresAt!.getTime()) / (1000 * 60 * 60 * 24)
+              ),
+            },
+            userId: document.client.createdById,
+          });
+        } catch (error) {
+          console.error(
+            `[Trigger Handler] Failed to execute expired workflow ${workflow.id} for document ${document.id}:`,
+            error
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Trigger Handler] Failed to check expired documents:', error);
+  }
+}
+
+/**
  * Check for inactive clients and fire CLIENT_INACTIVITY trigger
  * This should be called by a scheduled job (e.g., daily)
  * @param inactiveDays - Number of days of inactivity to check for
