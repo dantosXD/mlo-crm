@@ -790,6 +790,7 @@ if (process.env.NODE_ENV === 'development') {
         executeClientAction,
         executeNoteAction,
         executeNotificationAction,
+        executeFlowControlAction,
         executeWebhookAction
       } = await import('../services/actionExecutor.js');
 
@@ -808,6 +809,7 @@ if (process.env.NODE_ENV === 'development') {
       const clientActions = ['UPDATE_CLIENT_STATUS', 'ADD_TAG', 'REMOVE_TAG', 'ASSIGN_CLIENT'];
       const noteActions = ['CREATE_NOTE'];
       const notificationActions = ['SEND_NOTIFICATION', 'LOG_ACTIVITY'];
+      const flowControlActions = ['WAIT', 'BRANCH', 'PARALLEL'];
       const webhookActions = ['CALL_WEBHOOK'];
 
       if (documentActions.includes(actionType)) {
@@ -822,6 +824,8 @@ if (process.env.NODE_ENV === 'development') {
         result = await executeNoteAction(actionType, config, context);
       } else if (notificationActions.includes(actionType)) {
         result = await executeNotificationAction(actionType, config, context);
+      } else if (flowControlActions.includes(actionType)) {
+        result = await executeFlowControlAction(actionType, config, context);
       } else if (webhookActions.includes(actionType)) {
         result = await executeWebhookAction(actionType, config, context);
       } else {

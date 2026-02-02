@@ -48,14 +48,14 @@ async function getTestClientId() {
 }
 
 // Test 1: Basic webhook call with validation
-async function test1_BasicWebhook() {
+async function test1_BasicWebhook(clientId) {
   console.log('\n=== TEST 1: Basic Webhook Call ===');
 
   const response = await fetch('http://localhost:3000/api/workflows/test-action', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer dummy-token-for-dev',
+      'Authorization': `Bearer ${authToken}`,
     },
     body: JSON.stringify({
       actionType: 'CALL_WEBHOOK',
@@ -70,7 +70,7 @@ async function test1_BasicWebhook() {
         timeoutSeconds: 10,
       },
       context: {
-        clientId: 'test-client-id-123',
+        clientId: clientId,
         triggerType: 'MANUAL',
         triggerData: {},
         userId: 'test-user-id',
@@ -93,14 +93,14 @@ async function test1_BasicWebhook() {
 }
 
 // Test 2: Webhook with GET method
-async function test2_WebhookGet() {
+async function test2_WebhookGet(clientId) {
   console.log('\n=== TEST 2: Webhook GET Request ===');
 
   const response = await fetch('http://localhost:3000/api/workflows/test-action', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer dummy-token-for-dev',
+      'Authorization': `Bearer ${authToken}`,
     },
     body: JSON.stringify({
       actionType: 'CALL_WEBHOOK',
@@ -110,7 +110,7 @@ async function test2_WebhookGet() {
         timeoutSeconds: 10,
       },
       context: {
-        clientId: 'test-client-id-123',
+        clientId: clientId,
         triggerType: 'MANUAL',
         triggerData: {},
         userId: 'test-user-id',
@@ -132,14 +132,14 @@ async function test2_WebhookGet() {
 }
 
 // Test 3: Webhook validation (missing URL)
-async function test3_Validation() {
+async function test3_Validation(clientId) {
   console.log('\n=== TEST 3: Webhook Validation (Missing URL) ===');
 
   const response = await fetch('http://localhost:3000/api/workflows/test-action', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer dummy-token-for-dev',
+      'Authorization': `Bearer ${authToken}`,
     },
     body: JSON.stringify({
       actionType: 'CALL_WEBHOOK',
@@ -147,7 +147,7 @@ async function test3_Validation() {
         method: 'POST',
       },
       context: {
-        clientId: 'test-client-id-123',
+        clientId: clientId,
         triggerType: 'MANUAL',
         triggerData: {},
         userId: 'test-user-id',
@@ -169,14 +169,14 @@ async function test3_Validation() {
 }
 
 // Test 4: Webhook retry logic
-async function test4_RetryLogic() {
+async function test4_RetryLogic(clientId) {
   console.log('\n=== TEST 4: Webhook Retry Logic ===');
 
   const response = await fetch('http://localhost:3000/api/workflows/test-action', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer dummy-token-for-dev',
+      'Authorization': `Bearer ${authToken}`,
     },
     body: JSON.stringify({
       actionType: 'CALL_WEBHOOK',
@@ -189,7 +189,7 @@ async function test4_RetryLogic() {
         timeoutSeconds: 3,
       },
       context: {
-        clientId: 'test-client-id-123',
+        clientId: clientId,
         triggerType: 'MANUAL',
         triggerData: {},
         userId: 'test-user-id',
@@ -211,14 +211,14 @@ async function test4_RetryLogic() {
 }
 
 // Test 5: Webhook with custom headers
-async function test5_CustomHeaders() {
+async function test5_CustomHeaders(clientId) {
   console.log('\n=== TEST 5: Webhook with Custom Headers ===');
 
   const response = await fetch('http://localhost:3000/api/workflows/test-action', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer dummy-token-for-dev',
+      'Authorization': `Bearer ${authToken}`,
     },
     body: JSON.stringify({
       actionType: 'CALL_WEBHOOK',
@@ -236,7 +236,7 @@ async function test5_CustomHeaders() {
         timeoutSeconds: 10,
       },
       context: {
-        clientId: 'test-client-id-123',
+        clientId: clientId,
         triggerType: 'MANUAL',
         triggerData: {},
         userId: 'test-user-id',
@@ -264,13 +264,18 @@ async function runTests() {
   console.log('╚════════════════════════════════════════════════╝');
 
   try {
+    // Login first
+    await login();
+    const testClientId = await getTestClientId();
+    console.log(`\n📋 Using client ID: ${testClientId}`);
+
     const results = [];
 
-    results.push(await test1_BasicWebhook());
-    results.push(await test2_WebhookGet());
-    results.push(await test3_Validation());
-    results.push(await test4_RetryLogic());
-    results.push(await test5_CustomHeaders());
+    results.push(await test1_BasicWebhook(testClientId));
+    results.push(await test2_WebhookGet(testClientId));
+    results.push(await test3_Validation(testClientId));
+    results.push(await test4_RetryLogic(testClientId));
+    results.push(await test5_CustomHeaders(testClientId));
 
     console.log('\n========================================');
     console.log('TEST SUMMARY');
