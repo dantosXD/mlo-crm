@@ -15,6 +15,7 @@ import activityRoutes from './routes/activityRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import workflowRoutes from './routes/workflowRoutes.js';
 import workflowExecutionRoutes from './routes/workflowExecutionRoutes.js';
+import workflowAnalyticsRoutes from './routes/workflowAnalyticsRoutes.js';
 import communicationRoutes from './routes/communicationRoutes.js';
 import communicationTemplateRoutes from './routes/communicationTemplateRoutes.js';
 import { generateCsrfToken, validateCsrfToken } from './middleware/csrf.js';
@@ -114,8 +115,8 @@ app.use('/api/communications', validateCsrfToken, communicationRoutes);
 // Communication template routes
 app.use('/api/communication-templates', validateCsrfToken, communicationTemplateRoutes);
 
-// TODO: Implement remaining route modules
-// app.use('/api/analytics', analyticsRoutes);
+// Analytics routes
+app.use('/api/analytics', validateCsrfToken, workflowAnalyticsRoutes);
 
 // 404 handler
 app.use((_req, res) => {

@@ -13,6 +13,7 @@ interface AuthState {
   user: User | null;
   accessToken: string | null;
   refreshToken: string | null;
+  csrfToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -27,6 +28,7 @@ interface AuthState {
   clearError: () => void;
   updateLastActivity: () => void;
   checkSessionTimeout: (timeoutMinutes: number) => boolean;
+  updateCsrfToken: (token: string) => void;
 }
 
 const API_URL = 'http://localhost:3000/api';
@@ -37,6 +39,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       accessToken: null,
       refreshToken: null,
+      csrfToken: null,
       isAuthenticated: false,
       isLoading: false,
       error: null,
@@ -60,10 +63,14 @@ export const useAuthStore = create<AuthState>()(
             throw new Error(data.message || 'Login failed');
           }
 
+          // Extract CSRF token from response headers
+          const csrfToken = response.headers.get('X-CSRF-Token');
+
           set({
             user: data.user,
             accessToken: data.accessToken,
             refreshToken: data.refreshToken,
+            csrfToken: csrfToken || null,
             isAuthenticated: true,
             isLoading: false,
             error: null,
@@ -81,13 +88,14 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async () => {
-        const { refreshToken } = get();
+        const { refreshToken, csrfToken } = get();
 
         try {
           await fetch(`${API_URL}/auth/logout`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              ...(csrfToken && { 'X-CSRF-Token': csrfToken }),
             },
             body: JSON.stringify({ refreshToken }),
           });
@@ -99,6 +107,7 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           accessToken: null,
           refreshToken: null,
+          csrfToken: null,
           isAuthenticated: false,
           error: null,
           lastActivity: null,
@@ -143,10 +152,14 @@ export const useAuthStore = create<AuthState>()(
 
           const data = await response.json();
 
+          // Extract CSRF token from response headers
+          const csrfToken = response.headers.get('X-CSRF-Token');
+
           set({
             user: data.user,
             accessToken: data.accessToken,
             refreshToken: data.refreshToken,
+            csrfToken: csrfToken || null,
             isAuthenticated: true,
           });
 
@@ -156,6 +169,7 @@ export const useAuthStore = create<AuthState>()(
             user: null,
             accessToken: null,
             refreshToken: null,
+            csrfToken: null,
             isAuthenticated: false,
           });
           return false;
@@ -176,6 +190,10 @@ export const useAuthStore = create<AuthState>()(
       clearError: () => {
         set({ error: null });
       },
+
+      updateCsrfToken: (token: string) => {
+        set({ csrfToken: token });
+      },
     }),
     {
       name: 'mlo-auth-storage',
@@ -183,6 +201,7 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
+        csrfToken: state.csrfToken,
         isAuthenticated: state.isAuthenticated,
         lastActivity: state.lastActivity,
       }),
