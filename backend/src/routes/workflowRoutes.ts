@@ -204,6 +204,41 @@ router.get('/meta/trigger-types', async (req: AuthRequest, res: Response) => {
         configFields: [],
       },
       {
+        type: 'CLIENT_INACTIVITY',
+        label: 'Client Inactivity',
+        description: 'Triggered when a client has been inactive for a specified period',
+        configFields: [
+          {
+            name: 'inactiveDays',
+            type: 'number',
+            label: 'Inactive Days',
+            description: 'Number of days of inactivity to trigger the workflow',
+            default: 7,
+          },
+        ],
+      },
+      {
+        type: 'TASK_OVERDUE',
+        label: 'Task Overdue',
+        description: 'Triggered when a task becomes overdue',
+        configFields: [
+          {
+            name: 'priority',
+            type: 'select',
+            label: 'Priority',
+            options: ['LOW', 'MEDIUM', 'HIGH'],
+            description: 'Only trigger for tasks with this priority (leave empty for all)',
+          },
+          {
+            name: 'overdueDays',
+            type: 'number',
+            label: 'Overdue Days',
+            description: 'Number of days overdue to trigger (0 means immediately overdue)',
+            default: 0,
+          },
+        ],
+      },
+      {
         type: 'MANUAL',
         label: 'Manual Trigger',
         description: 'Triggered manually by a user',
@@ -296,21 +331,58 @@ router.get('/meta/action-types', async (req: AuthRequest, res: Response) => {
         ],
       },
       {
-        type: 'UPDATE_CLIENT',
-        label: 'Update Client',
-        description: 'Update client fields',
+        type: 'UPDATE_CLIENT_STATUS',
+        label: 'Update Client Status',
+        description: 'Change the status of a client',
         configFields: [
           {
             name: 'status',
             type: 'select',
             label: 'Status',
+            required: true,
             options: ['LEAD', 'PRE_QUALIFIED', 'ACTIVE', 'PROCESSING', 'UNDERWRITING', 'CLEAR_TO_CLOSE', 'CLOSED', 'DENIED'],
           },
+        ],
+      },
+      {
+        type: 'ADD_TAG',
+        label: 'Add Tag',
+        description: 'Add tags to a client',
+        configFields: [
           {
-            name: 'addTags',
+            name: 'tags',
             type: 'text',
-            label: 'Add Tags',
+            label: 'Tags',
+            required: true,
             description: 'Comma-separated list of tags to add',
+          },
+        ],
+      },
+      {
+        type: 'REMOVE_TAG',
+        label: 'Remove Tag',
+        description: 'Remove tags from a client',
+        configFields: [
+          {
+            name: 'tags',
+            type: 'text',
+            label: 'Tags',
+            required: true,
+            description: 'Comma-separated list of tags to remove',
+          },
+        ],
+      },
+      {
+        type: 'ASSIGN_CLIENT',
+        label: 'Assign Client',
+        description: 'Assign or reassign a client to a user',
+        configFields: [
+          {
+            name: 'assignedToId',
+            type: 'select',
+            label: 'Assign To',
+            required: true,
+            description: 'User to assign the client to',
           },
         ],
       },
@@ -356,6 +428,37 @@ router.get('/meta/action-types', async (req: AuthRequest, res: Response) => {
             type: 'text',
             label: 'Tags',
             description: 'Comma-separated list of tags',
+          },
+        ],
+      },
+      {
+        type: 'SEND_NOTIFICATION',
+        label: 'Send Notification',
+        description: 'Send an in-app notification to a user',
+        configFields: [
+          {
+            name: 'userId',
+            type: 'select',
+            label: 'User',
+            description: 'User to notify (leave blank to use workflow creator)',
+          },
+          {
+            name: 'title',
+            type: 'text',
+            label: 'Title',
+            required: true,
+          },
+          {
+            name: 'message',
+            type: 'textarea',
+            label: 'Message',
+            required: true,
+          },
+          {
+            name: 'link',
+            type: 'text',
+            label: 'Link',
+            description: 'Optional link to related resource',
           },
         ],
       },
@@ -415,6 +518,28 @@ router.get('/meta/action-types', async (req: AuthRequest, res: Response) => {
             label: 'Timeout (seconds)',
             default: 30,
             description: 'Request timeout in seconds',
+          },
+        ],
+      },
+      {
+        type: 'WAIT',
+        label: 'Wait',
+        description: 'Pause workflow execution for a specified period',
+        configFields: [
+          {
+            name: 'duration',
+            type: 'number',
+            label: 'Duration',
+            required: true,
+            default: 1,
+          },
+          {
+            name: 'unit',
+            type: 'select',
+            label: 'Unit',
+            required: true,
+            options: ['minutes', 'hours', 'days'],
+            default: 'hours',
           },
         ],
       },
@@ -527,9 +652,11 @@ router.post('/', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, re
     const validTriggerTypes = [
       'CLIENT_CREATED',
       'CLIENT_STATUS_CHANGED',
+      'CLIENT_INACTIVITY',
       'DOCUMENT_UPLOADED',
       'DOCUMENT_STATUS_CHANGED',
       'TASK_DUE',
+      'TASK_OVERDUE',
       'TASK_COMPLETED',
       'MANUAL',
     ];
@@ -622,9 +749,11 @@ router.put('/:id', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, 
       const validTriggerTypes = [
         'CLIENT_CREATED',
         'CLIENT_STATUS_CHANGED',
+        'CLIENT_INACTIVITY',
         'DOCUMENT_UPLOADED',
         'DOCUMENT_STATUS_CHANGED',
         'TASK_DUE',
+        'TASK_OVERDUE',
         'TASK_COMPLETED',
         'MANUAL',
       ];
