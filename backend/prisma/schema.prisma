@@ -31,6 +31,7 @@ model User {
   notifications Notification[]
   communications Communication[]
   workflows     Workflow[]
+  workflowVersions WorkflowVersion[]
 
   @@map("users")
 }
@@ -324,6 +325,7 @@ model Communication {
   template      CommunicationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   scheduledAt   DateTime? @map("scheduled_at")
   sentAt        DateTime? @map("sent_at")
+  followUpDate  DateTime? @map("follow_up_date")  // Date for follow-up reminder
   createdById   String    @map("created_by_id")
   createdBy     User      @relation(fields: [createdById], references: [id])
   metadata      String?   // JSON string for additional data (e.g., email provider response)
@@ -334,6 +336,7 @@ model Communication {
   @@index([type])
   @@index([status])
   @@index([scheduledAt])
+  @@index([followUpDate])
   @@index([createdAt])
   @@map("communications")
 }

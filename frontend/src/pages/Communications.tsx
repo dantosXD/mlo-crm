@@ -16,6 +16,7 @@ import {
   Pagination,
   Box,
   Modal,
+  Checkbox,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
@@ -39,6 +40,7 @@ interface Communication {
   recipient: string | null;
   scheduledAt: string | null;
   sentAt: string | null;
+  followUpDate: string | null;
   createdAt: string;
   createdBy: {
     id: string;
@@ -69,10 +71,13 @@ const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
 
 // Status labels and colors
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  DRAFT: { label: 'Draft', color: 'gray' },
+  READY: { label: 'Ready', color: 'blue' },
   PENDING: { label: 'Pending', color: 'yellow' },
   SENT: { label: 'Sent', color: 'green' },
   FAILED: { label: 'Failed', color: 'red' },
   DELIVERED: { label: 'Delivered', color: 'green' },
+  SCHEDULED: { label: 'Scheduled', color: 'cyan' },
 };
 
 export function Communications() {
@@ -84,6 +89,8 @@ export function Communications() {
   const [clientSearch, setClientSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [scheduledFilter, setScheduledFilter] = useState<boolean>(false);
+  const [followUpFilter, setFollowUpFilter] = useState<boolean>(false);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [pagination, setPagination] = useState({
@@ -116,6 +123,12 @@ export function Communications() {
       }
       if (statusFilter !== 'all') {
         params.append('status', statusFilter);
+      }
+      if (scheduledFilter) {
+        params.append('scheduled', 'true');
+      }
+      if (followUpFilter) {
+        params.append('follow_up', 'true');
       }
       if (startDate) {
         params.append('start_date', startDate.toISOString());
@@ -281,6 +294,8 @@ export function Communications() {
                 placeholder="Filter by status"
                 data={[
                   { value: 'all', label: 'All Statuses' },
+                  { value: 'DRAFT', label: 'Draft' },
+                  { value: 'READY', label: 'Ready' },
                   { value: 'PENDING', label: 'Pending' },
                   { value: 'SENT', label: 'Sent' },
                   { value: 'DELIVERED', label: 'Delivered' },
@@ -293,6 +308,24 @@ export function Communications() {
                 }}
                 style={{ minWidth: 140 }}
                 clearable
+              />
+
+              <Checkbox
+                label="Scheduled only"
+                checked={scheduledFilter}
+                onChange={(event) => {
+                  setScheduledFilter(event.currentTarget.checked);
+                  setPagination(prev => ({ ...prev, page: 1 }));
+                }}
+              />
+
+              <Checkbox
+                label="Follow-up due"
+                checked={followUpFilter}
+                onChange={(event) => {
+                  setFollowUpFilter(event.currentTarget.checked);
+                  setPagination(prev => ({ ...prev, page: 1 }));
+                }}
               />
 
               <DateInput

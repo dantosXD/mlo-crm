@@ -29,6 +29,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       client_id,
       type,
       status,
+      scheduled,
+      follow_up,
       start_date,
       end_date,
       page = '1',
@@ -54,6 +56,16 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     // Filter by status
     if (status) {
       where.status = status as string;
+    }
+
+    // Filter by scheduled communications
+    if (scheduled === 'true') {
+      where.scheduledAt = { not: null };
+    }
+
+    // Filter by follow-up due
+    if (follow_up === 'true') {
+      where.followUpDate = { not: null };
     }
 
     // Filter by date range
@@ -121,6 +133,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       templateName: comm.template?.name || null,
       scheduledAt: comm.scheduledAt,
       sentAt: comm.sentAt,
+      followUpDate: comm.followUpDate,
       createdBy: comm.createdBy,
       metadata: comm.metadata ? JSON.parse(comm.metadata) : null,
       createdAt: comm.createdAt,
@@ -229,6 +242,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       body,
       templateId,
       scheduledAt,
+      followUpDate,
       metadata
     } = req.body;
 
@@ -294,6 +308,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         body,
         templateId,
         scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+        followUpDate: followUpDate ? new Date(followUpDate) : null,
         status: 'DRAFT',
         createdById: userId,
         metadata: metadata ? JSON.stringify(metadata) : null,
@@ -369,6 +384,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
       body,
       templateId,
       scheduledAt,
+      followUpDate,
       status,
       metadata
     } = req.body;
@@ -448,10 +464,13 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
     if (body !== undefined) updateData.body = body;
     if (templateId !== undefined) updateData.templateId = templateId;
     if (scheduledAt !== undefined) updateData.scheduledAt = scheduledAt ? new Date(scheduledAt) : null;
+    if (followUpDate !== undefined) updateData.followUpDate = followUpDate ? new Date(followUpDate) : null;
     if (status !== undefined) {
       updateData.status = status;
       if (status === 'SENT') {
         updateData.sentAt = new Date();
+        // Clear follow-up date when communication is sent
+        updateData.followUpDate = null;
       }
     }
     if (metadata !== undefined) updateData.metadata = metadata ? JSON.stringify(metadata) : null;

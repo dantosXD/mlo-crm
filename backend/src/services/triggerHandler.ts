@@ -522,3 +522,263 @@ export async function checkInactiveClients(inactiveDays: number = 7): Promise<vo
     console.error('[Trigger Handler] Failed to check inactive clients:', error);
   }
 }
+
+// ============================================================================
+// TASK TRIGGERS
+// ============================================================================
+
+/**
+ * Fire TASK_CREATED trigger
+ * @param taskId - ID of the created task
+ * @param clientId - ID of the client (optional, task may not be linked to a client)
+ * @param userId - ID of the user who created the task
+ */
+export async function fireTaskCreatedTrigger(
+  taskId: string,
+  clientId: string | null,
+  userId: string
+): Promise<void> {
+  if (!clientId) {
+    return; // Skip workflow triggers for tasks not linked to clients
+  }
+
+  await fireTrigger('TASK_CREATED', {
+    taskId,
+    clientId,
+    userId,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+/**
+ * Fire TASK_COMPLETED trigger
+ * @param taskId - ID of the completed task
+ * @param clientId - ID of the client (optional)
+ * @param userId - ID of the user who completed the task
+ */
+export async function fireTaskCompletedTrigger(
+  taskId: string,
+  clientId: string | null,
+  userId: string
+): Promise<void> {
+  if (!clientId) {
+    return; // Skip workflow triggers for tasks not linked to clients
+  }
+
+  await fireTrigger('TASK_COMPLETED', {
+    taskId,
+    clientId,
+    userId,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+/**
+ * Fire TASK_OVERDUE trigger
+ * @param taskId - ID of the overdue task
+ * @param clientId - ID of the client (optional)
+ * @param dueDate - Original due date of the task
+ * @param daysOverdue - Number of days overdue
+ */
+export async function fireTaskOverdueTrigger(
+  taskId: string,
+  clientId: string | null,
+  dueDate: Date,
+  daysOverdue: number
+): Promise<void> {
+  if (!clientId) {
+    return; // Skip workflow triggers for tasks not linked to clients
+  }
+
+  await fireTrigger('TASK_OVERDUE', {
+    taskId,
+    clientId,
+    dueDate: dueDate.toISOString(),
+    daysOverdue,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+/**
+ * Fire TASK_ASSIGNED trigger
+ * @param taskId - ID of the assigned task
+ * @param clientId - ID of the client (optional)
+ * @param assignedToId - ID of the user the task was assigned to
+ * @param assignedBy - ID of the user who made the assignment
+ */
+export async function fireTaskAssignedTrigger(
+  taskId: string,
+  clientId: string | null,
+  assignedToId: string,
+  assignedBy: string
+): Promise<void> {
+  if (!clientId) {
+    return; // Skip workflow triggers for tasks not linked to clients
+  }
+
+  await fireTrigger('TASK_ASSIGNED', {
+    taskId,
+    clientId,
+    assignedToId,
+    assignedBy,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+/**
+ * Check for overdue tasks and fire TASK_OVERDUE trigger
+ * This should be called by a scheduled job (e.g., daily)
+ */
+export async function checkOverdueTasks(): Promise<void> {
+  try {
+    const now = new Date();
+
+    // Find all tasks that are overdue (due date has passed)
+    // and are not yet complete
+    const overdueTasks = await prisma.task.findMany({
+      where: {
+        dueDate: {
+          lt: now,
+        },
+        status: {
+          not: 'COMPLETE',
+        },
+      },
+      include: {
+        client: true,
+      },
+      take: 100,
+    });
+
+    // Get workflows with TASK_OVERDUE trigger
+    const overdueWorkflows = await prisma.workflow.findMany({
+      where: {
+        triggerType: 'TASK_OVERDUE',
+        isActive: true,
+      },
+    });
+
+    if (overdueWorkflows.length === 0) {
+      return; // No overdue workflows configured
+    }
+
+    // Execute workflows for each overdue task
+    for (const task of overdueTasks) {
+      if (!task.clientId) {
+        continue; // Skip tasks not linked to clients
+      }
+
+      for (const workflow of overdueWorkflows) {
+        try {
+          // Calculate days overdue
+          const daysOverdue = Math.floor(
+            (now.getTime() - task.dueDate!.getTime()) / (1000 * 60 * 60 * 24)
+          );
+
+          // Check if workflow has custom threshold in triggerConfig
+          const triggerConfig = workflow.triggerConfig
+            ? JSON.parse(workflow.triggerConfig)
+            : {};
+          const workflowDaysThreshold = triggerConfig.daysThreshold || 0;
+
+          // Only trigger if task is at least as many days overdue as threshold
+          if (daysOverdue >= workflowDaysThreshold) {
+            await executeWorkflow(workflow.id, {
+              clientId: task.clientId,
+              triggerType: 'TASK_OVERDUE',
+              triggerData: {
+                taskId: task.id,
+                clientId: task.clientId,
+                dueDate: task.dueDate!.toISOString(),
+                daysOverdue,
+              },
+              userId: task.client.createdById,
+            });
+          }
+        } catch (error) {
+          console.error(
+            `[Trigger Handler] Failed to execute overdue workflow ${workflow.id} for task ${task.id}:`,
+            error
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Trigger Handler] Failed to check overdue tasks:', error);
+  }
+}
+
+/**
+ * Check for tasks due soon and fire TASK_DUE trigger
+ * This should be called by a scheduled job (e.g., daily)
+ * @param daysBefore - Number of days before due date to trigger (default: 1)
+ */
+export async function checkTaskDueDates(daysBefore: number = 1): Promise<void> {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Calculate target date
+    const targetDate = new Date(today);
+    targetDate.setDate(targetDate.getDate() + daysBefore);
+
+    // Find tasks due on the target date that are not complete
+    const tasksDue = await prisma.task.findMany({
+      where: {
+        dueDate: {
+          gte: targetDate,
+          lt: new Date(targetDate.getTime() + 24 * 60 * 60 * 1000), // Same day
+        },
+        status: {
+          not: 'COMPLETE',
+        },
+      },
+      include: {
+        client: true,
+      },
+      take: 100,
+    });
+
+    // Get workflows with TASK_DUE trigger
+    const dueWorkflows = await prisma.workflow.findMany({
+      where: {
+        triggerType: 'TASK_DUE',
+        isActive: true,
+      },
+    });
+
+    if (dueWorkflows.length === 0) {
+      return; // No task due workflows configured
+    }
+
+    // Execute workflows for each due task
+    for (const task of tasksDue) {
+      if (!task.clientId) {
+        continue; // Skip tasks not linked to clients
+      }
+
+      for (const workflow of dueWorkflows) {
+        try {
+          await executeWorkflow(workflow.id, {
+            clientId: task.clientId,
+            triggerType: 'TASK_DUE',
+            triggerData: {
+              taskId: task.id,
+              clientId: task.clientId,
+              dueDate: task.dueDate!.toISOString(),
+              daysUntilDue: daysBefore,
+            },
+            userId: task.client.createdById,
+          });
+        } catch (error) {
+          console.error(
+            `[Trigger Handler] Failed to execute task due workflow ${workflow.id} for task ${task.id}:`,
+            error
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Trigger Handler] Failed to check task due dates:', error);
+  }
+}

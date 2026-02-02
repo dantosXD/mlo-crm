@@ -185,6 +185,33 @@ router.get('/meta/trigger-types', async (req: AuthRequest, res: Response) => {
         ],
       },
       {
+        type: 'TASK_CREATED',
+        label: 'Task Created',
+        description: 'Triggered when a new task is created',
+        configFields: [
+          {
+            name: 'priority',
+            type: 'select',
+            label: 'Priority',
+            options: ['LOW', 'MEDIUM', 'HIGH'],
+            description: 'Only trigger for tasks with this priority (leave empty for all)',
+          },
+        ],
+      },
+      {
+        type: 'TASK_ASSIGNED',
+        label: 'Task Assigned',
+        description: 'Triggered when a task is assigned to a user',
+        configFields: [
+          {
+            name: 'assignedToId',
+            type: 'text',
+            label: 'Assigned To User ID',
+            description: 'Only trigger when assigned to this specific user (leave empty for all)',
+          },
+        ],
+      },
+      {
         type: 'TASK_DUE',
         label: 'Task Due',
         description: 'Triggered when a task becomes due',
@@ -740,6 +767,8 @@ router.post('/', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, re
       'DOCUMENT_STATUS_CHANGED',
       'DOCUMENT_DUE_DATE',
       'DOCUMENT_EXPIRED',
+      'TASK_CREATED',
+      'TASK_ASSIGNED',
       'TASK_DUE',
       'TASK_OVERDUE',
       'TASK_COMPLETED',
@@ -1781,6 +1810,8 @@ router.post('/import', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthReque
       'DOCUMENT_STATUS_CHANGED',
       'DOCUMENT_DUE_DATE',
       'DOCUMENT_EXPIRED',
+      'TASK_CREATED',
+      'TASK_ASSIGNED',
       'TASK_DUE',
       'TASK_OVERDUE',
       'TASK_COMPLETED',

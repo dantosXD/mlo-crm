@@ -2,6 +2,11 @@ import { Router, Response } from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
 import { decrypt } from '../utils/crypto.js';
+import {
+  fireTaskCreatedTrigger,
+  fireTaskCompletedTrigger,
+  fireTaskAssignedTrigger,
+} from '../services/triggerHandler.js';
 
 const router = Router();
 
@@ -153,6 +158,9 @@ router.post('/', async (req: AuthRequest, res: Response) => {
           description: `Task "${text}" created`,
         },
       });
+
+      // Fire workflow trigger
+      await fireTaskCreatedTrigger(task.id, clientId, userId);
     }
 
     res.status(201).json(task);
@@ -210,6 +218,15 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
           description: `Task "${existingTask.text}" completed`,
         },
       });
+
+      // Fire workflow trigger
+      await fireTaskCompletedTrigger(task.id, existingTask.clientId, userId!);
+    }
+
+    // Log activity and fire trigger for task assignment
+    if (assignedToId !== undefined && assignedToId !== existingTask.assignedToId && existingTask.clientId) {
+      // Fire workflow trigger
+      await fireTaskAssignedTrigger(task.id, existingTask.clientId, assignedToId, userId!);
     }
 
     res.json(task);
@@ -263,6 +280,9 @@ router.patch('/:id/status', async (req: AuthRequest, res: Response) => {
           description: `Task "${existingTask.text}" completed`,
         },
       });
+
+      // Fire workflow trigger
+      await fireTaskCompletedTrigger(task.id, existingTask.clientId, userId!);
     }
 
     res.json(task);
