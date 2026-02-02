@@ -65,6 +65,9 @@ import {
   IconDownload,
   IconUpload,
   IconPackage,
+  IconMail,
+  IconSend,
+  IconCopy,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
@@ -432,6 +435,14 @@ export default function ClientDetails() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
 
+  // Communications state
+  const [communications, setCommunications] = useState<any[]>([]);
+  const [loadingCommunications, setLoadingCommunications] = useState(false);
+  const [communicationsTypeFilter, setCommunicationsTypeFilter] = useState<string>('all');
+  const [communicationsStatusFilter, setCommunicationsStatusFilter] = useState<string>('all');
+  const [previewCommunicationOpened, setPreviewCommunicationOpened] = useState(false);
+  const [previewCommunication, setPreviewCommunication] = useState<any | null>(null);
+
   // Workflow executions state
   const [workflowExecutions, setWorkflowExecutions] = useState<any[]>([]);
   const [loadingWorkflowExecutions, setLoadingWorkflowExecutions] = useState(false);
@@ -565,6 +576,38 @@ export default function ClientDetails() {
       console.error('Error fetching activities:', error);
     } finally {
       setLoadingActivities(false);
+    }
+  };
+
+  const fetchCommunications = async () => {
+    if (!id) return;
+    setLoadingCommunications(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('client_id', id);
+
+      if (communicationsTypeFilter !== 'all') {
+        params.append('type', communicationsTypeFilter);
+      }
+      if (communicationsStatusFilter !== 'all') {
+        params.append('status', communicationsStatusFilter);
+      }
+
+      const response = await fetch(`${API_URL}/communications?${params}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // Handle both paginated and non-paginated responses
+        const communicationsData = data.data || data;
+        setCommunications(communicationsData);
+      }
+    } catch (error) {
+      console.error('Error fetching communications:', error);
+    } finally {
+      setLoadingCommunications(false);
     }
   };
 

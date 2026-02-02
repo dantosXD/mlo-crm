@@ -24,6 +24,7 @@ import {
   checkOverdueTasks,
   checkTaskDueDates,
 } from './services/triggerHandler.js';
+import { seedWorkflowTemplates } from './scripts/seedWorkflowTemplates.js';
 
 // Load environment variables
 config();
@@ -180,6 +181,18 @@ app.listen(PORT, () => {
       console.error('[Scheduled Jobs] Error in initial task trigger checks:', error);
     }
   }, 5000); // Run 5 seconds after server starts
+
+  // Seed workflow templates on startup
+  setTimeout(async () => {
+    try {
+      console.log('[Initialization] Checking workflow templates...');
+      await seedWorkflowTemplates();
+      console.log('[Initialization] Workflow templates check completed');
+    } catch (error) {
+      console.error('[Initialization] Error seeding workflow templates:', error);
+      // Don't fail the server if seeding fails
+    }
+  }, 10000); // Run 10 seconds after server starts (after DB is ready)
 });
 
 export default app;

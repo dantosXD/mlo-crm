@@ -229,20 +229,30 @@ router.post('/templates/:id/use', authorizeRoles('ADMIN', 'MANAGER'), async (req
     const workflowName = name || `${template.name} (Custom)`;
 
     // Parse template data
-    const triggerConfig = template.triggerConfig ? JSON.parse(template.triggerConfig) : null;
-    const conditions = template.conditions ? JSON.parse(template.conditions) : null;
+    let triggerConfig = template.triggerConfig ? JSON.parse(template.triggerConfig) : null;
+    let conditions = template.conditions ? JSON.parse(template.conditions) : null;
     let actions = JSON.parse(template.actions);
 
     // Apply customizations if provided
     if (customize && typeof customize === 'object') {
       // Customize trigger config
       if (customize.triggerConfig && typeof customize.triggerConfig === 'object') {
-        Object.assign(triggerConfig, customize.triggerConfig);
+        if (triggerConfig) {
+          Object.assign(triggerConfig, customize.triggerConfig);
+        } else {
+          // Create new trigger config from customization
+          triggerConfig = { ...customize.triggerConfig };
+        }
       }
 
       // Customize conditions
       if (customize.conditions && typeof customize.conditions === 'object') {
-        Object.assign(conditions, customize.conditions);
+        if (conditions) {
+          Object.assign(conditions, customize.conditions);
+        } else {
+          // Create new conditions from customization
+          conditions = { ...customize.conditions };
+        }
       }
 
       // Customize specific actions by index
