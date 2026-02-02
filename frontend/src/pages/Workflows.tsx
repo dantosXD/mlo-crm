@@ -303,7 +303,7 @@ export function Workflows() {
           <ActionIcon
             variant="subtle"
             color="blue"
-            onClick={() => {/* Navigate to edit page - coming soon */}}
+            onClick={() => navigate(`/workflows/${workflow.id}/edit`)}
             disabled={!canManageWorkflows}
             title="Edit"
           >
@@ -356,7 +356,7 @@ export function Workflows() {
             {canManageWorkflows && (
               <Button
                 leftSection={<IconPlus size={16} />}
-                onClick={() => {/* Navigate to create page - coming soon */}}
+                onClick={() => navigate('/workflows/builder')}
               >
                 Create Workflow
               </Button>

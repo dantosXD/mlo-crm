@@ -18,6 +18,7 @@ import {
   IconChevronRight,
   IconNotes,
   IconRobot,
+  IconTemplate,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import { QuickCapture } from './components/QuickCapture';
@@ -36,6 +37,8 @@ import Notes from './pages/Notes';
 import Calculator from './pages/Calculator';
 import Analytics from './pages/Analytics';
 import { Workflows } from './pages/Workflows';
+import WorkflowBuilder from './pages/WorkflowBuilder';
+import { CommunicationTemplates } from './pages/CommunicationTemplates';
 
 const ForgotPassword = () => (
   <Center h="100vh">
@@ -62,6 +65,7 @@ const navItems = [
   { icon: IconLayoutKanban, label: 'Pipeline', href: '/pipeline', adminOnly: false },
   { icon: IconNotes, label: 'Notes', href: '/notes', adminOnly: false },
   { icon: IconFileText, label: 'Documents', href: '/documents', adminOnly: false },
+  { icon: IconTemplate, label: 'Templates', href: '/communication-templates', adminOnly: false },
   { icon: IconCalculator, label: 'Calculator', href: '/calculator', adminOnly: false },
   { icon: IconChartBar, label: 'Analytics', href: '/analytics', adminOnly: false },
   { icon: IconRobot, label: 'Workflows', href: '/workflows', adminOnly: false },
@@ -375,9 +379,14 @@ function ProtectedLayout() {
           <Route path="/pipeline" element={<Pipeline />} />
           <Route path="/notes" element={<Notes />} />
           <Route path="/documents" element={<Documents />} />
+          <Route path="/communication-templates" element={<CommunicationTemplates />} />
+          <Route path="/communication-templates/new" element={<CommunicationTemplates />} />
+          <Route path="/communication-templates/:id/edit" element={<CommunicationTemplates />} />
           <Route path="/calculator" element={<Calculator />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/workflows" element={<Workflows />} />
+          <Route path="/workflows/builder" element={<WorkflowBuilder />} />
+          <Route path="/workflows/:id/edit" element={<WorkflowBuilder />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
           <Route path="/admin/*" element={<AdminRoute><Admin /></AdminRoute>} />
