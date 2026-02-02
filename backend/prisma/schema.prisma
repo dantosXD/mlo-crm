@@ -396,13 +396,17 @@ model WorkflowExecution {
   workflow      Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   clientId      String?   @map("client_id")
   client        Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  status        String    @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+  status        String    @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED, CANCELLED, PAUSED
   triggerData   String?   @map("trigger_data") // JSON string with data that triggered the workflow
   currentStep   Int       @default(0) @map("current_step")
   startedAt     DateTime? @map("started_at")
   completedAt   DateTime? @map("completed_at")
   errorMessage  String?   @map("error_message")
   logs          String?   // JSON array of log entries
+  retryCount    Int       @default(0) @map("retry_count") // Number of retry attempts
+  maxRetries    Int       @default(3) @map("max_retries") // Maximum retry attempts allowed
+  lastRetryAt   DateTime? @map("last_retry_at") // Timestamp of last retry attempt
+  nextRetryAt   DateTime? @map("next_retry_at") // Scheduled time for next retry
   createdAt     DateTime  @default(now()) @map("created_at")
 
   // Relations

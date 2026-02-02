@@ -235,4 +235,26 @@ router.get('/:id/logs', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// POST /api/workflow-executions/:id/retry - Manually retry a failed workflow execution
+router.post('/:id/retry', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { retryWorkflowExecution } = await import('../services/workflowExecutor.js');
+    const result = await retryWorkflowExecution(id);
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Error retrying workflow execution:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Failed to retry workflow execution',
+    });
+  }
+});
+
 export default router;

@@ -33,11 +33,13 @@ export interface ExecutionResult {
  * Execute a workflow
  * @param workflowId - ID of the workflow to execute
  * @param context - Execution context (clientId, triggerType, triggerData, userId)
+ * @param options - Execution options (retryCount, isRetry)
  * @returns Execution result
  */
 export async function executeWorkflow(
   workflowId: string,
-  context: ExecutionContext
+  context: ExecutionContext,
+  options?: { retryCount?: number; isRetry?: boolean; executionId?: string }
 ): Promise<ExecutionResult> {
   try {
     // Fetch workflow
@@ -61,6 +63,9 @@ export async function executeWorkflow(
       };
     }
 
+    const currentRetryCount = options?.retryCount || 0;
+    const maxRetries = 3; // Default max retries
+
     // Parse workflow actions and conditions
     const actions = JSON.parse(workflow.actions);
     const conditions = workflow.conditions ? JSON.parse(workflow.conditions) : null;
@@ -83,18 +88,36 @@ export async function executeWorkflow(
       }
     }
 
-    // Create workflow execution record
-    const execution = await prisma.workflowExecution.create({
-      data: {
-        workflowId,
-        clientId: context.clientId || null,
-        status: 'RUNNING',
-        currentStep: 0,
-        startedAt: new Date(),
-        triggerData: context.triggerData ? JSON.stringify(context.triggerData) : null,
-        logs: JSON.stringify([]),
-      },
-    });
+    // Create workflow execution record (or update if retry)
+    let execution;
+    if (options?.isRetry && options?.executionId) {
+      // Update existing execution for retry
+      execution = await prisma.workflowExecution.update({
+        where: { id: options.executionId },
+        data: {
+          status: 'RUNNING',
+          currentStep: 0,
+          startedAt: new Date(),
+          retryCount: currentRetryCount,
+          lastRetryAt: new Date(),
+          errorMessage: null,
+        },
+      });
+    } else {
+      // Create new execution
+      execution = await prisma.workflowExecution.create({
+        data: {
+          workflowId,
+          clientId: context.clientId || null,
+          status: 'RUNNING',
+          currentStep: 0,
+          startedAt: new Date(),
+          triggerData: context.triggerData ? JSON.stringify(context.triggerData) : null,
+          logs: JSON.stringify([]),
+          maxRetries,
+        },
+      });
+    }
 
     // Execute actions sequentially
     const totalSteps = actions.length;
@@ -182,6 +205,39 @@ export async function executeWorkflow(
 
         // If action failed and not continueOnError, stop execution
         if (!actionResult.success && action.continueOnError !== true) {
+          // Check if we should retry
+          if (currentRetryCount < maxRetries && !options?.isRetry) {
+            // Schedule retry with exponential backoff
+            const retryDelaySeconds = Math.pow(2, currentRetryCount) * 5; // 5s, 10s, 20s
+            const nextRetryAt = new Date(Date.now() + retryDelaySeconds * 1000);
+
+            await prisma.workflowExecution.update({
+              where: { id: execution.id },
+              data: {
+                status: 'FAILED',
+                completedAt: new Date(),
+                errorMessage: actionResult.message || 'Action failed',
+                logs: JSON.stringify(logs),
+                retryCount: currentRetryCount + 1,
+                nextRetryAt,
+              },
+            });
+
+            // Send failure notification
+            await sendWorkflowFailureNotification(execution.id, workflowId, actionResult.message || 'Action failed', currentRetryCount + 1);
+
+            return {
+              success: false,
+              executionId: execution.id,
+              status: 'FAILED',
+              message: `Workflow failed at step ${i + 1}: ${actionResult.message}. Retry ${currentRetryCount + 1}/${maxRetries} scheduled in ${retryDelaySeconds}s`,
+              currentStep: i,
+              totalSteps,
+              error: actionResult.message,
+            };
+          }
+
+          // Final failure after all retries
           await prisma.workflowExecution.update({
             where: { id: execution.id },
             data: {
@@ -191,6 +247,9 @@ export async function executeWorkflow(
               logs: JSON.stringify(logs),
             },
           });
+
+          // Send final failure notification
+          await sendWorkflowFailureNotification(execution.id, workflowId, actionResult.message || 'Action failed', currentRetryCount, true);
 
           return {
             success: false,
@@ -289,7 +348,39 @@ export async function executeWorkflow(
           error: errorMessage,
         });
 
-        // Stop execution on error
+        // Check if we should retry
+        if (currentRetryCount < maxRetries && !options?.isRetry) {
+          // Schedule retry with exponential backoff
+          const retryDelaySeconds = Math.pow(2, currentRetryCount) * 5;
+          const nextRetryAt = new Date(Date.now() + retryDelaySeconds * 1000);
+
+          await prisma.workflowExecution.update({
+            where: { id: execution.id },
+            data: {
+              status: 'FAILED',
+              completedAt: new Date(),
+              errorMessage,
+              logs: JSON.stringify(logs),
+              retryCount: currentRetryCount + 1,
+              nextRetryAt,
+            },
+          });
+
+          // Send failure notification
+          await sendWorkflowFailureNotification(execution.id, workflowId, errorMessage, currentRetryCount + 1);
+
+          return {
+            success: false,
+            executionId: execution.id,
+            status: 'FAILED',
+            message: `Workflow failed at step ${i + 1}: ${errorMessage}. Retry ${currentRetryCount + 1}/${maxRetries} scheduled in ${retryDelaySeconds}s`,
+            currentStep: i,
+            totalSteps,
+            error: errorMessage,
+          };
+        }
+
+        // Final failure after all retries
         await prisma.workflowExecution.update({
           where: { id: execution.id },
           data: {
@@ -299,6 +390,9 @@ export async function executeWorkflow(
             logs: JSON.stringify(logs),
           },
         });
+
+        // Send final failure notification
+        await sendWorkflowFailureNotification(execution.id, workflowId, errorMessage, currentRetryCount, true);
 
         return {
           success: false,
@@ -954,4 +1048,127 @@ function getActionCategory(actionType: string): string {
   if (webhookActions.includes(actionType)) return 'webhook';
 
   return 'unknown';
+}
+
+/**
+ * Send notification on workflow failure
+ */
+async function sendWorkflowFailureNotification(
+  executionId: string,
+  workflowId: string,
+  errorMessage: string,
+  retryCount: number,
+  isFinalFailure: boolean = false
+): Promise<void> {
+  try {
+    const execution = await prisma.workflowExecution.findUnique({
+      where: { id: executionId },
+      include: {
+        workflow: true,
+      },
+    });
+
+    if (!execution) return;
+
+    const workflow = execution.workflow;
+
+    // Send notification to workflow creator
+    await prisma.notification.create({
+      data: {
+        userId: workflow.createdById,
+        title: `Workflow ${isFinalFailure ? 'Failed' : 'Retry Scheduled'}`,
+        message: `Workflow "${workflow.name}" ${isFinalFailure ? 'failed after all retry attempts' : `has scheduled retry attempt ${retryCount}`}.\n\nError: ${errorMessage}\n\nExecution ID: ${executionId}`,
+        type: 'WORKFLOW_FAILURE',
+        link: `/workflows/${workflowId}/executions/${executionId}`,
+      },
+    });
+
+    // Log activity
+    await prisma.activity.create({
+      data: {
+        userId: workflow.createdById,
+        type: isFinalFailure ? 'WORKFLOW_FAILED' : 'WORKFLOW_RETRY_SCHEDULED',
+        description: `Workflow "${workflow.name}" ${isFinalFailure ? 'failed permanently' : `scheduled for retry ${retryCount}`}: ${errorMessage}`,
+        metadata: JSON.stringify({
+          workflowId,
+          workflowName: workflow.name,
+          executionId,
+          errorMessage,
+          retryCount,
+          isFinalFailure,
+        }),
+      },
+    });
+  } catch (error) {
+    console.error('Failed to send workflow failure notification:', error);
+    // Don't throw - notification failure shouldn't break the workflow
+  }
+}
+
+/**
+ * Manually retry a failed workflow execution
+ * @param executionId - ID of the execution to retry
+ * @returns Execution result
+ */
+export async function retryWorkflowExecution(
+  executionId: string
+): Promise<ExecutionResult> {
+  try {
+    const execution = await prisma.workflowExecution.findUnique({
+      where: { id: executionId },
+      include: {
+        workflow: true,
+      },
+    });
+
+    if (!execution) {
+      return {
+        success: false,
+        status: 'FAILED',
+        message: 'Workflow execution not found',
+      };
+    }
+
+    if (execution.status !== 'FAILED') {
+      return {
+        success: false,
+        status: 'FAILED',
+        message: `Cannot retry execution with status: ${execution.status}`,
+      };
+    }
+
+    if (execution.retryCount >= execution.maxRetries) {
+      return {
+        success: false,
+        status: 'FAILED',
+        message: `Maximum retry attempts (${execution.maxRetries}) already reached`,
+      };
+    }
+
+    // Parse trigger data
+    const triggerData = execution.triggerData ? JSON.parse(execution.triggerData) : undefined;
+
+    // Retry the workflow execution
+    const context: ExecutionContext = {
+      clientId: execution.clientId || undefined,
+      triggerType: execution.workflow.triggerType,
+      triggerData,
+      userId: execution.workflow.createdById,
+    };
+
+    return await executeWorkflow(execution.workflowId, context, {
+      retryCount: execution.retryCount,
+      isRetry: true,
+      executionId: execution.id,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    return {
+      success: false,
+      status: 'FAILED',
+      message: `Failed to retry workflow execution: ${errorMessage}`,
+      error: errorMessage,
+    };
+  }
 }
