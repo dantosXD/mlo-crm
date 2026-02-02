@@ -863,7 +863,7 @@ export default function ClientDetails() {
         setNotes(data);
         // Extract unique tags from all notes for autocomplete
         const allTags = data.flatMap((note: Note) => note.tags || []);
-        const uniqueTags = Array.from(new Set(allTags));
+        const uniqueTags = Array.from(new Set(allTags)) as string[];
         setExistingNoteTags(uniqueTags);
       }
     } catch (error) {
@@ -1207,7 +1207,7 @@ export default function ClientDetails() {
     setTogglingTaskId(task.id);
 
     // OPTIMISTIC UPDATE: Update UI immediately before server responds
-    const optimisticCompletedAt = newStatus === 'COMPLETE' ? new Date().toISOString() : null;
+    const optimisticCompletedAt = newStatus === 'COMPLETE' ? new Date().toISOString() : undefined;
     setTasks(tasks.map(t => t.id === task.id ? { ...t, status: newStatus, completedAt: optimisticCompletedAt } : t));
 
     try {

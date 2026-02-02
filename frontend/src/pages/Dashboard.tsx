@@ -45,18 +45,20 @@ interface DashboardStats {
   pendingTasksList: Task[];
 }
 
+interface LayoutItem {
+  i: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  minW?: number;
+  maxW?: number;
+  minH?: number;
+  maxH?: number;
+}
+
 interface UserPreferences {
-  dashboardLayout?: Array<{
-    i: string;
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    minW?: number;
-    maxW?: number;
-    minH?: number;
-    maxH?: number;
-  }>;
+  dashboardLayout?: LayoutItem[];
 }
 
 // Default layout configuration
@@ -74,7 +76,7 @@ export default function Dashboard() {
   const { accessToken } = useAuthStore();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [layouts, setLayouts] = useState(DEFAULT_LAYOUTS.lg);
+  const [layouts, setLayouts] = useState<LayoutItem[]>(DEFAULT_LAYOUTS.lg);
   const [savingLayout, setSavingLayout] = useState(false);
 
   // Fetch user preferences on mount
@@ -321,7 +323,7 @@ export default function Dashboard() {
 
       <ReactGridLayout
         className="layout"
-        layouts={{ lg: layouts }}
+        layout={layouts}
         cols={4}
         rowHeight={120}
         onLayoutChange={handleLayoutChange}

@@ -72,7 +72,6 @@ function DraggableClientCard({ client, onClick }: { client: Client; onClick: () 
     listeners,
     setNodeRef,
     transform,
-    transition,
     isDragging,
   } = useDraggable({
     id: client.id,
@@ -84,7 +83,7 @@ function DraggableClientCard({ client, onClick }: { client: Client; onClick: () 
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: 'transform 200ms ease',
     opacity: isDragging ? 0.5 : 1,
     cursor: 'grab',
   };

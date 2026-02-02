@@ -1,0 +1,1147 @@
+<project_specification>
+  <project_name>MLO Dashboard</project_name>
+
+  <overview>
+    MLO Dashboard is a comprehensive CRM and loan origination system for Mortgage Loan Officers (MLOs) that manages the entire mortgage lending workflow from lead capture through loan closing. The system includes full workflow automation capabilities, a communications hub for drafting and logging multi-channel communications, and automation-ready entities throughout. It provides a unified workspace with real-time sync, intelligent automation, built-in compliance with PII encryption, and PWA offline capabilities.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 18+ with TypeScript</framework>
+      <ui_library>Mantine UI v7</ui_library>
+      <state_management>Zustand for global state, React Query for server state</state_management>
+      <routing>React Router v6</routing>
+      <build_tool>Vite</build_tool>
+      <testing>Vitest + React Testing Library + Playwright</testing>
+      <icons>Tabler Icons</icons>
+    </frontend>
+    <backend>
+      <runtime>Node.js 20+</runtime>
+      <framework>Express.js with TypeScript</framework>
+      <database>SQLite (development) / PostgreSQL 15+ (production)</database>
+      <orm>Prisma</orm>
+      <authentication>JWT with refresh tokens</authentication>
+      <realtime>WebSocket (Socket.io)</realtime>
+      <file_storage>S3-compatible (MinIO for local dev)</file_storage>
+      <job_scheduler>node-cron for scheduled workflows</job_scheduler>
+    </backend>
+    <development>
+      <package_manager>npm</package_manager>
+      <linting>ESLint + Prettier</linting>
+      <git_hooks>Husky + lint-staged</git_hooks>
+    </development>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Node.js 20+
+      - SQLite (development) or PostgreSQL 15+ (production)
+      - npm package manager
+      - MinIO or S3-compatible storage for documents
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>505</feature_count>
+
+  <target_users>
+    <user type="MLO">
+      <description>Mortgage Loan Officer - Front-line loan originator</description>
+      <primary_tasks>Client management, loan scenarios, pipeline tracking, communications</primary_tasks>
+    </user>
+    <user type="Processor">
+      <description>Loan Processor - Supports MLOs with paperwork and compliance</description>
+      <primary_tasks>Document management, task completion, compliance tracking</primary_tasks>
+    </user>
+    <user type="Underwriter">
+      <description>Underwriter - Reviews and approves/denies applications</description>
+      <primary_tasks>Application review, document verification, approval decisions</primary_tasks>
+    </user>
+    <user type="Manager">
+      <description>Branch Manager - Oversees team of MLOs</description>
+      <primary_tasks>Team oversight, analytics, pipeline management, workflow configuration</primary_tasks>
+    </user>
+    <user type="Admin">
+      <description>System Administrator - Full system access</description>
+      <primary_tasks>User management, system configuration, workflow templates, audit logs</primary_tasks>
+    </user>
+  </target_users>
+
+  <security_and_access_control>
+    <user_roles>
+      <role name="ADMIN">
+        <permissions>
+          - Full CRUD on all entities
+          - User management (create, update, delete users)
+          - System configuration
+          - Workflow template management
+          - View audit logs
+          - Manage encryption keys
+        </permissions>
+        <protected_routes>
+          - /admin/* (full access)
+          - All routes accessible
+        </protected_routes>
+      </role>
+      <role name="MANAGER">
+        <permissions>
+          - Full CRUD on clients, documents, tasks, notes
+          - View team members' data
+          - Create and manage workflows
+          - View analytics and reports
+          - Cannot manage users or system settings
+        </permissions>
+        <protected_routes>
+          - /admin/* (restricted)
+        </protected_routes>
+      </role>
+      <role name="MLO">
+        <permissions>
+          - Full CRUD on own clients
+          - Create and manage documents, tasks, notes for own clients
+          - Create loan scenarios
+          - Send communications
+          - View own analytics
+        </permissions>
+        <protected_routes>
+          - /admin/* (no access)
+          - Cannot view other MLOs' clients
+        </protected_routes>
+      </role>
+      <role name="PROCESSOR">
+        <permissions>
+          - Read access to assigned clients
+          - CRUD on documents for assigned clients
+          - Update task status
+          - Add notes
+          - Cannot delete clients or change status
+        </permissions>
+        <protected_routes>
+          - /admin/* (no access)
+          - /analytics (limited)
+        </protected_routes>
+      </role>
+      <role name="UNDERWRITER">
+        <permissions>
+          - Read access to clients in underwriting
+          - Update loan application status (approve/deny)
+          - Add underwriting notes
+          - View documents
+          - Cannot modify client data
+        </permissions>
+        <protected_routes>
+          - /admin/* (no access)
+          - Write operations restricted
+        </protected_routes>
+      </role>
+      <role name="VIEWER">
+        <permissions>
+          - Read-only access to all viewable data
+          - Cannot create, update, or delete anything
+          - Can view reports and analytics
+        </permissions>
+        <protected_routes>
+          - All write operations blocked
+          - /admin/* (no access)
+        </protected_routes>
+      </role>
+    </user_roles>
+    <authentication>
+      <method>Email/password with JWT</method>
+      <session_timeout>15 minutes of inactivity (configurable)</session_timeout>
+      <password_requirements>Minimum 8 characters, mixed case, numbers</password_requirements>
+      <token_expiry>Access token: 24h, Refresh token: 30d with rotation</token_expiry>
+    </authentication>
+    <sensitive_operations>
+      - Delete client requires confirmation
+      - Bulk operations require confirmation
+      - Export data requires authentication refresh
+      - Admin actions logged to audit trail
+    </sensitive_operations>
+    <pii_encryption>
+      - Client name, email, phone encrypted with AES-256
+      - SHA-256 hashes stored for fast search
+      - Encryption key in environment variables
+      - Decrypt only on authorized read
+    </pii_encryption>
+  </security_and_access_control>
+
+  <core_features>
+    <infrastructure>
+      - Database connection established and verified
+      - Database schema applied correctly with all migrations
+      - Data persists across server restart
+      - No mock data patterns in production codebase
+      - Backend API queries real database
+    </infrastructure>
+
+    <authentication_authorization>
+      - User registration with email verification
+      - User login with JWT tokens
+      - Refresh token rotation
+      - Password reset flow
+      - Session timeout with warning
+      - Role-based route protection
+      - Permission checking on API endpoints
+      - Audit logging for auth events
+      - Multi-device session management
+      - Secure logout (invalidate tokens)
+    </authentication_authorization>
+
+    <client_management>
+      - Create client with encrypted PII
+      - Read client with decrypted data
+      - Update client information
+      - Delete client with cascade
+      - Client list with pagination
+      - Hash-based fast search (sub-50ms for 100K+ records)
+      - Filter by status, tags, date range
+      - Sort by name, date, status
+      - Bulk status update
+      - Bulk tag assignment
+      - Bulk delete with confirmation
+      - Tag management (create, edit, delete tags)
+      - Client status pipeline (Lead -> Pre-qualified -> Active -> Processing -> Underwriting -> Clear to Close -> Closed/Denied)
+      - Status change with reason logging
+      - Client financial profile management
+      - Import clients from CSV
+      - Export clients to CSV
+      - Duplicate detection
+      - Client merge functionality
+      - Recently viewed clients
+      - Favorite/starred clients
+    </client_management>
+
+    <client_details_view>
+      - Comprehensive single-client profile page
+      - Tab 1: Overview (summary, recent activity, quick stats)
+      - Tab 2: Notes (all notes, search, filter by tags)
+      - Tab 3: Documents (grid view, upload, status tracking)
+      - Tab 4: Tasks (kanban board, list view)
+      - Tab 5: Loan Scenarios (comparison cards, calculator)
+      - Tab 6: Activities (full timeline, audit trail)
+      - Tab 7: Communications (drafts, sent, history)
+      - Quick actions bar
+      - Edit client inline
+      - Status change from details
+      - Activity timeline with filters
+      - Print client summary
+      - Share client (generate link)
+    </client_details_view>
+
+    <pipeline_management>
+      - Kanban board view with drag-and-drop
+      - Table view with sorting and filtering
+      - Pipeline stages configuration
+      - Drag client between stages
+      - Stage transition rules
+      - Auto-stage transitions on conditions
+      - Task creation per stage entry
+      - Stage time tracking
+      - Pipeline metrics and forecasting
+      - Filter by MLO, date range, tags
+      - Pipeline export
+      - Stage-based workflow triggers
+      - Bottleneck identification
+      - Conversion rate tracking
+    </pipeline_management>
+
+    <document_management>
+      - Upload documents (drag-and-drop, file picker)
+      - Multi-file upload
+      - Auto-categorization by file name/type
+      - Document status workflow (Required -> Requested -> Uploaded -> Under Review -> Approved/Rejected)
+      - Document categories (Income, Employment, Assets, Property, Insurance, Credit, Other)
+      - Document requests (generate request)
+      - Request reminders (automated via workflow)
+      - Document due dates
+      - Document expiration tracking
+      - Version control (upload new version)
+      - Document preview
+      - Document download
+      - Bulk document operations
+      - Document search
+      - Filter by status, category, client
+      - Document notes/comments
+      - Document approval workflow
+      - Missing document alerts
+      - Document packages assignment
+    </document_management>
+
+    <document_packages>
+      - Standard packages (Purchase, Refinance, Pre-Approval, Closing)
+      - Custom package creation
+      - Package templates
+      - Assign package to client
+      - Track package completion
+      - Package progress indicator
+      - Bulk assign packages
+      - Package versioning
+      - Clone package
+      - Package categories
+    </document_packages>
+
+    <notes_system>
+      - Create rich text notes
+      - Edit notes
+      - Delete notes
+      - Pin important notes
+      - Tag-based organization
+      - Note templates
+      - Template management (CRUD)
+      - Search notes across all clients
+      - Filter by tags, date, client
+      - Note history/versions
+      - Mention users in notes (@mention)
+      - Link notes to tasks
+      - Print notes
+      - Export notes
+    </notes_system>
+
+    <tasks_reminders>
+      - Create task with details
+      - Edit task
+      - Delete task
+      - Task status (Todo, In Progress, Complete)
+      - Task priority (Low, Medium, High)
+      - Due dates with calendar picker
+      - Task assignment to users
+      - Subtasks support
+      - Task templates
+      - Recurring tasks
+      - Task reminders/notifications
+      - Overdue task alerts
+      - Task dependencies
+      - Kanban view for tasks
+      - List view for tasks
+      - Filter by status, priority, assignee
+      - Bulk task operations
+      - Task comments
+      - Task time tracking
+      - Task completion triggers (for workflows)
+    </tasks_reminders>
+
+    <loan_scenario_planner>
+      - Create loan scenario
+      - Edit scenario
+      - Delete scenario
+      - Loan types (Purchase, Refinance)
+      - Calculate monthly payment
+      - Calculate total monthly (P&I + taxes + insurance + HOA + PMI)
+      - Calculate DTI (Debt-to-Income)
+      - Calculate LTV (Loan-to-Value)
+      - Calculate total interest over life
+      - Amortization schedule generation
+      - Side-by-side scenario comparison
+      - Visual comparison charts (bar, line)
+      - Mark scenario as preferred
+      - Buydown calculator
+      - Points vs rate comparison
+      - Export scenario to PDF
+      - Share scenario with client
+      - Scenario versioning
+      - Clone scenario
+      - Link to client financial profile
+    </loan_scenario_planner>
+
+    <loan_calculator>
+      - Payment calculator (P&I)
+      - Full payment calculator (with taxes, insurance, PMI)
+      - Affordability calculator
+      - Buydown calculator (1-0, 2-1, 3-2-1)
+      - Refinance break-even analysis
+      - Amortization schedule with extra payments
+      - Rent vs buy comparison
+      - Investment property calculator
+      - Qualification calculator
+      - Print/export calculations
+      - Save calculation to client
+    </loan_calculator>
+
+    <communications_hub>
+      - Create email draft
+      - Create text/SMS draft
+      - Create letter draft
+      - Rich text editor for emails/letters
+      - Template management (CRUD)
+      - Template categories
+      - Template placeholders ({{client_name}}, {{loan_amount}}, {{mlo_name}}, etc.)
+      - Placeholder auto-fill from client data
+      - Preview communication before logging
+      - Log communication as "Sent"
+      - Communication status (Draft, Ready, Sent)
+      - Communication history per client
+      - Filter communications by type, status, date
+      - Search communications
+      - Bulk communication drafts
+      - Schedule communication (for workflow triggers)
+      - Communication attachments
+      - Clone/reuse previous communications
+      - Communication analytics (sent counts, types)
+      - Link communication to workflow
+      - Auto-generate from workflow triggers
+      - Follow-up reminders
+      - Communication audit trail
+    </communications_hub>
+
+    <workflow_automation_engine>
+      - Visual drag-and-drop workflow builder
+      - Workflow templates (pre-built common workflows)
+      - Create custom workflow
+      - Edit workflow
+      - Delete workflow
+      - Enable/disable workflow
+      - Workflow versioning
+      - Clone workflow
+
+      <triggers>
+        - Client status change trigger
+        - Client created trigger
+        - Client updated trigger
+        - Client inactivity trigger (X days no activity)
+        - Document uploaded trigger
+        - Document status change trigger
+        - Document due date trigger (X days before/after)
+        - Document expired trigger
+        - Task created trigger
+        - Task completed trigger
+        - Task overdue trigger
+        - Task assigned trigger
+        - Note created trigger
+        - Note with specific tag trigger
+        - Loan scenario created trigger
+        - Pipeline stage entry trigger
+        - Pipeline stage exit trigger
+        - Time in stage threshold trigger
+        - Scheduled trigger (daily, weekly, monthly)
+        - Date-based trigger (specific date, relative date)
+        - Manual trigger (user initiated)
+        - Webhook trigger (external event)
+      </triggers>
+
+      <conditions>
+        - If client status equals
+        - If client has tag
+        - If client age (days since created)
+        - If document count
+        - If document missing
+        - If task count
+        - If task overdue
+        - If loan amount greater/less than
+        - If user role equals
+        - If time of day
+        - If day of week
+        - AND/OR logic for multiple conditions
+        - Nested condition groups
+      </conditions>
+
+      <actions>
+        - Send email (from template)
+        - Send text/SMS (from template)
+        - Generate letter (from template)
+        - Create task
+        - Complete task
+        - Assign task to user
+        - Update client status
+        - Add tag to client
+        - Remove tag from client
+        - Create note
+        - Create notification
+        - Update document status
+        - Request document
+        - Wait/delay (minutes, hours, days)
+        - Branch (if/else paths)
+        - Parallel execution
+        - Call webhook (external API)
+        - Log activity
+        - Send in-app notification
+        - Assign client to user
+      </actions>
+
+      <workflow_management>
+        - Workflow execution logs
+        - Workflow history per client
+        - Workflow error handling
+        - Retry failed workflows
+        - Pause workflow execution
+        - Cancel running workflow
+        - Test/dry-run workflow
+        - Workflow performance metrics
+        - Workflow usage analytics
+      </workflow_management>
+
+      <pre_built_templates>
+        - New lead welcome sequence
+        - Document collection workflow
+        - Status update notifications
+        - Stale lead follow-up
+        - Pre-closing checklist
+        - Post-closing thank you
+        - Birthday/anniversary greetings
+        - Rate alert notifications
+        - Document expiration reminders
+        - Task escalation workflow
+      </pre_built_templates>
+    </workflow_automation_engine>
+
+    <quick_capture_bar>
+      - Universal command interface (Cmd/Ctrl+K)
+      - Global search across all entities
+      - Natural language parsing
+      - Slash commands (/task, /note, /client, /doc, /email)
+      - Recent searches
+      - Smart suggestions
+      - Quick create actions
+      - Navigate to any page
+      - Quick client lookup
+      - Calculator access
+    </quick_capture_bar>
+
+    <customizable_dashboard>
+      - Drag-and-drop widget grid
+      - Widget types: Metrics, Recent Clients, Pending Tasks, Document Status, Activity Feed, Quick Actions, Pipeline Overview, Calendar, Communications, Workflow Status
+      - Resize widgets
+      - Add/remove widgets
+      - Widget configuration options
+      - Layout persistence per user
+      - Multiple dashboard layouts
+      - Dashboard templates
+      - Reset to default layout
+      - Mobile-responsive dashboard
+    </customizable_dashboard>
+
+    <analytics_reporting>
+      - Pipeline metrics (conversion rates, avg time per stage)
+      - Activity trends (daily, weekly, monthly)
+      - Loan volume tracking
+      - Document completion rates
+      - Task completion metrics
+      - Communication metrics
+      - Workflow performance
+      - User activity reports
+      - Custom date range selection
+      - Comparison periods
+      - Export to CSV/Excel
+      - Export to PDF
+      - Scheduled report generation
+      - Report templates
+    </analytics_reporting>
+
+    <admin_panel>
+      - User management (CRUD)
+      - User role assignment
+      - User activation/deactivation
+      - Password reset for users
+      - System configuration
+      - Workflow template management
+      - Communication template management
+      - Document category management
+      - Tag management
+      - Audit log viewer
+      - System health dashboard
+      - Database statistics
+      - Session management
+      - API key management
+    </admin_panel>
+
+    <settings_preferences>
+      - User profile settings
+      - Password change
+      - Notification preferences
+      - Email notification settings
+      - Dashboard layout preferences
+      - Theme selection (light/dark mode)
+      - Sidebar collapse preference
+      - Date/time format preferences
+      - Default views preferences
+      - Keyboard shortcuts customization
+    </settings_preferences>
+
+    <notifications_system>
+      - In-app notifications
+      - Notification center UI
+      - Mark as read/unread
+      - Mark all as read
+      - Notification history
+      - Notification categories
+      - Notification preferences per type
+      - Real-time notification delivery
+      - Notification count badge
+      - Clear notifications
+      - Notification sounds (optional)
+    </notifications_system>
+
+    <pwa_offline_support>
+      - Service worker registration
+      - Offline page indicator
+      - Cache critical assets
+      - Background sync for offline changes
+      - Install prompt
+      - App manifest
+      - Offline client list access
+      - Queue actions while offline
+      - Sync on reconnection
+      - Offline notification
+    </pwa_offline_support>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <users>
+        - id (UUID, PK)
+        - email (unique)
+        - password_hash
+        - name
+        - role (ADMIN, MANAGER, MLO, PROCESSOR, UNDERWRITER, VIEWER)
+        - is_active
+        - preferences (JSON)
+        - created_at, updated_at, last_login_at
+      </users>
+
+      <clients>
+        - id (UUID, PK)
+        - name_encrypted, email_encrypted, phone_encrypted (JSON - AES-256)
+        - name_hash, email_hash, phone_hash (SHA-256 for search)
+        - status (enum)
+        - tags (JSON array)
+        - created_by_id (FK -> users)
+        - created_at, updated_at
+      </clients>
+
+      <client_financial_profiles>
+        - id (UUID, PK)
+        - client_id (FK -> clients, unique)
+        - annual_income, monthly_debts, credit_score
+        - employment_type, employer_name, years_employed
+        - created_at, updated_at
+      </client_financial_profiles>
+
+      <notes>
+        - id (UUID, PK)
+        - client_id (FK -> clients)
+        - text (rich text)
+        - tags (JSON array)
+        - is_pinned
+        - created_by_id (FK -> users)
+        - created_at, updated_at
+      </notes>
+
+      <tasks>
+        - id (UUID, PK)
+        - client_id (FK -> clients, nullable)
+        - text, description
+        - status (TODO, IN_PROGRESS, COMPLETE)
+        - priority (LOW, MEDIUM, HIGH)
+        - due_date, completed_at
+        - assigned_to_id (FK -> users)
+        - created_at, updated_at
+      </tasks>
+
+      <task_subtasks>
+        - id (UUID, PK)
+        - task_id (FK -> tasks)
+        - text
+        - is_completed
+        - order
+        - created_at, updated_at
+      </task_subtasks>
+
+      <documents>
+        - id (UUID, PK)
+        - client_id (FK -> clients)
+        - name, file_name, file_path, file_size, mime_type
+        - status (REQUIRED, REQUESTED, UPLOADED, UNDER_REVIEW, APPROVED, REJECTED, EXPIRED)
+        - category (INCOME, EMPLOYMENT, ASSETS, PROPERTY, INSURANCE, CREDIT, OTHER)
+        - due_date, expires_at
+        - notes
+        - created_at, updated_at
+      </documents>
+
+      <loan_scenarios>
+        - id (UUID, PK)
+        - client_id (FK -> clients)
+        - name, loan_type
+        - amount, interest_rate, term_years
+        - down_payment, property_value
+        - property_taxes, home_insurance, hoa_fees, pmi_rate
+        - monthly_payment, total_monthly_payment, total_interest
+        - loan_to_value, debt_to_income
+        - is_preferred
+        - created_at, updated_at
+      </loan_scenarios>
+
+      <activities>
+        - id (UUID, PK)
+        - client_id (FK -> clients, nullable)
+        - user_id (FK -> users)
+        - type, description
+        - metadata (JSON)
+        - ip_address, user_agent
+        - created_at
+      </activities>
+
+      <document_packages>
+        - id (UUID, PK)
+        - name, description
+        - is_standard
+        - documents (JSON array)
+        - created_at, updated_at
+      </document_packages>
+
+      <note_templates>
+        - id (UUID, PK)
+        - name, content
+        - tags (JSON array)
+        - created_at, updated_at
+      </note_templates>
+
+      <task_templates>
+        - id (UUID, PK)
+        - name, description
+        - priority
+        - due_days
+        - steps (JSON array)
+        - created_at, updated_at
+      </task_templates>
+
+      <communications>
+        - id (UUID, PK)
+        - client_id (FK -> clients)
+        - type (EMAIL, SMS, LETTER)
+        - status (DRAFT, READY, SENT)
+        - subject
+        - body (rich text)
+        - template_id (FK -> communication_templates, nullable)
+        - scheduled_at
+        - sent_at
+        - created_by_id (FK -> users)
+        - metadata (JSON)
+        - created_at, updated_at
+      </communications>
+
+      <communication_templates>
+        - id (UUID, PK)
+        - name
+        - type (EMAIL, SMS, LETTER)
+        - category
+        - subject
+        - body (with placeholders)
+        - placeholders (JSON array)
+        - is_active
+        - created_at, updated_at
+      </communication_templates>
+
+      <workflows>
+        - id (UUID, PK)
+        - name, description
+        - is_active
+        - is_template
+        - trigger_type
+        - trigger_config (JSON)
+        - conditions (JSON)
+        - actions (JSON)
+        - version
+        - created_by_id (FK -> users)
+        - created_at, updated_at
+      </workflows>
+
+      <workflow_executions>
+        - id (UUID, PK)
+        - workflow_id (FK -> workflows)
+        - client_id (FK -> clients, nullable)
+        - status (PENDING, RUNNING, COMPLETED, FAILED, CANCELLED)
+        - trigger_data (JSON)
+        - current_step
+        - started_at, completed_at
+        - error_message
+        - logs (JSON array)
+        - created_at
+      </workflow_executions>
+
+      <workflow_execution_logs>
+        - id (UUID, PK)
+        - execution_id (FK -> workflow_executions)
+        - step_index
+        - action_type
+        - status (SUCCESS, FAILED, SKIPPED)
+        - input_data (JSON)
+        - output_data (JSON)
+        - error_message
+        - executed_at
+      </workflow_execution_logs>
+
+      <refresh_tokens>
+        - id (UUID, PK)
+        - user_id (FK -> users)
+        - token (unique)
+        - expires_at
+        - created_at
+      </refresh_tokens>
+
+      <notifications>
+        - id (UUID, PK)
+        - user_id (FK -> users)
+        - type
+        - title, message
+        - link
+        - is_read
+        - read_at
+        - metadata (JSON)
+        - created_at
+      </notifications>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <authentication>
+      - POST /api/auth/register
+      - POST /api/auth/login
+      - POST /api/auth/logout
+      - POST /api/auth/refresh
+      - POST /api/auth/forgot-password
+      - POST /api/auth/reset-password
+    </authentication>
+
+    <clients>
+      - GET /api/clients
+      - GET /api/clients/:id
+      - POST /api/clients
+      - PUT /api/clients/:id
+      - DELETE /api/clients/:id
+      - GET /api/clients/search
+      - POST /api/clients/bulk-update
+      - POST /api/clients/bulk-delete
+      - GET /api/clients/:id/financial-profile
+      - PUT /api/clients/:id/financial-profile
+    </clients>
+
+    <notes>
+      - GET /api/notes
+      - GET /api/notes/:id
+      - POST /api/notes
+      - PUT /api/notes/:id
+      - DELETE /api/notes/:id
+      - GET /api/notes/search
+      - GET /api/note-templates
+      - POST /api/note-templates
+      - PUT /api/note-templates/:id
+      - DELETE /api/note-templates/:id
+    </notes>
+
+    <tasks>
+      - GET /api/tasks
+      - GET /api/tasks/:id
+      - POST /api/tasks
+      - PUT /api/tasks/:id
+      - DELETE /api/tasks/:id
+      - PATCH /api/tasks/:id/status
+      - POST /api/tasks/:id/subtasks
+      - PUT /api/tasks/:id/subtasks/:subtaskId
+      - DELETE /api/tasks/:id/subtasks/:subtaskId
+      - GET /api/task-templates
+      - POST /api/task-templates
+    </tasks>
+
+    <documents>
+      - GET /api/documents
+      - GET /api/documents/:id
+      - POST /api/documents/upload
+      - PUT /api/documents/:id
+      - DELETE /api/documents/:id
+      - GET /api/documents/:id/download
+      - PATCH /api/documents/:id/status
+      - POST /api/documents/request
+      - GET /api/document-packages
+      - POST /api/document-packages
+      - PUT /api/document-packages/:id
+      - DELETE /api/document-packages/:id
+      - POST /api/document-packages/:id/assign
+    </documents>
+
+    <loan_scenarios>
+      - GET /api/loan-scenarios
+      - GET /api/loan-scenarios/:id
+      - POST /api/loan-scenarios
+      - PUT /api/loan-scenarios/:id
+      - DELETE /api/loan-scenarios/:id
+      - POST /api/loan-scenarios/calculate
+      - POST /api/loan-scenarios/compare
+      - GET /api/loan-scenarios/:id/amortization
+    </loan_scenarios>
+
+    <communications>
+      - GET /api/communications
+      - GET /api/communications/:id
+      - POST /api/communications
+      - PUT /api/communications/:id
+      - DELETE /api/communications/:id
+      - PATCH /api/communications/:id/status
+      - POST /api/communications/:id/send
+      - GET /api/communication-templates
+      - POST /api/communication-templates
+      - PUT /api/communication-templates/:id
+      - DELETE /api/communication-templates/:id
+      - POST /api/communications/preview
+    </communications>
+
+    <workflows>
+      - GET /api/workflows
+      - GET /api/workflows/:id
+      - POST /api/workflows
+      - PUT /api/workflows/:id
+      - DELETE /api/workflows/:id
+      - PATCH /api/workflows/:id/toggle
+      - POST /api/workflows/:id/execute
+      - POST /api/workflows/:id/test
+      - GET /api/workflows/templates
+      - POST /api/workflows/templates/:id/use
+      - GET /api/workflow-executions
+      - GET /api/workflow-executions/:id
+      - POST /api/workflow-executions/:id/cancel
+      - GET /api/workflow-executions/:id/logs
+    </workflows>
+
+    <activities>
+      - GET /api/activities
+      - GET /api/activities/recent
+      - GET /api/activities/client/:clientId
+    </activities>
+
+    <notifications>
+      - GET /api/notifications
+      - PATCH /api/notifications/:id/read
+      - POST /api/notifications/mark-all-read
+      - DELETE /api/notifications/:id
+    </notifications>
+
+    <analytics>
+      - GET /api/analytics/pipeline
+      - GET /api/analytics/activity
+      - GET /api/analytics/conversion
+      - GET /api/analytics/communications
+      - GET /api/analytics/workflows
+      - GET /api/analytics/documents
+    </analytics>
+
+    <users_admin>
+      - GET /api/users
+      - GET /api/users/:id
+      - POST /api/users
+      - PUT /api/users/:id
+      - DELETE /api/users/:id
+      - PATCH /api/users/:id/role
+      - PATCH /api/users/:id/activate
+      - POST /api/users/:id/reset-password
+    </users_admin>
+
+    <settings>
+      - GET /api/settings/user
+      - PUT /api/settings/user
+      - GET /api/settings/system (admin)
+      - PUT /api/settings/system (admin)
+    </settings>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      - Sidebar: 250px width, collapsible to 70px, fixed position
+      - Header: 60px height, contains logo, quick capture, notifications, user menu
+      - Main Content: Flexible width, max-width 1400px, scrollable
+      - Mobile: Full-width content, collapsible sidebar, bottom navigation option
+    </main_structure>
+    <navigation>
+      - Dashboard (/)
+      - Clients (/clients)
+        - Client Details (/clients/:id)
+      - Pipeline (/pipeline)
+      - Notes (/notes)
+      - Documents (/documents)
+      - Communications (/communications)
+      - Workflows (/workflows)
+        - Workflow Builder (/workflows/builder)
+        - Workflow Executions (/workflows/executions)
+      - Calculator (/calculator)
+      - Analytics (/analytics)
+      - Settings (/settings)
+      - Admin (/admin) - Admin only
+    </navigation>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      <primary>#228be6 (Blue)</primary>
+      <status_colors>
+        - Lead: #868e96 (Gray)
+        - Pre-qualified: #339af0 (Blue)
+        - Active: #40c057 (Green)
+        - Processing: #fab005 (Yellow)
+        - Underwriting: #fd7e14 (Orange)
+        - Clear to Close: #69db7c (Light Green)
+        - Closed: #2f9e44 (Dark Green)
+        - Denied: #fa5252 (Red)
+      </status_colors>
+      <priority_colors>
+        - Low: #868e96 (Gray)
+        - Medium: #fab005 (Yellow)
+        - High: #fa5252 (Red)
+      </priority_colors>
+    </color_palette>
+    <typography>
+      <font_family>Inter</font_family>
+      <headings>600-700 weight</headings>
+      <body>400-500 weight</body>
+    </typography>
+    <spacing>8px base unit (Mantine default)</spacing>
+    <border_radius>8px for cards, 4px for inputs</border_radius>
+    <breakpoints>
+      - sm: 768px
+      - md: 992px
+      - lg: 1200px
+      - xl: 1400px
+    </breakpoints>
+  </design_system>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Infrastructure and Authentication</title>
+      <tasks>
+        - Set up project structure (frontend/backend)
+        - Configure database with Prisma
+        - Implement user authentication (register, login, JWT)
+        - Implement refresh token rotation
+        - Set up role-based access control
+        - Create auth middleware
+        - Set up basic routing
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Core Client Management</title>
+      <tasks>
+        - Implement client CRUD with PII encryption
+        - Build client list with pagination and search
+        - Create client details page with tabs
+        - Implement client status pipeline
+        - Add tag management
+        - Build client financial profile
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Notes, Tasks, and Documents</title>
+      <tasks>
+        - Implement notes system with templates
+        - Build task management with subtasks
+        - Create document upload and management
+        - Implement document packages
+        - Add document status workflow
+      </tasks>
+    </step>
+    <step number="4">
+      <title>Loan Scenarios and Calculator</title>
+      <tasks>
+        - Build loan scenario planner
+        - Implement loan calculations
+        - Create scenario comparison
+        - Build standalone calculator
+        - Add amortization schedules
+      </tasks>
+    </step>
+    <step number="5">
+      <title>Pipeline and Dashboard</title>
+      <tasks>
+        - Implement kanban pipeline view
+        - Build table pipeline view
+        - Create customizable dashboard
+        - Implement widgets system
+        - Add drag-and-drop layout
+      </tasks>
+    </step>
+    <step number="6">
+      <title>Communications Hub</title>
+      <tasks>
+        - Build communication template system
+        - Implement draft/compose interface
+        - Create placeholder system
+        - Build communication logging
+        - Add communication history per client
+        - Implement search and filtering
+      </tasks>
+    </step>
+    <step number="7">
+      <title>Workflow Automation Engine</title>
+      <tasks>
+        - Design workflow data model
+        - Build visual workflow builder UI
+        - Implement trigger system
+        - Build condition evaluator
+        - Implement action executor
+        - Create workflow execution engine
+        - Build pre-built workflow templates
+        - Add workflow logging and monitoring
+      </tasks>
+    </step>
+    <step number="8">
+      <title>Analytics, Admin, and Polish</title>
+      <tasks>
+        - Implement analytics and reporting
+        - Build admin panel
+        - Add notification system
+        - Implement quick capture bar
+        - Add PWA support
+        - Performance optimization
+        - Testing and bug fixes
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - All 505 features implemented and testable
+      - All CRUD operations work correctly
+      - Authentication and authorization work as specified
+      - Workflow automation executes reliably
+      - Communications can be drafted, logged, and auto-generated
+      - PII encryption works correctly
+      - Real-time updates function properly
+    </functionality>
+    <user_experience>
+      - Responsive design works on all screen sizes
+      - Page loads under 2 seconds
+      - Search results under 100ms
+      - Intuitive navigation
+      - Clear feedback for all actions
+      - Accessible (WCAG 2.1 AA)
+    </user_experience>
+    <technical_quality>
+      - TypeScript strict mode, no any types
+      - Test coverage above 80%
+      - No critical security vulnerabilities
+      - Database queries optimized
+      - Error handling comprehensive
+      - Logging and monitoring in place
+    </technical_quality>
+    <design_polish>
+      - Consistent use of design system
+      - Smooth animations and transitions
+      - Professional, modern appearance
+      - Dark mode support
+      - Loading states for all async operations
+    </design_polish>
+  </success_criteria>
+
+  <performance_requirements>
+    <response_times>
+      - Client list (100 items): under 100ms
+      - Client search: under 50ms
+      - Client details page: under 200ms
+      - Document upload: under 2s
+      - Loan calculation: under 500ms
+      - Workflow execution start: under 1s
+      - Real-time sync: under 1s
+    </response_times>
+    <scalability>
+      - Support 100,000+ clients
+      - Support 500+ concurrent users
+      - Handle 1,000,000+ documents
+      - Process 10,000+ workflow executions per day
+    </scalability>
+  </performance_requirements>
+</project_specification>

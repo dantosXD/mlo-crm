@@ -233,18 +233,16 @@ export function showRetryNotification(
   message: string,
   onRetry: () => void
 ): void {
+  const notificationId = `retry-${Date.now()}`;
   notifications.show({
+    id: notificationId,
     title: 'Connection Error',
-    message,
+    message: `${message}. Click close to retry.`,
     color: 'red',
-    autoClose: false, // Keep visible until user dismisses or retries
+    autoClose: false,
     withCloseButton: true,
-    action: {
-      label: 'Retry',
-      onClick: () => {
-        onRetry();
-        notifications.hide();
-      },
+    onClose: () => {
+      onRetry();
     },
   });
 }

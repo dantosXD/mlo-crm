@@ -29,6 +29,8 @@ model User {
   tasks         Task[]
   activities    Activity[]
   notifications Notification[]
+  communications Communication[]
+  workflows     Workflow[]
 
   @@map("users")
 }
@@ -56,6 +58,8 @@ model Client {
   loanScenarios   LoanScenario[]
   activities      Activity[]
   financialProfile ClientFinancialProfile?
+  communications  Communication[]
+  workflowExecutions WorkflowExecution[]
 
   @@index([nameHash])
   @@index([emailHash])
@@ -283,4 +287,123 @@ model Notification {
   @@index([isRead])
   @@index([createdAt])
   @@map("notifications")
+}
+
+// Communication templates (email/SMS/letter templates)
+model CommunicationTemplate {
+  id            String    @id @default(uuid())
+  name          String
+  type          String    // EMAIL, SMS, LETTER
+  category      String?   // WELCOME, FOLLOWUP, REMINDER, STATUS_UPDATE, etc.
+  subject       String?   // For EMAIL and LETTER only
+  body          String
+  placeholders  String?   // JSON array of available placeholders (e.g., ["client_name", "due_date"])
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  communications Communication[]
+
+  @@index([type])
+  @@index([category])
+  @@index([isActive])
+  @@map("communication_templates")
+}
+
+// Communications (emails, SMS, letters sent to clients)
+model Communication {
+  id            String    @id @default(uuid())
+  clientId      String    @map("client_id")
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type          String    // EMAIL, SMS, LETTER
+  status        String    @default("DRAFT") // DRAFT, READY, SENT, FAILED
+  subject       String?   // For EMAIL and LETTER only
+  body          String
+  templateId    String?   @map("template_id")
+  template      CommunicationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  scheduledAt   DateTime? @map("scheduled_at")
+  sentAt        DateTime? @map("sent_at")
+  createdById   String    @map("created_by_id")
+  createdBy     User      @relation(fields: [createdById], references: [id])
+  metadata      String?   // JSON string for additional data (e.g., email provider response)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([clientId])
+  @@index([type])
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([createdAt])
+  @@map("communications")
+}
+
+// Workflows for automation
+model Workflow {
+  id            String    @id @default(uuid())
+  name          String
+  description   String?
+  isActive      Boolean   @default(true) @map("is_active")
+  isTemplate    Boolean   @default(false) @map("is_template")
+  triggerType   String    @map("trigger_type") // CLIENT_CREATED, CLIENT_STATUS_CHANGED, DOCUMENT_UPLOADED, etc.
+  triggerConfig String?   @map("trigger_config") // JSON string for trigger configuration
+  conditions    String?   // JSON string for workflow conditions
+  actions       String    // JSON array of actions to execute
+  version       Int       @default(1)
+  createdById   String    @map("created_by_id")
+  createdBy     User      @relation(fields: [createdById], references: [id])
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  executions    WorkflowExecution[]
+
+  @@index([triggerType])
+  @@index([isActive])
+  @@index([createdAt])
+  @@map("workflows")
+}
+
+// Workflow executions (runtime instances)
+model WorkflowExecution {
+  id            String    @id @default(uuid())
+  workflowId    String    @map("workflow_id")
+  workflow      Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  clientId      String?   @map("client_id")
+  client        Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  status        String    @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+  triggerData   String?   @map("trigger_data") // JSON string with data that triggered the workflow
+  currentStep   Int       @default(0) @map("current_step")
+  startedAt     DateTime? @map("started_at")
+  completedAt   DateTime? @map("completed_at")
+  errorMessage  String?   @map("error_message")
+  logs          String?   // JSON array of log entries
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  executionLogs WorkflowExecutionLog[]
+
+  @@index([workflowId])
+  @@index([clientId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("workflow_executions")
+}
+
+// Workflow execution logs (detailed step tracking)
+model WorkflowExecutionLog {
+  id            String            @id @default(uuid())
+  executionId   String            @map("execution_id")
+  execution     WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  stepIndex     Int               @map("step_index")
+  actionType    String            @map("action_type") // SEND_EMAIL, CREATE_TASK, UPDATE_CLIENT, etc.
+  status        String            // SUCCESS, FAILED, SKIPPED
+  inputData     String?           @map("input_data") // JSON string
+  outputData    String?           @map("output_data") // JSON string
+  errorMessage  String?           @map("error_message")
+  executedAt    DateTime          @default(now()) @map("executed_at")
+
+  @@index([executionId])
+  @@index([executedAt])
+  @@map("workflow_execution_logs")
 }

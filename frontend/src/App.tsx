@@ -177,8 +177,8 @@ function ProtectedLayout() {
 
   // Track session expiry notification
   const [showSessionExpiry, setShowSessionExpiry] = useState(false);
-  const expiryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const expiryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Store the latest checkSessionTimeout function in a ref
   const checkSessionTimeoutRef = useRef(checkSessionTimeout);

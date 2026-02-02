@@ -3,10 +3,10 @@ import { IconUsers, IconFileText, IconChecklist, IconCoin } from '@tabler/icons-
 
 interface StatsCardsWidgetProps {
   stats: {
-    totalClients: number;
-    totalDocuments: number;
-    pendingTasks: number;
-    totalLoanScenarios: number;
+    totalClients?: number;
+    totalDocuments?: number;
+    pendingTasks?: number;
+    totalLoanScenarios?: number;
   };
 }
 

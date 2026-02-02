@@ -194,7 +194,7 @@ export default function Notes() {
                         variant="subtle"
                         color="blue"
                         onClick={() => navigate(`/clients/${note.clientId}`)}
-                        aria-label={`View client ${note.client?.name || 'details'}`}
+                        aria-label={`View client details`}
                       >
                         <IconEye size={16} aria-hidden="true" />
                       </ActionIcon>
