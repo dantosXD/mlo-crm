@@ -5,6 +5,9 @@
  * - Feature #306: Stale Lead Follow-up
  * - Feature #307: Task Escalation
  * - Feature #308: Pre-Closing Checklist
+ * - Feature #309: Post-Closing Thank You
+ * - Feature #310: Birthday Greetings
+ * - Feature #311: Document Expiration Reminders
  */
 
 import prisma from '../utils/prisma.js';
@@ -209,6 +212,178 @@ async function createPreClosingChecklistTemplate(createdById: string) {
   return workflow;
 }
 
+// Template 4: Post-Closing Thank You (Feature #309)
+async function createPostClosingThankYouTemplate(createdById: string) {
+  const existing = await prisma.workflow.findFirst({
+    where: { name: 'Post-Closing Thank You' },
+  });
+
+  if (existing) {
+    console.log('✓ Post-Closing Thank You template already exists');
+    return existing;
+  }
+
+  const workflow = await prisma.workflow.create({
+    data: {
+      name: 'Post-Closing Thank You',
+      description: 'Automatically send a thank you message when a loan closes, wait 7 days, then request a review and referral from the client.',
+      isActive: true,
+      isTemplate: true,
+      triggerType: 'CLIENT_STATUS_CHANGED',
+      triggerConfig: JSON.stringify({
+        toStatus: 'CLOSED',
+      }),
+      conditions: JSON.stringify(null),
+      actions: JSON.stringify([
+        {
+          type: 'SEND_EMAIL',
+          config: {
+            templateId: null, // Will need to be set by user
+            to: '', // Empty means use client email
+          },
+          description: 'Send thank you email',
+        },
+        {
+          type: 'WAIT',
+          config: {
+            duration: 7,
+            unit: 'days',
+          },
+          description: 'Wait 7 days',
+        },
+        {
+          type: 'SEND_EMAIL',
+          config: {
+            templateId: null, // Will need to be set by user
+            to: '',
+          },
+          description: 'Send review/referral request email',
+        },
+        {
+          type: 'ADD_TAG',
+          config: {
+            tags: 'completed',
+          },
+          description: 'Add completed tag',
+        },
+      ]),
+      version: 1,
+      createdById,
+    },
+  });
+
+  console.log('✓ Created Post-Closing Thank You template');
+  return workflow;
+}
+
+// Template 5: Birthday Greetings (Feature #310)
+async function createBirthdayGreetingsTemplate(createdById: string) {
+  const existing = await prisma.workflow.findFirst({
+    where: { name: 'Birthday Greetings' },
+  });
+
+  if (existing) {
+    console.log('✓ Birthday Greetings template already exists');
+    return existing;
+  }
+
+  const workflow = await prisma.workflow.create({
+    data: {
+      name: 'Birthday Greetings',
+      description: 'Send personalized birthday greetings to clients. Runs daily and checks if today is the client\'s birthday.',
+      isActive: true,
+      isTemplate: true,
+      triggerType: 'MANUAL', // Will be triggered by scheduled job
+      triggerConfig: JSON.stringify({}),
+      conditions: JSON.stringify({
+        type: 'CUSTOM',
+        expression: 'client.birthday_today === true',
+      }),
+      actions: JSON.stringify([
+        {
+          type: 'SEND_EMAIL',
+          config: {
+            templateId: null, // Will need to be set by user
+            to: '', // Empty means use client email
+          },
+          description: 'Send birthday greeting email',
+        },
+        {
+          type: 'LOG_ACTIVITY',
+          config: {
+            description: 'Birthday greeting sent to {{client_name}}',
+          },
+          description: 'Log birthday greeting',
+        },
+      ]),
+      version: 1,
+      createdById,
+    },
+  });
+
+  console.log('✓ Created Birthday Greetings template');
+  return workflow;
+}
+
+// Template 6: Document Expiration Reminders (Feature #311)
+async function createDocumentExpirationRemindersTemplate(createdById: string) {
+  const existing = await prisma.workflow.findFirst({
+    where: { name: 'Document Expiration Reminders' },
+  });
+
+  if (existing) {
+    console.log('✓ Document Expiration Reminders template already exists');
+    return existing;
+  }
+
+  const workflow = await prisma.workflow.create({
+    data: {
+      name: 'Document Expiration Reminders',
+      description: 'Automatically remind clients and MLOs when documents are expiring (30 days before expiration). Creates a task to request updated documents and sends an email to the client.',
+      isActive: true,
+      isTemplate: true,
+      triggerType: 'MANUAL', // Will be triggered by scheduled job
+      triggerConfig: JSON.stringify({}),
+      conditions: JSON.stringify({
+        type: 'CUSTOM',
+        expression: 'document.days_until_expiration <= 30 && document.days_until_expiration > 0',
+      }),
+      actions: JSON.stringify([
+        {
+          type: 'CREATE_TASK',
+          config: {
+            text: 'Request updated {{document_name}} from {{client_name}} (expires in {{days_until_expiration}} days)',
+            priority: 'MEDIUM',
+            dueDays: 7,
+            assignedToId: null, // Assign to workflow executor
+          },
+          description: 'Create task to request updated document',
+        },
+        {
+          type: 'SEND_EMAIL',
+          config: {
+            templateId: null, // Will need to be set by user
+            to: '', // Empty means use client email
+          },
+          description: 'Send email to client requesting updated document',
+        },
+        {
+          type: 'UPDATE_DOCUMENT_STATUS',
+          config: {
+            status: 'REQUIRED',
+          },
+          description: 'Update document status to REQUIRED',
+        },
+      ]),
+      version: 1,
+      createdById,
+    },
+  });
+
+  console.log('✓ Created Document Expiration Reminders template');
+  return workflow;
+}
+
 export async function seedWorkflowTemplates() {
   try {
     console.log('\n🌱 Seeding workflow templates...\n');
@@ -218,6 +393,9 @@ export async function seedWorkflowTemplates() {
     await createStaleLeadFollowUpTemplate(createdById);
     await createTaskEscalationTemplate(createdById);
     await createPreClosingChecklistTemplate(createdById);
+    await createPostClosingThankYouTemplate(createdById);
+    await createBirthdayGreetingsTemplate(createdById);
+    await createDocumentExpirationRemindersTemplate(createdById);
 
     console.log('\n✅ Workflow templates seeded successfully!\n');
   } catch (error) {

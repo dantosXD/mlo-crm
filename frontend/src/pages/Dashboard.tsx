@@ -17,6 +17,7 @@ import { StatsCardsWidget } from '../widgets/StatsCardsWidget';
 import { PipelineOverviewWidget } from '../widgets/PipelineOverviewWidget';
 import { PendingTasksWidget } from '../widgets/PendingTasksWidget';
 import { RecentClientsWidget } from '../widgets/RecentClientsWidget';
+import { WorkflowStatusWidget } from '../widgets/WorkflowStatusWidget';
 import 'react-grid-layout/css/styles.css';
 
 interface Task {
@@ -43,6 +44,25 @@ interface DashboardStats {
   }>;
   pendingTasks: number;
   pendingTasksList: Task[];
+  workflowStats?: {
+    activeWorkflows: number;
+    completedToday: number;
+    failedToday: number;
+    runningExecutions: Array<{
+      id: string;
+      status: string;
+      startedAt: string;
+      completedAt: string | null;
+      workflow: {
+        id: string;
+        name: string;
+      };
+      client?: {
+        id: string;
+        name: string;
+      } | null;
+    }>;
+  };
 }
 
 interface LayoutItem {
@@ -68,6 +88,7 @@ const DEFAULT_LAYOUTS = {
     { i: 'pipeline', x: 0, y: 2, w: 4, h: 2, minW: 2, minH: 2 },
     { i: 'tasks', x: 0, y: 4, w: 2, h: 4, minW: 2, minH: 3 },
     { i: 'recent', x: 2, y: 4, w: 2, h: 4, minW: 2, minH: 3 },
+    { i: 'workflows', x: 0, y: 8, w: 2, h: 3, minW: 2, minH: 2 },
   ],
 };
 
@@ -140,6 +161,14 @@ export default function Dashboard() {
 
       if (!clientsRes.ok) throw new Error('Failed to fetch clients');
       const clients = await clientsRes.json();
+
+      // Initialize workflow stats with default values
+      let workflowStats = {
+        activeWorkflows: 0,
+        completedToday: 0,
+        failedToday: 0,
+        runningExecutions: [],
+      };
 
       // Calculate clients by status
       const clientsByStatus: Record<string, number> = {};
@@ -216,6 +245,55 @@ export default function Dashboard() {
         // Loan scenarios API may not exist yet
       }
 
+      // Fetch workflow stats
+      try {
+        // Get today's start for filtering completed/failed today
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Fetch running executions
+        const runningRes = await fetch('http://localhost:3000/api/workflow-executions?status=RUNNING&limit=5', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (runningRes.ok) {
+          const runningData = await runningRes.json();
+          workflowStats.runningExecutions = runningData;
+        }
+
+        // Fetch completed executions from today
+        const completedRes = await fetch('http://localhost:3000/api/workflow-executions?status=COMPLETED&limit=100', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (completedRes.ok) {
+          const completedData = await runningRes.ok ? await completedRes.json() : [];
+          workflowStats.completedToday = completedData.filter((e: { completedAt: string }) =>
+            new Date(e.completedAt) >= today
+          ).length;
+        }
+
+        // Fetch failed executions from today
+        const failedRes = await fetch('http://localhost:3000/api/workflow-executions?status=FAILED&limit=100', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (failedRes.ok) {
+          const failedData = await failedRes.json();
+          workflowStats.failedToday = failedData.filter((e: { completedAt: string }) =>
+            new Date(e.completedAt) >= today
+          ).length;
+        }
+
+        // Count active workflows (excluding completed/failed)
+        const activeRes = await fetch('http://localhost:3000/api/workflows', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (activeRes.ok) {
+          const activeWorkflows = await activeRes.json();
+          workflowStats.activeWorkflows = activeWorkflows.filter((w: { isActive: boolean }) => w.isActive).length;
+        }
+      } catch {
+        // Workflow APIs may not exist yet
+      }
+
       setStats({
         totalClients: clients.length,
         totalDocuments,
@@ -225,6 +303,7 @@ export default function Dashboard() {
         recentClients,
         pendingTasks,
         pendingTasksList,
+        workflowStats,
       });
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
@@ -368,6 +447,20 @@ export default function Dashboard() {
           </div>
           <div style={{ padding: '8px', overflowY: 'auto', maxHeight: '480px' }}>
             <RecentClientsWidget recentClients={stats?.recentClients || []} />
+          </div>
+        </div>
+
+        <div key="workflows">
+          <div className="drag-handle" style={{ cursor: 'move', padding: '8px', borderBottom: '1px solid #e9ecef' }}>
+            <Text size="sm" fw={500}>🤖 Workflow Activity</Text>
+          </div>
+          <div style={{ padding: '8px' }}>
+            <WorkflowStatusWidget
+              activeWorkflows={stats?.workflowStats?.activeWorkflows || 0}
+              completedToday={stats?.workflowStats?.completedToday || 0}
+              failedToday={stats?.workflowStats?.failedToday || 0}
+              runningExecutions={stats?.workflowStats?.runningExecutions || []}
+            />
           </div>
         </div>
       </ReactGridLayout>

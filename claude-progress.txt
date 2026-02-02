@@ -2822,3 +2822,209 @@ The workflow automation system now has:
 The project is at 84.9% completion with strong momentum toward the finish line.
 
 END OF SESSION - FEATURES #272, #273, #301
+
+
+## Session 49 Summary (Features #306, #307, #308)
+Date: February 2, 2026
+Agent: Coding Agent
+Assigned Features: #306, #307, #308 (Pre-built Workflow Templates)
+
+### Overall Progress
+**Before:** 273/318 features passing (85.8%)
+**After:** 276/318 features passing (86.8%)
+**Improvement:** +3 features completed (+1.0%)
+
+### Feature #306: Pre-built Workflow Template - Stale Lead Follow-up ✅
+
+**Status:** COMPLETED AND VERIFIED
+**Category:** Workflow Automation
+**Priority:** 337
+
+**Implementation Summary:**
+
+Created workflow template for automatically following up with inactive leads:
+
+**Workflow Configuration:**
+- **Name**: Stale Lead Follow-up
+- **Trigger**: CLIENT_INACTIVITY (7 days)
+- **Conditions**: Client status equals LEAD
+- **is_template**: true
+- **isActive**: true
+
+**Actions Implemented:**
+1. SEND_EMAIL action
+   - Sends follow-up email to stale lead
+   - Uses configurable email template
+   
+2. CREATE_TASK action
+   - Creates follow-up task for MLO
+   - Priority: MEDIUM
+   - Due date: 3 days
+   - Task text: "Follow up with stale lead"
+   
+3. ADD_TAG action
+   - Adds tags: "needs-follow-up", "stale-lead"
+   - Helps identify and track stale leads
+
+**Files Modified:**
+- `backend/src/routes/workflowRoutes.ts` (added CLIENT_INACTIVITY trigger type)
+
+**Verification:**
+- ✅ Template visible in Workflows UI
+- ✅ Template marked as active
+- ✅ Correct trigger type displayed
+- ✅ Screenshot captured: feature-306-307-308-workflow-templates.png
+
+---
+
+### Feature #307: Pre-built Workflow Template - Task Escalation ✅
+
+**Status:** COMPLETED AND VERIFIED
+**Category:** Workflow Automation
+**Priority:** 338
+
+**Implementation Summary:**
+
+Created workflow template for escalating overdue tasks:
+
+**Workflow Configuration:**
+- **Name**: Task Escalation
+- **Trigger**: TASK_OVERDUE
+- **Conditions**: None
+- **is_template**: true
+- **isActive**: true
+
+**Actions Implemented:**
+1. SEND_NOTIFICATION action
+   - Notifies task assignee about overdue task
+   - Title: "Task Overdue"
+   - Message prompts immediate action
+   
+2. WAIT action
+   - Waits 24 hours before escalation
+   - Gives assignee time to complete task
+   
+3. SEND_NOTIFICATION action
+   - Notifies manager if task still incomplete
+   - Title: "Task Escalation"
+   - Message indicates 24-hour overdue status
+
+**Files Modified:**
+- `backend/src/routes/workflowRoutes.ts` (added TASK_OVERDUE trigger type)
+
+**Verification:**
+- ✅ Template visible in Workflows UI
+- ✅ Template marked as active
+- ✅ Correct trigger type displayed
+- ✅ WAIT action properly configured
+
+---
+
+### Feature #308: Pre-built Workflow Template - Pre-Closing Checklist ✅
+
+**Status:** COMPLETED AND VERIFIED
+**Category:** Workflow Automation
+**Priority:** 339
+
+**Implementation Summary:**
+
+Created workflow template for pre-closing tasks:
+
+**Workflow Configuration:**
+- **Name**: Pre-Closing Checklist
+- **Trigger**: CLIENT_STATUS_CHANGED (to CLEAR_TO_CLOSE)
+- **Conditions**: None
+- **is_template**: true
+- **isActive**: true
+
+**Actions Implemented:**
+1. CREATE_TASK action
+   - Creates final document review task
+   - Priority: HIGH
+   - Due date: 2 days
+   - Task text: "Final document review"
+   
+2. CREATE_TASK action
+   - Creates closing disclosure review task
+   - Priority: HIGH
+   - Due date: 1 day
+   - Task text: "Review closing disclosures"
+   
+3. SEND_EMAIL action
+   - Sends closing instructions to client
+   - Uses configurable email template
+
+**Files Modified:**
+- None (uses existing CLIENT_STATUS_CHANGED trigger)
+
+**Verification:**
+- ✅ Template visible in Workflows UI
+- ✅ Template marked as active
+- ✅ Correct trigger type displayed
+- ✅ Multiple tasks configured correctly
+
+---
+
+### Technical Achievements
+
+**New Trigger Types Added:**
+1. CLIENT_INACTIVITY
+   - Configurable inactive days threshold
+   - Monitors client activity
+   - Triggers workflows for stale leads
+   
+2. TASK_OVERDUE
+   - Configurable priority filter
+   - Configurable overdue days threshold
+   - Triggers escalation workflows
+
+**New Action Types Added to API:**
+1. UPDATE_CLIENT_STATUS - Change client status
+2. ADD_TAG - Add tags to client
+3. REMOVE_TAG - Remove tags from client
+4. ASSIGN_CLIENT - Assign client to user
+5. SEND_NOTIFICATION - Send in-app notifications
+6. WAIT - Pause workflow execution
+
+**Seed Script Created:**
+- `backend/src/scripts/seedWorkflowTemplates.cjs`
+- Creates all three templates via API
+- Can be run to re-create templates if needed
+- Uses admin authentication
+
+**Backend Updates:**
+- Updated `workflowRoutes.ts` with new trigger types
+- Added trigger type metadata for CLIENT_INACTIVITY
+- Added trigger type metadata for TASK_OVERDUE
+- Added action type metadata for individual client actions
+- Added action type metadata for SEND_NOTIFICATION
+- Added action type metadata for WAIT
+
+---
+
+### Git Commit
+Commit: 2404d2e
+"feat: Implement Features #306, #307, #308 - Pre-built Workflow Templates"
+
+---
+
+### Screenshots Captured
+
+1. feature-306-307-308-workflow-templates.png - All three templates visible in Workflows UI
+
+---
+
+### All 3 Features Completed Successfully ✅
+
+- ✅ Feature #306 - Stale Lead Follow-up Template
+- ✅ Feature #307 - Task Escalation Template
+- ✅ Feature #308 - Pre-Closing Checklist Template
+
+**Total Files Created:** 2 files
+**Total Files Modified:** 1 file
+**Total Lines Added:** ~250 lines
+**All Features Verified:** Browser automation confirms all templates are active and visible
+
+END OF SESSION 49 - FEATURES #306, #307, #308 COMPLETED
+
+
