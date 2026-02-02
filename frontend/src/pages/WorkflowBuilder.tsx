@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -43,6 +43,8 @@ import {
   IconTrash,
   IconPlus,
   IconPlayerPlay,
+  IconVersions,
+  IconAlertCircle,
 } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
 import ActionConfigPanel from '../components/workflows/ActionConfigPanel';
@@ -174,8 +176,111 @@ export default function WorkflowBuilder() {
   const [workflowDescription, setWorkflowDescription] = useState('');
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [testModalOpened, setTestModalOpened] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   const isEditing = !!id;
+
+  // Load workflow data when editing
+  useEffect(() => {
+    const loadWorkflow = async () => {
+      if (isEditing && id) {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await fetch(`${API_URL}/workflows/${id}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          if (response.ok) {
+            const workflow = await response.json();
+            setWorkflowName(workflow.name || '');
+            setWorkflowDescription(workflow.description || '');
+
+            // Load nodes and edges if they exist in the workflow
+            if (workflow.nodes && workflow.edges) {
+              setNodes(workflow.nodes);
+              setEdges(workflow.edges);
+            } else {
+              // Reconstruct nodes from workflow data if nodes/edges not stored
+              const reconstructedNodes: Node[] = [];
+              const reconstructedEdges: Edge[] = [];
+
+              // Create trigger node
+              if (workflow.triggerType) {
+                reconstructedNodes.push({
+                  id: 'trigger-1',
+                  type: 'trigger',
+                  position: { x: 100, y: 100 },
+                  data: {
+                    label: 'Trigger',
+                    triggerType: workflow.triggerType,
+                    config: workflow.triggerConfig || {},
+                  },
+                });
+              }
+
+              // Create action nodes
+              workflow.actions?.forEach((action: any, index: number) => {
+                const nodeId = `action-${index}`;
+                reconstructedNodes.push({
+                  id: nodeId,
+                  type: 'action',
+                  position: { x: 100, y: 250 + index * 120 },
+                  data: {
+                    label: action.description || action.type,
+                    actionType: action.type,
+                    config: action.config || {},
+                  },
+                });
+
+                // Connect to previous node
+                if (index === 0) {
+                  reconstructedEdges.push({
+                    id: `trigger-${nodeId}`,
+                    source: 'trigger-1',
+                    target: nodeId,
+                  });
+                } else {
+                  reconstructedEdges.push({
+                    id: `action-${index - 1}-${nodeId}`,
+                    source: `action-${index - 1}`,
+                    target: nodeId,
+                  });
+                }
+              });
+
+              setNodes(reconstructedNodes);
+              setEdges(reconstructedEdges);
+            }
+          }
+        } catch (error) {
+          console.error('Error loading workflow:', error);
+          notifications.show({
+            title: 'Error',
+            message: 'Failed to load workflow',
+            color: 'red',
+          });
+        }
+      }
+    };
+
+    loadWorkflow();
+  }, [isEditing, id]);
+
+  // Clear validation errors when workflow changes
+  useEffect(() => {
+    if (validationErrors.length > 0) {
+      // Re-validate after a short delay to clear errors if they're fixed
+      const timer = setTimeout(() => {
+        const validation = validateWorkflow();
+        if (validation.isValid) {
+          setValidationErrors([]);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [nodes, edges, workflowName, validationErrors.length]);
 
   // Connect nodes
   const onConnect = useCallback(
@@ -215,23 +320,160 @@ export default function WorkflowBuilder() {
     }
   }, [selectedNode, setNodes, setEdges]);
 
+  // Validation helper function
+  const validateWorkflow = (): { isValid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+
+    // Check workflow name
+    if (!workflowName.trim()) {
+      errors.push('Workflow name is required');
+    }
+
+    // Check if there are any nodes
+    if (nodes.length === 0) {
+      errors.push('Workflow must have at least one node');
+      return { isValid: false, errors };
+    }
+
+    // Check for trigger node
+    const triggerNodes = nodes.filter((n) => n.type === 'trigger');
+    if (triggerNodes.length === 0) {
+      errors.push('Workflow must have at least one trigger node');
+    } else if (triggerNodes.length > 1) {
+      errors.push('Workflow can only have one trigger node');
+    } else {
+      // Check if trigger has type selected
+      const triggerNode = triggerNodes[0];
+      if (!triggerNode.data.triggerType) {
+        errors.push('Trigger node must have a trigger type selected');
+      }
+    }
+
+    // Check for action nodes
+    const actionNodes = nodes.filter((n) => n.type === 'action');
+    if (actionNodes.length === 0) {
+      errors.push('Workflow must have at least one action node');
+    } else {
+      // Check if all actions have type selected
+      actionNodes.forEach((node, index) => {
+        if (!node.data.actionType) {
+          errors.push(`Action node #${index + 1} must have an action type selected`);
+        }
+      });
+    }
+
+    // Check if all nodes are connected (no orphan nodes)
+    const connectedNodeIds = new Set<string>();
+
+    // Add all nodes that have edges
+    edges.forEach((edge) => {
+      connectedNodeIds.add(edge.source);
+      connectedNodeIds.add(edge.target);
+    });
+
+    // Find nodes without any connections
+    const orphanNodes = nodes.filter((n) => !connectedNodeIds.has(n.id));
+
+    // Allow single node workflows (trigger only during setup)
+    if (nodes.length > 1 && orphanNodes.length > 0) {
+      errors.push(
+        `${orphanNodes.length} node(s) are not connected to the workflow flow. Please connect all nodes.`
+      );
+    }
+
+    // Check for disconnected components (workflow should be one connected graph)
+    if (nodes.length > 1 && edges.length > 0) {
+      // Build adjacency list
+      const adj = new Map<string, string[]>();
+      nodes.forEach((node) => adj.set(node.id, []));
+      edges.forEach((edge) => {
+        adj.get(edge.source)?.push(edge.target);
+        adj.get(edge.target)?.push(edge.source);
+      });
+
+      // BFS from first node to count reachable nodes
+      const startNode = nodes[0].id;
+      const visited = new Set<string>();
+      const queue = [startNode];
+      visited.add(startNode);
+
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        adj.get(current)?.forEach((neighbor) => {
+          if (!visited.has(neighbor)) {
+            visited.add(neighbor);
+            queue.push(neighbor);
+          }
+        });
+      }
+
+      // If not all nodes are reachable, workflow is disconnected
+      if (visited.size !== nodes.length) {
+        errors.push(
+          'Workflow contains disconnected components. All nodes must be connected in a single flow.'
+        );
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
+  };
+
+  // Handle save button click with validation preview
+  const handleSaveClick = () => {
+    const validation = validateWorkflow();
+
+    if (!validation.isValid) {
+      setValidationErrors(validation.errors);
+      notifications.show({
+        title: 'Validation Errors',
+        message: 'Please fix the errors before saving',
+        color: 'red',
+        icon: <IconAlertCircle size={16} />,
+      });
+      return;
+    }
+
+    // Clear validation errors and proceed with save
+    setValidationErrors([]);
+    saveWorkflow.mutate();
+  };
+
   // Save workflow mutation
   const saveWorkflow = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (saveAsNewVersion = false) => {
+      // Validate workflow before saving
+      const validation = validateWorkflow();
+      if (!validation.isValid) {
+        throw new Error(validation.errors.join('\n'));
+      }
+
+      // Convert visual flow to workflow JSON structure
+      const triggerNode = nodes.find((n) => n.type === 'trigger');
+      const actionNodes = nodes.filter((n) => n.type === 'action');
+      const conditionNodes = nodes.filter((n) => n.type === 'condition');
+
+      // Build conditions object from condition nodes
+      const conditions: any = {};
+      conditionNodes.forEach((node) => {
+        if (node.data.condition) {
+          Object.assign(conditions, node.data.condition);
+        }
+      });
+
       const workflowData = {
         name: workflowName,
         description: workflowDescription,
-        triggerType: nodes.find((n) => n.type === 'trigger')?.data?.triggerType || 'MANUAL',
-        triggerConfig: {},
-        conditions: {},
-        actions: nodes
-          .filter((n) => n.type === 'action')
-          .map((n) => ({
-            type: n.data.actionType,
-            config: n.data.config || {},
-          })),
-        nodes,
-        edges,
+        triggerType: triggerNode?.data?.triggerType || 'MANUAL',
+        triggerConfig: triggerNode?.data?.config || {},
+        conditions: Object.keys(conditions).length > 0 ? conditions : {},
+        actions: actionNodes.map((n) => ({
+          type: n.data.actionType,
+          config: n.data.config || {},
+          description: n.data.label || `${n.data.actionType}`,
+        })),
       };
 
       const token = localStorage.getItem('token');
@@ -245,7 +487,10 @@ export default function WorkflowBuilder() {
           },
           body: JSON.stringify(workflowData),
         });
-        if (!response.ok) throw new Error('Failed to update workflow');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ message: 'Failed to update workflow' }));
+          throw new Error(errorData.message || 'Failed to update workflow');
+        }
         return await response.json();
       } else {
         // Create new workflow
@@ -257,12 +502,29 @@ export default function WorkflowBuilder() {
           },
           body: JSON.stringify(workflowData),
         });
-        if (!response.ok) throw new Error('Failed to create workflow');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ message: 'Failed to create workflow' }));
+          throw new Error(errorData.message || 'Failed to create workflow');
+        }
         return await response.json();
       }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      notifications.show({
+        title: 'Success',
+        message: isEditing
+          ? 'Workflow updated successfully'
+          : 'Workflow created successfully',
+        color: 'green',
+      });
       navigate('/workflows');
+    },
+    onError: (error: Error) => {
+      notifications.show({
+        title: 'Error',
+        message: error.message || 'Failed to save workflow',
+        color: 'red',
+      });
     },
   });
 
@@ -306,9 +568,8 @@ export default function WorkflowBuilder() {
             )}
             <Button
               leftSection={<IconDeviceFloppy size={16} />}
-              onClick={() => saveWorkflow.mutate()}
+              onClick={handleSaveClick}
               loading={saveWorkflow.isPending}
-              disabled={!workflowName || nodes.length === 0}
             >
               Save Workflow
             </Button>
@@ -333,6 +594,27 @@ export default function WorkflowBuilder() {
             />
           </Stack>
         </Paper>
+
+        {/* Validation Errors */}
+        {validationErrors.length > 0 && (
+          <Paper withBorder p="md" bg="red.0">
+            <Stack gap="xs">
+              <Group gap="xs">
+                <IconAlertCircle size={20} color="var(--mantine-color-red-6)" />
+                <Text fw={600} c="red.9">
+                  Validation Errors
+                </Text>
+              </Group>
+              <Stack gap={4} pl={34}>
+                {validationErrors.map((error, index) => (
+                  <Text key={index} size="sm" c="red.9">
+                    • {error}
+                  </Text>
+                ))}
+              </Stack>
+            </Stack>
+          </Paper>
+        )}
 
         {/* Toolbar */}
         <Paper withBorder p="sm">
