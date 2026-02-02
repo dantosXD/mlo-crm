@@ -12,6 +12,7 @@ import documentPackageRoutes from './routes/documentPackageRoutes.js';
 import loanScenarioRoutes from './routes/loanScenarioRoutes.js';
 import activityRoutes from './routes/activityRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import workflowRoutes from './routes/workflowRoutes.js';
 
 // Load environment variables
 config();
@@ -65,6 +66,7 @@ app.get('/api', (_req, res) => {
       loanScenarios: '/api/loan-scenarios/*',
       activities: '/api/activities/*',
       analytics: '/api/analytics/*',
+      workflows: '/api/workflows/*',
     },
   });
 });
@@ -86,6 +88,9 @@ app.use('/api/activities', activityRoutes);
 
 // Notification routes
 app.use('/api/notifications', notificationRoutes);
+
+// Workflow routes
+app.use('/api/workflows', workflowRoutes);
 
 // TODO: Implement remaining route modules
 // app.use('/api/analytics', analyticsRoutes);
