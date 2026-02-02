@@ -432,6 +432,10 @@ export default function ClientDetails() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
 
+  // Workflow executions state
+  const [workflowExecutions, setWorkflowExecutions] = useState<any[]>([]);
+  const [loadingWorkflowExecutions, setLoadingWorkflowExecutions] = useState(false);
+
   // Status options fetched from backend
   const [statusOptions, setStatusOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [loadingStatuses, setLoadingStatuses] = useState(false);
@@ -445,6 +449,7 @@ export default function ClientDetails() {
       setLoanScenarios([]);
       setDocuments([]);
       setActivities([]);
+      setWorkflowExecutions([]);
       setLoading(true);
       setError(null);
       setAccessDenied(false);
@@ -456,6 +461,7 @@ export default function ClientDetails() {
       fetchLoanScenarios();
       fetchDocuments();
       fetchActivities();
+      fetchWorkflowExecutions();
       fetchTeamMembers();
     }
   }, [id]);
@@ -559,6 +565,26 @@ export default function ClientDetails() {
       console.error('Error fetching activities:', error);
     } finally {
       setLoadingActivities(false);
+    }
+  };
+
+  const fetchWorkflowExecutions = async () => {
+    if (!id) return;
+    setLoadingWorkflowExecutions(true);
+    try {
+      const response = await fetch(`${API_URL}/workflows/executions?client_id=${id}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setWorkflowExecutions(data.executions || []);
+      }
+    } catch (error) {
+      console.error('Error fetching workflow executions:', error);
+    } finally {
+      setLoadingWorkflowExecutions(false);
     }
   };
 
@@ -3042,6 +3068,65 @@ export default function ClientDetails() {
                     <Text size="xs" c="dimmed" title={new Date(activity.createdAt).toLocaleString()}>
                       {formatRelativeTime(activity.createdAt)}
                     </Text>
+                  </Group>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+
+          <Divider my="xl" />
+
+          {/* Workflow Executions Section */}
+          <Title order={4} mb="md">Workflow Executions</Title>
+          {loadingWorkflowExecutions ? (
+            <Text c="dimmed">Loading workflow executions...</Text>
+          ) : workflowExecutions.length === 0 ? (
+            <Text c="dimmed">No workflow executions for this client.</Text>
+          ) : (
+            <Stack gap="md">
+              {workflowExecutions.map((execution) => (
+                <Paper key={execution.id} p="md" withBorder>
+                  <Group justify="space-between" align="flex-start">
+                    <Stack gap={0}>
+                      <Group gap="sm">
+                        <Text fw={500}>{execution.workflowName}</Text>
+                        <Badge
+                          color={
+                            execution.status === 'COMPLETED' ? 'green' :
+                            execution.status === 'RUNNING' ? 'blue' :
+                            execution.status === 'PAUSED' ? 'orange' :
+                            execution.status === 'FAILED' ? 'red' :
+                            'gray'
+                          }
+                          variant="light"
+                        >
+                          {execution.status}
+                        </Badge>
+                      </Group>
+                      {execution.errorMessage && (
+                        <Text size="sm" c="red">{execution.errorMessage}</Text>
+                      )}
+                      <Group gap="xs" mt="xs">
+                        <Text size="xs" c="dimmed">
+                          Started: {new Date(execution.startedAt || execution.createdAt).toLocaleString()}
+                        </Text>
+                        {execution.completedAt && (
+                          <Text size="xs" c="dimmed">
+                            • Completed: {new Date(execution.completedAt).toLocaleString()}
+                          </Text>
+                        )}
+                      </Group>
+                      <Text size="xs" c="dimmed">
+                        Step: {execution.currentStep}
+                      </Text>
+                    </Stack>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      onClick={() => window.open(`/workflows/executions?execution_id=${execution.id}`, '_blank')}
+                    >
+                      View Details
+                    </Button>
                   </Group>
                 </Paper>
               ))}

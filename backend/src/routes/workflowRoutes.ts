@@ -1362,6 +1362,99 @@ router.post(
 // WORKFLOW EXECUTION CONTROL ROUTES
 // =============================================================================
 
+// GET /api/workflows/executions - List workflow executions with filtering
+router.get('/executions', async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      page = '1',
+      limit = '20',
+      client_id,
+      workflow_id,
+      status,
+    } = req.query;
+
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build where clause
+    const where: any = {};
+
+    if (client_id) {
+      where.clientId = client_id as string;
+    }
+
+    if (workflow_id) {
+      where.workflowId = workflow_id as string;
+    }
+
+    if (status) {
+      where.status = status as string;
+    }
+
+    // Get total count
+    const total = await prisma.workflowExecution.count({ where });
+
+    // Get executions with pagination
+    const executions = await prisma.workflowExecution.findMany({
+      where,
+      skip,
+      take: limitNum,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        workflow: {
+          select: { id: true, name: true, triggerType: true },
+        },
+        client: {
+          select: { id: true, nameEncrypted: true },
+        },
+      },
+    });
+
+    // Helper to decrypt client name
+    const decryptName = (encrypted: string | null): string => {
+      if (!encrypted) return 'Unknown';
+      try {
+        const parsed = JSON.parse(encrypted);
+        return parsed.data || 'Unknown';
+      } catch {
+        return encrypted;
+      }
+    };
+
+    const formattedExecutions = executions.map((execution) => ({
+      id: execution.id,
+      workflowId: execution.workflowId,
+      workflowName: execution.workflow.name,
+      workflowTriggerType: execution.workflow.triggerType,
+      clientId: execution.clientId,
+      clientName: execution.client ? decryptName(execution.client.nameEncrypted) : null,
+      status: execution.status,
+      currentStep: execution.currentStep,
+      startedAt: execution.startedAt,
+      completedAt: execution.completedAt,
+      errorMessage: execution.errorMessage,
+      createdAt: execution.createdAt,
+    }));
+
+    res.json({
+      executions: formattedExecutions,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching workflow executions:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch workflow executions',
+    });
+  }
+});
+
 // POST /api/workflows/executions/:id/pause - Pause a running workflow execution
 router.post('/executions/:id/pause', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
   try {

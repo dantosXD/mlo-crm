@@ -502,6 +502,7 @@ export function WorkflowExecutions() {
                 { value: 'all', label: 'All Statuses' },
                 { value: 'PENDING', label: 'Pending' },
                 { value: 'RUNNING', label: 'Running' },
+                { value: 'PAUSED', label: 'Paused' },
                 { value: 'COMPLETED', label: 'Completed' },
                 { value: 'FAILED', label: 'Failed' },
                 { value: 'CANCELLED', label: 'Cancelled' },

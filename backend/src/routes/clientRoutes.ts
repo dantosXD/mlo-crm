@@ -1,6 +1,11 @@
 import { Router, Response } from 'express';
 import { authenticateToken, authorizeRoles, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
+import {
+  fireClientCreatedTrigger,
+  fireClientUpdatedTrigger,
+  fireClientStatusChangedTrigger,
+} from '../services/triggerHandler.js';
 
 const router = Router();
 
@@ -231,6 +236,9 @@ router.post('/', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest,
       },
     });
 
+    // Fire CLIENT_CREATED trigger for workflows
+    await fireClientCreatedTrigger(client.id, userId);
+
     res.status(201).json({
       id: client.id,
       name: client.nameEncrypted,
@@ -276,6 +284,11 @@ router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReques
 
     // Sanitize name for hash field to prevent issues with special characters
     const sanitizedNameForHash = name ? name.replace(/<[^>]*>/g, '') : undefined;
+
+    // Track what changed for trigger data
+    const changes: Record<string, any> = {};
+    const oldStatus = existingClient.status;
+
     const client = await prisma.client.update({
       where: { id },
       data: {
@@ -287,6 +300,16 @@ router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReques
       },
     });
 
+    // Build changes object for trigger
+    if (name && name !== existingClient.nameEncrypted) changes.name = { from: existingClient.nameEncrypted, to: name };
+    if (email && email !== existingClient.emailEncrypted) changes.email = { from: existingClient.emailEncrypted, to: email };
+    if (phone !== undefined && phone !== existingClient.phoneEncrypted) changes.phone = { from: existingClient.phoneEncrypted, to: phone };
+    if (status && status !== oldStatus) changes.status = { from: oldStatus, to: status };
+    if (tags) {
+      const oldTags = JSON.parse(existingClient.tags);
+      changes.tags = { from: oldTags, to: tags };
+    }
+
     // Log activity (sanitize name to prevent XSS in activity logs)
     const sanitizedNameForLog = (name || existingClient.nameEncrypted).replace(/<[^>]*>/g, '');
     await prisma.activity.create({
@@ -297,6 +320,14 @@ router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReques
         description: `Client ${sanitizedNameForLog} updated`,
       },
     });
+
+    // Fire CLIENT_UPDATED trigger for workflows
+    await fireClientUpdatedTrigger(client.id, userId!, changes);
+
+    // Fire CLIENT_STATUS_CHANGED trigger if status changed
+    if (status && status !== oldStatus) {
+      await fireClientStatusChangedTrigger(client.id, userId!, oldStatus, status);
+    }
 
     res.json({
       id: client.id,
@@ -408,9 +439,11 @@ router.patch('/bulk', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReq
       data: { status },
     });
 
-    // Log activities (sanitize names to prevent XSS in activity logs)
+    // Log activities and fire triggers for each client
     for (const client of clients) {
       const sanitizedName = client.nameEncrypted.replace(/<[^>]*>/g, '');
+      const oldStatus = client.status;
+
       await prisma.activity.create({
         data: {
           clientId: client.id,
@@ -419,6 +452,12 @@ router.patch('/bulk', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReq
           description: `Client ${sanitizedName} status changed to ${status}`,
         },
       });
+
+      // Fire CLIENT_UPDATED trigger
+      await fireClientUpdatedTrigger(client.id, userId!, { status: { from: oldStatus, to: status } });
+
+      // Fire CLIENT_STATUS_CHANGED trigger
+      await fireClientStatusChangedTrigger(client.id, userId!, oldStatus, status);
     }
 
     res.json({
