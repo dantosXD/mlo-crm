@@ -29,6 +29,7 @@ import {
   IconBell,
   IconBellOff,
   IconPlus,
+  IconPaperclip,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
@@ -46,6 +47,7 @@ interface Communication {
   scheduledAt: string | null;
   sentAt: string | null;
   followUpDate: string | null;
+  attachments: any[];
   createdAt: string;
   createdBy: {
     id: string;
@@ -288,6 +290,18 @@ export function Communications() {
           </Text>
         </Table.Td>
         <Table.Td>
+          {comm.attachments && comm.attachments.length > 0 ? (
+            <Group gap="xs">
+              <IconPaperclip size={16} />
+              <Text size="sm">{comm.attachments.length}</Text>
+            </Group>
+          ) : (
+            <Text size="sm" c="dimmed">
+              -
+            </Text>
+          )}
+        </Table.Td>
+        <Table.Td>
           <Text size="sm">{comm.createdBy.name}</Text>
         </Table.Td>
         <Table.Td>
@@ -431,6 +445,7 @@ export function Communications() {
                   <Table.Th>Subject/Body</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>Date</Table.Th>
+                  <Table.Th>Attachments</Table.Th>
                   <Table.Th>Created By</Table.Th>
                   <Table.Th>Actions</Table.Th>
                 </Table.Tr>
@@ -438,7 +453,7 @@ export function Communications() {
               <Table.Tbody>
                 {loading ? (
                   <Table.Tr>
-                    <Table.Td colSpan={7}>
+                    <Table.Td colSpan={8}>
                       <Text ta="center" c="dimmed">
                         Loading communications...
                       </Text>
@@ -446,7 +461,7 @@ export function Communications() {
                   </Table.Tr>
                 ) : communications.length === 0 ? (
                   <Table.Tr>
-                    <Table.Td colSpan={7}>
+                    <Table.Td colSpan={8}>
                       <Stack align="center" gap="md" py="xl">
                         <Text size="lg" fw={500}>
                           No communications found

@@ -326,6 +326,7 @@ model Communication {
   scheduledAt   DateTime? @map("scheduled_at")
   sentAt        DateTime? @map("sent_at")
   followUpDate  DateTime? @map("follow_up_date")  // Date for follow-up reminder
+  attachments   String?   // JSON array of file references (file_name, file_path, file_size, mime_type)
   createdById   String    @map("created_by_id")
   createdBy     User      @relation(fields: [createdById], references: [id])
   metadata      String?   // JSON string for additional data (e.g., email provider response)

@@ -33,6 +33,8 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { DateInput } from '@mantine/dates';
 import { API_URL } from '../utils/apiBase';
+import { AttachmentManager } from '../components/attachments/AttachmentManager';
+import type { Attachment } from '../utils/attachments';
 
 interface Client {
   id: string;
@@ -133,7 +135,8 @@ export function CommunicationComposer() {
   const [body, setBody] = useState('');
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
   const [followUpDate, setFollowUpDate] = useState<Date | null>(null);
-  const [attachments, setAttachments] = useState<File[]>([]);
+  const [communicationId, setCommunicationId] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   // Preview state
   const [previewBody, setPreviewBody] = useState('');
@@ -345,6 +348,10 @@ export function CommunicationComposer() {
         message: 'Communication saved as draft',
         color: 'green',
       });
+
+      // Store communication ID for attachments
+      const data = await response.json();
+      setCommunicationId(data.id);
 
       navigate('/communications');
     } catch (error: any) {
@@ -703,16 +710,22 @@ export function CommunicationComposer() {
             </Group>
 
             {/* Attachments */}
-            <FileInput
-              label="Attachments (Optional)"
-              placeholder="Upload files"
-              multiple
-              value={attachments}
-              onChange={setAttachments}
-              leftSection={<IconPaperclip size={14} />}
-              description="Files will be attached when sending"
-              clearable
-            />
+            <Stack gap="sm">
+              <Text size="sm" fw={500}>
+                Attachments (Optional)
+              </Text>
+              <Text size="xs" c="dimmed">
+                Save the draft first to enable file uploads
+              </Text>
+              <AttachmentManager
+                communicationId={communicationId}
+                attachments={attachments}
+                onAttachmentsChange={setAttachments}
+                disabled={!communicationId}
+                maxFiles={10}
+                maxSize={10 * 1024 * 1024} // 10MB
+              />
+            </Stack>
 
             {/* Detected Placeholders */}
             {!previewMode && body && (

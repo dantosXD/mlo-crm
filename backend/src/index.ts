@@ -19,6 +19,7 @@ import workflowAnalyticsRoutes from './routes/workflowAnalyticsRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
 import communicationRoutes from './routes/communicationRoutes.js';
 import communicationTemplateRoutes from './routes/communicationTemplateRoutes.js';
+import attachmentRoutes from './routes/attachmentRoutes.js';
 import { generateCsrfToken, validateCsrfToken } from './middleware/csrf.js';
 import {
   checkOverdueTasks,
@@ -121,6 +122,9 @@ app.use('/api/communications', validateCsrfToken, communicationRoutes);
 
 // Communication template routes
 app.use('/api/communication-templates', validateCsrfToken, communicationTemplateRoutes);
+
+// Attachment routes
+app.use('/api/attachments', validateCsrfToken, attachmentRoutes);
 
 // Analytics routes
 app.use('/api/analytics', validateCsrfToken, workflowAnalyticsRoutes);

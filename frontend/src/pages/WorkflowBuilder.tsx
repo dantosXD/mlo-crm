@@ -45,9 +45,20 @@ import {
 } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
 import ActionConfigPanel from '../components/workflows/ActionConfigPanel';
+import TriggerConfigPanel from '../components/workflows/TriggerConfigPanel';
+import ConditionConfigPanel from '../components/workflows/ConditionConfigPanel';
 
 // Custom node components
 const TriggerNode = ({ data }: { data: any }) => {
+  // Format trigger type for display
+  const formatTriggerType = (type: string) => {
+    if (!type) return 'Manual';
+    return type
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/\b\w/g, (l: string) => l.toUpperCase());
+  };
+
   return (
     <div
       style={{
@@ -66,7 +77,7 @@ const TriggerNode = ({ data }: { data: any }) => {
       </Group>
       {data.triggerType && (
         <Badge size="xs" color="blue" mt={5} fullWidth>
-          {data.triggerType}
+          {formatTriggerType(data.triggerType)}
         </Badge>
       )}
     </div>
@@ -74,6 +85,15 @@ const TriggerNode = ({ data }: { data: any }) => {
 };
 
 const ConditionNode = ({ data }: { data: any }) => {
+  // Format condition type for display
+  const formatConditionType = (condition: any) => {
+    if (!condition || !condition.type) return 'New Condition';
+    return condition.type
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/\b\w/g, (l: string) => l.toUpperCase());
+  };
+
   return (
     <div
       style={{
@@ -90,10 +110,10 @@ const ConditionNode = ({ data }: { data: any }) => {
           {data.label}
         </Text>
       </Group>
-      {data.condition && (
-        <Text size="xs" c="dimmed" mt={5}>
-          {data.condition}
-        </Text>
+      {data.condition && data.condition.type && (
+        <Badge size="xs" color="yellow" mt={5} fullWidth>
+          {formatConditionType(data.condition)}
+        </Badge>
       )}
     </div>
   );
@@ -384,35 +404,65 @@ export default function WorkflowBuilder() {
                   data={[
                     { value: 'MANUAL', label: 'Manual Trigger' },
                     { value: 'CLIENT_CREATED', label: 'Client Created' },
-                    { value: 'STATUS_CHANGED', label: 'Status Changed' },
+                    { value: 'CLIENT_UPDATED', label: 'Client Updated' },
+                    { value: 'CLIENT_STATUS_CHANGED', label: 'Client Status Changed' },
+                    { value: 'CLIENT_INACTIVITY', label: 'Client Inactivity' },
+                    { value: 'PIPELINE_STAGE_ENTRY', label: 'Pipeline Stage Entry' },
+                    { value: 'PIPELINE_STAGE_EXIT', label: 'Pipeline Stage Exit' },
+                    { value: 'TIME_IN_STAGE_THRESHOLD', label: 'Time in Stage Threshold' },
                     { value: 'DOCUMENT_UPLOADED', label: 'Document Uploaded' },
+                    { value: 'DOCUMENT_STATUS_CHANGED', label: 'Document Status Changed' },
+                    { value: 'DOCUMENT_DUE_DATE', label: 'Document Due Date' },
+                    { value: 'DOCUMENT_EXPIRED', label: 'Document Expired' },
+                    { value: 'TASK_CREATED', label: 'Task Created' },
                     { value: 'TASK_COMPLETED', label: 'Task Completed' },
+                    { value: 'TASK_OVERDUE', label: 'Task Overdue' },
+                    { value: 'TASK_DUE', label: 'Task Due' },
+                    { value: 'TASK_ASSIGNED', label: 'Task Assigned' },
+                    { value: 'NOTE_CREATED', label: 'Note Created' },
+                    { value: 'NOTE_WITH_TAG', label: 'Note with Tag' },
+                    { value: 'WEBHOOK', label: 'Webhook' },
+                    { value: 'SCHEDULED', label: 'Scheduled' },
                   ]}
                   value={selectedNode.data.triggerType || ''}
                   onChange={(value) => {
                     setNodes((nds) =>
                       nds.map((n) =>
                         n.id === selectedNode.id
-                          ? { ...n, data: { ...n.data, triggerType: value } }
+                          ? { ...n, data: { ...n.data, triggerType: value, config: {} } }
                           : n
                       )
                     );
                   }}
                 />
+
+                {selectedNode.data.triggerType && (
+                  <TriggerConfigPanel
+                    triggerType={selectedNode.data.triggerType}
+                    config={selectedNode.data.config || {}}
+                    onChange={(newConfig) => {
+                      setNodes((nds) =>
+                        nds.map((n) =>
+                          n.id === selectedNode.id
+                            ? { ...n, data: { ...n.data, config: newConfig } }
+                            : n
+                        )
+                      );
+                    }}
+                  />
+                )}
               </Stack>
             )}
 
             {selectedNode.type === 'condition' && (
               <Stack gap="sm">
-                <TextInput
-                  label="Condition"
-                  placeholder="e.g., client.status === 'LEAD'"
-                  value={selectedNode.data.condition || ''}
-                  onChange={(e) => {
+                <ConditionConfigPanel
+                  condition={selectedNode.data.condition || {}}
+                  onChange={(newCondition) => {
                     setNodes((nds) =>
                       nds.map((n) =>
                         n.id === selectedNode.id
-                          ? { ...n, data: { ...n.data, condition: e.currentTarget.value } }
+                          ? { ...n, data: { ...n.data, condition: newCondition } }
                           : n
                       )
                     );
