@@ -248,11 +248,7 @@ export function Workflows() {
   };
 
   const handleViewExecutions = (id: string) => {
-    notifications.show({
-      title: 'Coming Soon',
-      message: 'Execution history viewer will be implemented soon',
-      color: 'blue',
-    });
+    navigate(`/workflows/executions?workflow_id=${id}`);
   };
 
   const rows = workflows.map((workflow) => (
