@@ -341,6 +341,240 @@ export async function executeWorkflow(
   }
 }
 
+export interface DryRunResult {
+  success: boolean;
+  wouldExecute: boolean;
+  message: string;
+  executionPlan?: {
+    workflowId: string;
+    workflowName: string;
+    triggerType: string;
+    conditionsMet: boolean;
+    conditionResults?: any;
+    actions: {
+      stepIndex: number;
+      actionType: string;
+      actionCategory: string;
+      config: any;
+      wouldExecute: boolean;
+      estimatedDuration?: string;
+      description?: string;
+    }[];
+    totalSteps: number;
+    estimatedTotalDuration?: string;
+  };
+  error?: string;
+}
+
+/**
+ * Test a workflow without executing actions (dry run)
+ * @param workflowId - ID of the workflow to test
+ * @param context - Execution context (clientId, triggerType, triggerData, userId)
+ * @returns Dry run result with execution plan
+ */
+export async function testWorkflow(
+  workflowId: string,
+  context: ExecutionContext
+): Promise<DryRunResult> {
+  try {
+    // Fetch workflow
+    const workflow = await prisma.workflow.findUnique({
+      where: { id: workflowId },
+    });
+
+    if (!workflow) {
+      return {
+        success: false,
+        wouldExecute: false,
+        message: 'Workflow not found',
+      };
+    }
+
+    // Parse workflow actions and conditions
+    const actions = JSON.parse(workflow.actions);
+    const conditions = workflow.conditions ? JSON.parse(workflow.conditions) : null;
+
+    // Evaluate conditions if present
+    let conditionsMet = true;
+    let conditionResults: any = null;
+
+    if (conditions && context.clientId) {
+      const conditionContext: ConditionContext = {
+        clientId: context.clientId,
+        triggerType: context.triggerType,
+        triggerData: context.triggerData || {},
+      };
+      const conditionResult = await evaluateConditions(conditions, conditionContext);
+      conditionsMet = conditionResult.matched;
+      conditionResults = {
+        matched: conditionResult.matched,
+        success: conditionResult.success,
+        message: conditionResult.message,
+      };
+    }
+
+    if (!conditionsMet) {
+      return {
+        success: true,
+        wouldExecute: false,
+        message: 'Workflow conditions not met - would not execute',
+        executionPlan: {
+          workflowId: workflow.id,
+          workflowName: workflow.name,
+          triggerType: workflow.triggerType,
+          conditionsMet: false,
+          conditionResults,
+          actions: [],
+          totalSteps: 0,
+        },
+      };
+    }
+
+    // Build execution plan without actually executing
+    const executionPlan = actions.map((action: any, index: number) => {
+      const actionType = action.type;
+      const actionCategory = getActionCategory(actionType);
+      const config = action.config || {};
+
+      // Generate description for each action
+      let description = '';
+      let estimatedDuration = '< 1 second';
+
+      switch (actionCategory) {
+        case 'document':
+          if (actionType === 'UPDATE_DOCUMENT_STATUS') {
+            description = `Update document status to ${config.status}`;
+          } else if (actionType === 'REQUEST_DOCUMENT') {
+            description = `Request document: ${config.name} (category: ${config.category})`;
+          }
+          estimatedDuration = '< 1 second';
+          break;
+        case 'communication':
+          if (actionType === 'SEND_EMAIL') {
+            description = `Send email using template ${config.templateId}`;
+          } else if (actionType === 'SEND_SMS') {
+            description = `Send SMS using template ${config.templateId}`;
+          } else if (actionType === 'GENERATE_LETTER') {
+            description = `Generate letter using template ${config.templateId}`;
+          }
+          estimatedDuration = '1-3 seconds';
+          break;
+        case 'task':
+          if (actionType === 'CREATE_TASK') {
+            description = `Create task: ${config.text}`;
+          } else if (actionType === 'COMPLETE_TASK') {
+            description = `Complete task: ${config.taskId}`;
+          } else if (actionType === 'ASSIGN_TASK') {
+            description = `Assign task to ${config.assignedToId || 'workflow creator'}`;
+          }
+          estimatedDuration = '< 1 second';
+          break;
+        case 'client':
+          if (actionType === 'UPDATE_CLIENT_STATUS') {
+            description = `Update client status to ${config.status}`;
+          } else if (actionType === 'ADD_TAG') {
+            description = `Add tags: ${config.tags}`;
+          } else if (actionType === 'REMOVE_TAG') {
+            description = `Remove tag: ${config.tag}`;
+          } else if (actionType === 'ASSIGN_CLIENT') {
+            description = `Assign client to ${config.assignedToId}`;
+          }
+          estimatedDuration = '< 1 second';
+          break;
+        case 'note':
+          if (actionType === 'CREATE_NOTE') {
+            description = `Create note: ${config.text?.substring(0, 50) || 'Empty note'}...`;
+          }
+          estimatedDuration = '< 1 second';
+          break;
+        case 'notification':
+          if (actionType === 'SEND_NOTIFICATION') {
+            description = `Send notification to ${config.toRole || config.toUserId || 'users'}`;
+          } else if (actionType === 'LOG_ACTIVITY') {
+            description = `Log activity: ${config.activityType}`;
+          }
+          estimatedDuration = '< 1 second';
+          break;
+        case 'flowControl':
+          if (actionType === 'WAIT') {
+            const waitTime = config.delayMinutes || config.delayHours * 60 || config.delayDays * 1440 || 0;
+            description = `Wait ${waitTime} minutes before continuing`;
+            estimatedDuration = `${waitTime} minutes`;
+          } else if (actionType === 'BRANCH') {
+            description = `Branch based on condition: ${config.variable} ${config.operator} ${config.value}`;
+            estimatedDuration = '< 1 second';
+          } else if (actionType === 'PARALLEL') {
+            const parallelActionCount = config.actions?.length || 0;
+            description = `Execute ${parallelActionCount} actions in parallel`;
+            estimatedDuration = 'Variable (parallel execution)';
+          }
+          break;
+        case 'webhook':
+          if (actionType === 'CALL_WEBHOOK') {
+            description = `Call webhook: ${config.url}`;
+            estimatedDuration = '1-5 seconds';
+          }
+          break;
+        default:
+          description = `Execute ${actionType}`;
+          estimatedDuration = 'Unknown';
+      }
+
+      return {
+        stepIndex: index,
+        actionType,
+        actionCategory,
+        config,
+        wouldExecute: true,
+        estimatedDuration,
+        description,
+      };
+    });
+
+    // Calculate estimated total duration (simplified - doesn't account for parallel execution)
+    const totalSeconds = executionPlan.reduce((total: number, action: any) => {
+      if (action.estimatedDuration.includes('second')) {
+        return total + 2; // Average 2 seconds for quick actions
+      } else if (action.estimatedDuration.includes('minute')) {
+        const minutes = parseInt(action.estimatedDuration) || 1;
+        return total + (minutes * 60);
+      }
+      return total;
+    }, 0);
+
+    let estimatedTotalDuration = '< 1 minute';
+    if (totalSeconds > 60) {
+      const minutes = Math.ceil(totalSeconds / 60);
+      estimatedTotalDuration = `~${minutes} minute${minutes > 1 ? 's' : ''}`;
+    }
+
+    return {
+      success: true,
+      wouldExecute: true,
+      message: 'Workflow would execute successfully',
+      executionPlan: {
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        triggerType: workflow.triggerType,
+        conditionsMet: true,
+        conditionResults,
+        actions: executionPlan,
+        totalSteps: executionPlan.length,
+        estimatedTotalDuration,
+      },
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    return {
+      success: false,
+      wouldExecute: false,
+      message: `Workflow test failed: ${errorMessage}`,
+      error: errorMessage,
+    };
+  }
+}
+
 /**
  * Cancel a running workflow execution
  * @param executionId - ID of the execution to cancel

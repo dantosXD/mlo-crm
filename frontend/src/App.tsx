@@ -69,6 +69,7 @@ const navItems = [
   { icon: IconNotes, label: 'Notes', href: '/notes', adminOnly: false },
   { icon: IconFileText, label: 'Documents', href: '/documents', adminOnly: false },
   { icon: IconTemplate, label: 'Templates', href: '/communication-templates', adminOnly: false },
+  { icon: IconMail, label: 'Communications', href: '/communications', adminOnly: false },
   { icon: IconCalculator, label: 'Calculator', href: '/calculator', adminOnly: false },
   { icon: IconChartBar, label: 'Analytics', href: '/analytics', adminOnly: false },
   { icon: IconRobot, label: 'Workflows', href: '/workflows', adminOnly: false },
@@ -385,6 +386,7 @@ function ProtectedLayout() {
           <Route path="/communication-templates" element={<CommunicationTemplates />} />
           <Route path="/communication-templates/new" element={<CommunicationTemplateEditor />} />
           <Route path="/communication-templates/:id/edit" element={<CommunicationTemplateEditor />} />
+          <Route path="/communications" element={<Communications />} />
           <Route path="/calculator" element={<Calculator />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/workflows" element={<Workflows />} />

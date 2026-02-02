@@ -955,4 +955,67 @@ router.post('/:id/execute', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// POST /api/workflows/:id/test - Test workflow without executing (dry run)
+router.post('/:id/test', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { clientId, triggerData } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'User not authenticated',
+      });
+    }
+
+    // Validate workflow exists
+    const workflow = await prisma.workflow.findUnique({
+      where: { id },
+    });
+
+    if (!workflow) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Workflow not found',
+      });
+    }
+
+    // Validate clientId if provided
+    if (clientId) {
+      const client = await prisma.client.findUnique({
+        where: { id: clientId },
+      });
+
+      if (!client) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'Client not found',
+        });
+      }
+    }
+
+    // Test workflow (dry run)
+    const { testWorkflow } = await import('../services/workflowExecutor.js');
+    const result = await testWorkflow(id, {
+      clientId,
+      triggerType: 'MANUAL',
+      triggerData,
+      userId,
+    });
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Error testing workflow:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Failed to test workflow',
+    });
+  }
+});
+
 export default router;

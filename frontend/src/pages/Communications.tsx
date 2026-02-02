@@ -27,31 +27,25 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
-import { decryptData } from '../utils/encryption';
 
 interface Communication {
   id: string;
+  clientId: string;
+  clientName: string;
   type: string;
   status: string;
   subject: string | null;
   body: string;
   recipient: string | null;
-  scheduledFor: string | null;
+  scheduledAt: string | null;
   sentAt: string | null;
   createdAt: string;
-  client: {
-    id: string;
-    nameEncrypted: string;
-  };
   createdBy: {
     id: string;
     name: string;
     email: string;
   };
-  template: {
-    id: string;
-    name: string;
-  } | null;
+  templateName: string | null;
 }
 
 interface CommunicationsResponse {

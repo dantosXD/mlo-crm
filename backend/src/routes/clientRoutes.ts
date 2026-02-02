@@ -275,11 +275,11 @@ router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReques
     }
 
     // Sanitize name for hash field to prevent issues with special characters
-    const sanitizedName = name ? name.replace(/<[^>]*>/g, '') : undefined;
+    const sanitizedNameForHash = name ? name.replace(/<[^>]*>/g, '') : undefined;
     const client = await prisma.client.update({
       where: { id },
       data: {
-        ...(name && { nameEncrypted: name, nameHash: sanitizedName!.toLowerCase() }),
+        ...(name && { nameEncrypted: name, nameHash: sanitizedNameForHash!.toLowerCase() }),
         ...(email && { emailEncrypted: email, emailHash: email.toLowerCase() }),
         ...(phone !== undefined && { phoneEncrypted: phone, phoneHash: phone }),
         ...(status && { status }),
@@ -288,13 +288,13 @@ router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReques
     });
 
     // Log activity (sanitize name to prevent XSS in activity logs)
-    const sanitizedName = (name || existingClient.nameEncrypted).replace(/<[^>]*>/g, '');
+    const sanitizedNameForLog = (name || existingClient.nameEncrypted).replace(/<[^>]*>/g, '');
     await prisma.activity.create({
       data: {
         clientId: client.id,
         userId: userId!,
         type: 'CLIENT_UPDATED',
-        description: `Client ${sanitizedName} updated`,
+        description: `Client ${sanitizedNameForLog} updated`,
       },
     });
 
