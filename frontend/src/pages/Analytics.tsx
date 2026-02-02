@@ -25,6 +25,10 @@ import {
   IconMinus,
   IconArrowRight,
   IconCalendar,
+  IconRobot,
+  IconCheck,
+  IconX,
+  IconClock,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -57,6 +61,29 @@ interface AnalyticsData {
   avgTimeInPipeline: number;
 }
 
+interface WorkflowAnalyticsData {
+  overview: {
+    totalExecutions: number;
+    completedExecutions: number;
+    failedExecutions: number;
+    runningExecutions: number;
+    pendingExecutions: number;
+    successRate: number;
+    avgExecutionTime: number;
+  };
+  mostTriggeredWorkflows: Array<{
+    workflowId: string;
+    workflowName: string;
+    triggerType: string;
+    isActive: boolean;
+    totalExecutions: number;
+    completedExecutions: number;
+    failedExecutions: number;
+    avgExecutionTime: number;
+  }>;
+  timeSeries: Array<{ date: string; count: number }>;
+}
+
 // Date range options
 const DATE_RANGE_OPTIONS = [
   { value: 'all', label: 'All Time' },
@@ -68,12 +95,14 @@ const DATE_RANGE_OPTIONS = [
 export default function Analytics() {
   const { accessToken } = useAuthStore();
   const [data, setData] = useState<AnalyticsData | null>(null);
+  const [workflowData, setWorkflowData] = useState<WorkflowAnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<string>('all');
 
   useEffect(() => {
     fetchAnalytics();
+    fetchWorkflowAnalytics();
   }, [accessToken, dateRange]);
 
   const fetchAnalytics = async () => {
@@ -132,6 +161,23 @@ export default function Analytics() {
       console.error('Error fetching analytics:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchWorkflowAnalytics = async () => {
+    try {
+      const days = dateRange === 'all' ? '365' : dateRange; // Default to 1 year for "all"
+
+      const response = await fetch(`${API_URL}/analytics/workflows?days=${days}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setWorkflowData(data);
+      }
+    } catch (error) {
+      console.error('Error fetching workflow analytics:', error);
     }
   };
 
@@ -393,6 +439,160 @@ export default function Analytics() {
             ))}
           </Table.Tbody>
         </Table>
+      </Paper>
+
+      {/* Workflow Analytics Section */}
+      <Paper shadow="xs" p="lg" withBorder mt="xl">
+        <Title order={3} mb="md">
+          <Group gap="xs">
+            <IconRobot size={24} aria-hidden="true" />
+            Workflow Analytics
+          </Group>
+        </Title>
+
+        {workflowData ? (
+          <Stack gap="lg">
+            {/* Workflow Summary Cards */}
+            <SimpleGrid cols={{ base: 2, sm: 4 }}>
+              <Card padding="lg" withBorder>
+                <Group justify="space-between">
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Total Executions
+                    </Text>
+                    <Text size="xl" fw={700}>
+                      {workflowData.overview.totalExecutions}
+                    </Text>
+                  </div>
+                  <ThemeIcon size="lg" variant="light" color="blue">
+                    <IconRobot size={20} aria-hidden="true" />
+                  </ThemeIcon>
+                </Group>
+              </Card>
+
+              <Card padding="lg" withBorder>
+                <Group justify="space-between">
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Success Rate
+                    </Text>
+                    <Text size="xl" fw={700} c="green">
+                      {workflowData.overview.successRate.toFixed(1)}%
+                    </Text>
+                  </div>
+                  <ThemeIcon size="lg" variant="light" color="green">
+                    <IconCheck size={20} aria-hidden="true" />
+                  </ThemeIcon>
+                </Group>
+              </Card>
+
+              <Card padding="lg" withBorder>
+                <Group justify="space-between">
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Failed
+                    </Text>
+                    <Text size="xl" fw={700} c="red">
+                      {workflowData.overview.failedExecutions}
+                    </Text>
+                  </div>
+                  <ThemeIcon size="lg" variant="light" color="red">
+                    <IconX size={20} aria-hidden="true" />
+                  </ThemeIcon>
+                </Group>
+              </Card>
+
+              <Card padding="lg" withBorder>
+                <Group justify="space-between">
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Avg Duration
+                    </Text>
+                    <Text size="xl" fw={700}>
+                      {workflowData.overview.avgExecutionTime > 0
+                        ? `${(workflowData.overview.avgExecutionTime / 1000).toFixed(1)}s`
+                        : 'N/A'}
+                    </Text>
+                  </div>
+                  <ThemeIcon size="lg" variant="light" color="orange">
+                    <IconClock size={20} aria-hidden="true" />
+                  </ThemeIcon>
+                </Group>
+              </Card>
+            </SimpleGrid>
+
+            {/* Most Triggered Workflows Table */}
+            {workflowData.mostTriggeredWorkflows.length > 0 && (
+              <Card withBorder>
+                <Title order={4} mb="sm">
+                  Most Triggered Workflows
+                </Title>
+                <Table>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Workflow</Table.Th>
+                      <Table.Th ta="right">Executions</Table.Th>
+                      <Table.Th ta="right">Completed</Table.Th>
+                      <Table.Th ta="right">Failed</Table.Th>
+                      <Table.Th ta="right">Avg Time</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {workflowData.mostTriggeredWorkflows.map((workflow) => (
+                      <Table.Tr key={workflow.workflowId}>
+                        <Table.Td>
+                          <Stack gap={0}>
+                            <Text fw={500}>{workflow.workflowName}</Text>
+                            <Text size="xs" c="dimmed">
+                              {workflow.triggerType}
+                            </Text>
+                          </Stack>
+                        </Table.Td>
+                        <Table.Td ta="right">
+                          <Text fw={600}>{workflow.totalExecutions}</Text>
+                        </Table.Td>
+                        <Table.Td ta="right">
+                          <Text c="green">{workflow.completedExecutions}</Text>
+                        </Table.Td>
+                        <Table.Td ta="right">
+                          <Text c="red">{workflow.failedExecutions}</Text>
+                        </Table.Td>
+                        <Table.Td ta="right">
+                          <Text size="sm">
+                            {workflow.avgExecutionTime > 0
+                              ? `${(workflow.avgExecutionTime / 1000).toFixed(1)}s`
+                              : 'N/A'}
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Card>
+            )}
+
+            {/* Empty state for no workflow data */}
+            {workflowData.mostTriggeredWorkflows.length === 0 && (
+              <Card withBorder>
+                <Stack align="center" gap="sm" py="xl">
+                  <ThemeIcon size={64} radius="xl" color="blue" variant="light">
+                    <IconRobot size={32} aria-hidden="true" />
+                  </ThemeIcon>
+                  <Text size="lg" fw={600} c="dimmed">
+                    No workflow executions yet
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    Workflow analytics will appear here once workflows are executed
+                  </Text>
+                </Stack>
+              </Card>
+            )}
+          </Stack>
+        ) : (
+          <Center py="xl">
+            <Loader size="lg" />
+          </Center>
+        )}
       </Paper>
     </Container>
   );

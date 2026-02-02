@@ -20,7 +20,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // Generate CSRF token
-function generateCsrfToken(): string {
+function createCsrfToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
@@ -42,7 +42,7 @@ export function generateCsrfToken(req: CsrfRequest, res: Response, next: NextFun
   // Only generate CSRF token for authenticated requests
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const sessionId = getSessionId(req);
-    const token = generateCsrfToken();
+    const token = createCsrfToken();
 
     // Store token with 1 hour expiration
     tokenStore.set(sessionId, {
@@ -111,7 +111,7 @@ export function rotateCsrfToken(req: CsrfRequest, res: Response, next: NextFunct
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const sessionId = getSessionId(req);
-    const newToken = generateCsrfToken();
+    const newToken = createCsrfToken();
 
     // Update stored token
     tokenStore.set(sessionId, {

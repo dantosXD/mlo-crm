@@ -55,8 +55,8 @@ router.get('/workflows', async (req: AuthRequest, res: Response) => {
     const executionTimes = completedExecutions
       .filter((e) => e.startedAt && e.completedAt)
       .map((e) => {
-        const start = new Date(e.startedAt).getTime();
-        const end = new Date(e.completedAt!).getTime();
+        const start = e.startedAt ? new Date(e.startedAt).getTime() : 0;
+        const end = e.completedAt ? new Date(e.completedAt).getTime() : 0;
         return end - start;
       });
 
