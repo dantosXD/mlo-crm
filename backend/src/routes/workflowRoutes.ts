@@ -850,4 +850,42 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
+// POST /api/workflows/test-condition - Test endpoint for condition evaluation (development only)
+if (process.env.NODE_ENV === 'development') {
+  router.post('/test-condition', async (req: AuthRequest, res: Response) => {
+    try {
+      const { conditions, clientId } = req.body;
+      const { testConditionEvaluation } = await import('../services/conditionEvaluator.js');
+
+      if (!conditions) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'conditions are required',
+        });
+      }
+
+      if (!clientId) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'clientId is required',
+        });
+      }
+
+      const result = await testConditionEvaluation(conditions, clientId);
+
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error evaluating test condition:', error);
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: error instanceof Error ? error.message : 'Failed to evaluate condition',
+      });
+    }
+  });
+}
+
 export default router;

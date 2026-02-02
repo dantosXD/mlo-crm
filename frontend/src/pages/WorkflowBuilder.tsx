@@ -32,7 +32,7 @@ import {
 } from '@mantine/core';
 import {
   IconArrowLeft,
-  IconSave,
+  IconDeviceFloppy,
   IconRobot,
   IconGitBranch,
   IconBolt,
@@ -268,7 +268,7 @@ export default function WorkflowBuilder() {
               Delete Selected
             </Button>
             <Button
-              leftSection={<IconSave size={16} />}
+              leftSection={<IconDeviceFloppy size={16} />}
               onClick={() => saveWorkflow.mutate()}
               loading={saveWorkflow.isPending}
               disabled={!workflowName || nodes.length === 0}
