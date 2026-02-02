@@ -44,6 +44,7 @@ import {
   IconPlus,
 } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
+import ActionConfigPanel from '../components/workflows/ActionConfigPanel';
 
 // Custom node components
 const TriggerNode = ({ data }: { data: any }) => {
@@ -428,20 +429,46 @@ export default function WorkflowBuilder() {
                     { value: 'SEND_EMAIL', label: 'Send Email' },
                     { value: 'SEND_SMS', label: 'Send SMS' },
                     { value: 'CREATE_TASK', label: 'Create Task' },
+                    { value: 'COMPLETE_TASK', label: 'Complete Task' },
+                    { value: 'ASSIGN_TASK', label: 'Assign Task' },
                     { value: 'UPDATE_CLIENT_STATUS', label: 'Update Client Status' },
+                    { value: 'ADD_TAG', label: 'Add Tag' },
+                    { value: 'REMOVE_TAG', label: 'Remove Tag' },
+                    { value: 'ASSIGN_CLIENT', label: 'Assign Client' },
+                    { value: 'REQUEST_DOCUMENT', label: 'Request Document' },
+                    { value: 'CREATE_NOTE', label: 'Create Note' },
+                    { value: 'SEND_NOTIFICATION', label: 'Send Notification' },
                     { value: 'CALL_WEBHOOK', label: 'Call Webhook' },
+                    { value: 'WAIT', label: 'Wait' },
+                    { value: 'BRANCH', label: 'Branch' },
                   ]}
                   value={selectedNode.data.actionType || ''}
                   onChange={(value) => {
                     setNodes((nds) =>
                       nds.map((n) =>
                         n.id === selectedNode.id
-                          ? { ...n, data: { ...n.data, actionType: value } }
+                          ? { ...n, data: { ...n.data, actionType: value, config: {} } }
                           : n
                       )
                     );
                   }}
                 />
+
+                {selectedNode.data.actionType && (
+                  <ActionConfigPanel
+                    actionType={selectedNode.data.actionType}
+                    config={selectedNode.data.config || {}}
+                    onChange={(newConfig) => {
+                      setNodes((nds) =>
+                        nds.map((n) =>
+                          n.id === selectedNode.id
+                            ? { ...n, data: { ...n.data, config: newConfig } }
+                            : n
+                        )
+                      );
+                    }}
+                  />
+                )}
               </Stack>
             )}
           </Paper>
