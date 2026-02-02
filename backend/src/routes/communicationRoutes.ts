@@ -180,11 +180,12 @@ router.get('/search', async (req: AuthRequest, res: Response) => {
     const searchQuery = (q as string).trim();
 
     // Build where clause
-    // SQLite doesn't support mode: 'insensitive', so we use LIKE with lowercase
+    // For SQLite, use contains without mode parameter (case-sensitive)
+    // Then also filter case-insensitively in JavaScript
     const where: any = {
       OR: [
-        { subject: { contains: searchQuery, mode: 'insensitive' } },
-        { body: { contains: searchQuery, mode: 'insensitive' } },
+        { subject: { contains: searchQuery } },
+        { body: { contains: searchQuery } },
       ],
     };
 
