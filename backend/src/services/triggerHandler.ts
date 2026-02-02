@@ -109,6 +109,137 @@ export async function fireClientStatusChangedTrigger(
 }
 
 /**
+ * Fire PIPELINE_STAGE_ENTRY trigger
+ * @param clientId - ID of the client entering the stage
+ * @param userId - ID of the user who triggered the change
+ * @param stage - The stage being entered
+ */
+export async function firePipelineStageEntryTrigger(
+  clientId: string,
+  userId: string,
+  stage: string
+): Promise<void> {
+  await fireTrigger('PIPELINE_STAGE_ENTRY', {
+    clientId,
+    userId,
+    stage,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+/**
+ * Fire PIPELINE_STAGE_EXIT trigger
+ * @param clientId - ID of the client exiting the stage
+ * @param userId - ID of the user who triggered the change
+ * @param fromStage - The stage being exited
+ * @param toStage - The stage being entered
+ */
+export async function firePipelineStageExitTrigger(
+  clientId: string,
+  userId: string,
+  fromStage: string,
+  toStage: string
+): Promise<void> {
+  await fireTrigger('PIPELINE_STAGE_EXIT', {
+    clientId,
+    userId,
+    fromStage,
+    toStage,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+/**
+ * Check for clients in stage too long and fire TIME_IN_STAGE_THRESHOLD trigger
+ * This should be called by a scheduled job (e.g., daily)
+ * @param stage - The stage to check (optional, checks all stages if not provided)
+ * @param thresholdDays - Number of days in stage to trigger on
+ */
+export async function checkTimeInStageThreshold(
+  stage?: string,
+  thresholdDays: number = 30
+): Promise<void> {
+  try {
+    // Calculate the cutoff date
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - thresholdDays);
+
+    // Find clients who have been in their current status/stage longer than threshold
+    const whereClause: any = {
+      updatedAt: {
+        lt: cutoffDate,
+      },
+    };
+
+    // If specific stage provided, only check that stage
+    if (stage) {
+      whereClause.status = stage;
+    }
+
+    const clientsInStageTooLong = await prisma.client.findMany({
+      where: whereClause,
+      take: 100, // Process in batches
+    });
+
+    // Get workflows with TIME_IN_STAGE_THRESHOLD trigger
+    const thresholdWorkflows = await prisma.workflow.findMany({
+      where: {
+        triggerType: 'TIME_IN_STAGE_THRESHOLD',
+        isActive: true,
+      },
+    });
+
+    if (thresholdWorkflows.length === 0) {
+      return; // No threshold workflows configured
+    }
+
+    // Execute workflows for each client exceeding threshold
+    for (const client of clientsInStageTooLong) {
+      for (const workflow of thresholdWorkflows) {
+        try {
+          // Check if workflow has custom stage or threshold in triggerConfig
+          const triggerConfig = workflow.triggerConfig
+            ? JSON.parse(workflow.triggerConfig)
+            : {};
+          const workflowStage = triggerConfig.stage;
+          const workflowThresholdDays = triggerConfig.thresholdDays || thresholdDays;
+
+          // Calculate how long client has been in current stage
+          const daysInStage = Math.floor(
+            (Date.now() - client.updatedAt.getTime()) / (1000 * 60 * 60 * 24)
+          );
+
+          // Check if this client matches the workflow's criteria
+          const stageMatches = !workflowStage || workflowStage === client.status;
+          const thresholdMatches = daysInStage >= workflowThresholdDays;
+
+          if (stageMatches && thresholdMatches) {
+            await executeWorkflow(workflow.id, {
+              clientId: client.id,
+              triggerType: 'TIME_IN_STAGE_THRESHOLD',
+              triggerData: {
+                clientId: client.id,
+                stage: client.status,
+                daysInStage,
+                stageEntryDate: client.updatedAt.toISOString(),
+              },
+              userId: client.createdById,
+            });
+          }
+        } catch (error) {
+          console.error(
+            `[Trigger Handler] Failed to execute threshold workflow ${workflow.id} for client ${client.id}:`,
+            error
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Trigger Handler] Failed to check time in stage threshold:', error);
+  }
+}
+
+/**
  * Check for inactive clients and fire CLIENT_INACTIVITY trigger
  * This should be called by a scheduled job (e.g., daily)
  * @param inactiveDays - Number of days of inactivity to check for

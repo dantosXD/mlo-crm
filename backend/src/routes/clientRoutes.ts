@@ -5,6 +5,8 @@ import {
   fireClientCreatedTrigger,
   fireClientUpdatedTrigger,
   fireClientStatusChangedTrigger,
+  firePipelineStageEntryTrigger,
+  firePipelineStageExitTrigger,
 } from '../services/triggerHandler.js';
 
 const router = Router();
@@ -327,6 +329,10 @@ router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReques
     // Fire CLIENT_STATUS_CHANGED trigger if status changed
     if (status && status !== oldStatus) {
       await fireClientStatusChangedTrigger(client.id, userId!, oldStatus, status);
+
+      // Fire pipeline stage triggers
+      await firePipelineStageExitTrigger(client.id, userId!, oldStatus, status);
+      await firePipelineStageEntryTrigger(client.id, userId!, status);
     }
 
     res.json({
@@ -458,6 +464,10 @@ router.patch('/bulk', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReq
 
       // Fire CLIENT_STATUS_CHANGED trigger
       await fireClientStatusChangedTrigger(client.id, userId!, oldStatus, status);
+
+      // Fire pipeline stage triggers
+      await firePipelineStageExitTrigger(client.id, userId!, oldStatus, status);
+      await firePipelineStageEntryTrigger(client.id, userId!, status);
     }
 
     res.json({

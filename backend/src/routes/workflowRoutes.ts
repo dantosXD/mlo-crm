@@ -239,6 +239,62 @@ router.get('/meta/trigger-types', async (req: AuthRequest, res: Response) => {
         ],
       },
       {
+        type: 'PIPELINE_STAGE_ENTRY',
+        label: 'Pipeline Stage Entry',
+        description: 'Triggered when a client enters a pipeline stage',
+        configFields: [
+          {
+            name: 'stage',
+            type: 'select',
+            label: 'Stage',
+            description: 'Only trigger when entering this specific stage (leave empty for all stages)',
+            options: ['LEAD', 'PRE_QUALIFIED', 'ACTIVE', 'PROCESSING', 'UNDERWRITING', 'CLEAR_TO_CLOSE', 'CLOSED', 'DENIED'],
+          },
+        ],
+      },
+      {
+        type: 'PIPELINE_STAGE_EXIT',
+        label: 'Pipeline Stage Exit',
+        description: 'Triggered when a client exits a pipeline stage',
+        configFields: [
+          {
+            name: 'fromStage',
+            type: 'select',
+            label: 'From Stage',
+            description: 'Only trigger when exiting this specific stage (leave empty for all stages)',
+            options: ['LEAD', 'PRE_QUALIFIED', 'ACTIVE', 'PROCESSING', 'UNDERWRITING', 'CLEAR_TO_CLOSE', 'CLOSED', 'DENIED'],
+          },
+          {
+            name: 'toStage',
+            type: 'select',
+            label: 'To Stage',
+            description: 'Only trigger when moving to this specific stage (leave empty for all stages)',
+            options: ['LEAD', 'PRE_QUALIFIED', 'ACTIVE', 'PROCESSING', 'UNDERWRITING', 'CLEAR_TO_CLOSE', 'CLOSED', 'DENIED'],
+          },
+        ],
+      },
+      {
+        type: 'TIME_IN_STAGE_THRESHOLD',
+        label: 'Time in Stage Threshold',
+        description: 'Triggered when a client has been in a stage too long',
+        configFields: [
+          {
+            name: 'stage',
+            type: 'select',
+            label: 'Stage',
+            description: 'Only check clients in this stage (leave empty to check all stages)',
+            options: ['LEAD', 'PRE_QUALIFIED', 'ACTIVE', 'PROCESSING', 'UNDERWRITING', 'CLEAR_TO_CLOSE', 'CLOSED', 'DENIED'],
+          },
+          {
+            name: 'thresholdDays',
+            type: 'number',
+            label: 'Threshold Days',
+            description: 'Number of days in stage to trigger the workflow',
+            default: 30,
+          },
+        ],
+      },
+      {
         type: 'MANUAL',
         label: 'Manual Trigger',
         description: 'Triggered manually by a user',
@@ -658,6 +714,9 @@ router.post('/', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, re
       'TASK_DUE',
       'TASK_OVERDUE',
       'TASK_COMPLETED',
+      'PIPELINE_STAGE_ENTRY',
+      'PIPELINE_STAGE_EXIT',
+      'TIME_IN_STAGE_THRESHOLD',
       'MANUAL',
     ];
 
@@ -1694,6 +1753,9 @@ router.post('/import', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthReque
       'TASK_DUE',
       'TASK_OVERDUE',
       'TASK_COMPLETED',
+      'PIPELINE_STAGE_ENTRY',
+      'PIPELINE_STAGE_EXIT',
+      'TIME_IN_STAGE_THRESHOLD',
       'MANUAL',
     ];
 

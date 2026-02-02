@@ -579,4 +579,273 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// PATCH /api/communications/:id/status - Update communication status
+router.patch('/:id/status', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+
+    // Validation
+    if (!status) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Status is required',
+      });
+    }
+
+    const validStatuses = ['DRAFT', 'READY', 'SENT', 'FAILED'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: `Status must be one of: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    // Check if communication exists
+    const existingCommunication = await prisma.communication.findUnique({
+      where: { id },
+    });
+
+    if (!existingCommunication) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Communication not found',
+      });
+    }
+
+    // Check access permissions
+    if (!canAccessClientCommunication(userRole!, userId!, existingCommunication.createdById)) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You do not have permission to update this communication',
+      });
+    }
+
+    // Validate status transitions (cannot go backwards)
+    const statusFlow = ['DRAFT', 'READY', 'SENT', 'FAILED'];
+    const currentStatusIndex = statusFlow.indexOf(existingCommunication.status);
+    const newStatusIndex = statusFlow.indexOf(status);
+
+    // Allow: DRAFT->READY, READY->SENT, any->FAILED
+    // Allow same status (no-op)
+    // Disallow: SENT->anything, READY->DRAFT, FAILED->anything
+    if (status === existingCommunication.status) {
+      return res.json({
+        message: 'Status unchanged',
+        communication: {
+          id: existingCommunication.id,
+          status: existingCommunication.status,
+        },
+      });
+    }
+
+    // Define allowed transitions
+    const allowedTransitions: Record<string, string[]> = {
+      'DRAFT': ['READY', 'FAILED'],
+      'READY': ['SENT', 'FAILED'],
+      'SENT': [], // Cannot change from SENT
+      'FAILED': [], // Cannot change from FAILED
+    };
+
+    if (!allowedTransitions[existingCommunication.status]?.includes(status)) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: `Cannot transition from ${existingCommunication.status} to ${status}. Allowed transitions: ${allowedTransitions[existingCommunication.status].join(', ') || 'none'}`,
+      });
+    }
+
+    // Build update data
+    const updateData: any = { status };
+    if (status === 'SENT') {
+      updateData.sentAt = new Date();
+    }
+
+    // Update communication status
+    const communication = await prisma.communication.update({
+      where: { id },
+      data: updateData,
+      include: {
+        client: {
+          select: { id: true, nameEncrypted: true },
+        },
+        createdBy: {
+          select: { id: true, name: true, email: true },
+        },
+        template: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    // Log activity
+    await prisma.activity.create({
+      data: {
+        clientId: communication.clientId,
+        userId: userId!,
+        type: 'COMMUNICATION_STATUS_CHANGED',
+        description: `Communication status changed from ${existingCommunication.status} to ${status}`,
+        metadata: JSON.stringify({
+          communicationId: communication.id,
+          oldStatus: existingCommunication.status,
+          newStatus: status,
+          type: communication.type,
+        }),
+      },
+    });
+
+    // Helper to decrypt client name
+    const decryptName = (encrypted: string | null): string => {
+      if (!encrypted) return 'Unknown';
+      try {
+        const parsed = JSON.parse(encrypted);
+        return parsed.data || 'Unknown';
+      } catch {
+        return encrypted;
+      }
+    };
+
+    res.json({
+      id: communication.id,
+      clientId: communication.clientId,
+      clientName: communication.client ? decryptName(communication.client.nameEncrypted) : 'Unknown',
+      type: communication.type,
+      status: communication.status,
+      subject: communication.subject,
+      body: communication.body,
+      templateId: communication.templateId,
+      templateName: communication.template?.name || null,
+      scheduledAt: communication.scheduledAt,
+      sentAt: communication.sentAt,
+      createdBy: communication.createdBy,
+      metadata: communication.metadata ? JSON.parse(communication.metadata) : null,
+      createdAt: communication.createdAt,
+      updatedAt: communication.updatedAt,
+    });
+  } catch (error) {
+    console.error('Error updating communication status:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to update communication status',
+    });
+  }
+});
+
+// POST /api/communications/:id/send - Mark communication as sent
+router.post('/:id/send', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { metadata } = req.body; // Optional metadata (e.g., email provider response)
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+
+    // Check if communication exists
+    const existingCommunication = await prisma.communication.findUnique({
+      where: { id },
+    });
+
+    if (!existingCommunication) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Communication not found',
+      });
+    }
+
+    // Check access permissions
+    if (!canAccessClientCommunication(userRole!, userId!, existingCommunication.createdById)) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You do not have permission to send this communication',
+      });
+    }
+
+    // Validate current status (can only send from READY or DRAFT)
+    if (existingCommunication.status === 'SENT') {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Communication has already been sent',
+      });
+    }
+
+    if (existingCommunication.status === 'FAILED') {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Cannot send a failed communication. Update status to READY first.',
+      });
+    }
+
+    // Update communication to SENT
+    const communication = await prisma.communication.update({
+      where: { id },
+      data: {
+        status: 'SENT',
+        sentAt: new Date(),
+        ...(metadata && { metadata: JSON.stringify(metadata) }),
+      },
+      include: {
+        client: {
+          select: { id: true, nameEncrypted: true },
+        },
+        createdBy: {
+          select: { id: true, name: true, email: true },
+        },
+        template: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    // Log activity
+    await prisma.activity.create({
+      data: {
+        clientId: communication.clientId,
+        userId: userId!,
+        type: 'COMMUNICATION_SENT',
+        description: `${communication.type} communication sent to client`,
+        metadata: JSON.stringify({
+          communicationId: communication.id,
+          type: communication.type,
+          subject: communication.subject,
+        }),
+      },
+    });
+
+    // Helper to decrypt client name
+    const decryptName = (encrypted: string | null): string => {
+      if (!encrypted) return 'Unknown';
+      try {
+        const parsed = JSON.parse(encrypted);
+        return parsed.data || 'Unknown';
+      } catch {
+        return encrypted;
+      }
+    };
+
+    res.json({
+      id: communication.id,
+      clientId: communication.clientId,
+      clientName: communication.client ? decryptName(communication.client.nameEncrypted) : 'Unknown',
+      type: communication.type,
+      status: communication.status,
+      subject: communication.subject,
+      body: communication.body,
+      templateId: communication.templateId,
+      templateName: communication.template?.name || null,
+      scheduledAt: communication.scheduledAt,
+      sentAt: communication.sentAt,
+      createdBy: communication.createdBy,
+      metadata: communication.metadata ? JSON.parse(communication.metadata) : null,
+      createdAt: communication.createdAt,
+      updatedAt: communication.updatedAt,
+    });
+  } catch (error) {
+    console.error('Error sending communication:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to send communication',
+    });
+  }
+});
+
 export default router;
