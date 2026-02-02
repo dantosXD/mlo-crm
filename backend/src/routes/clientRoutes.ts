@@ -14,6 +14,18 @@ const router = Router();
 // All routes require authentication
 router.use(authenticateToken);
 
+// Helper function to safely parse tags JSON
+function parseTags(tagsStr: string | null | undefined): string[] {
+  if (!tagsStr) return [];
+  try {
+    const parsed = JSON.parse(tagsStr);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('Error parsing tags:', error);
+    return [];
+  }
+}
+
 // Roles that can create/update/delete clients (per RBAC spec)
 const CLIENT_WRITE_ROLES = ['ADMIN', 'MANAGER', 'MLO'];
 // Roles that can only read clients
@@ -62,7 +74,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       email: client.emailEncrypted,
       phone: client.phoneEncrypted,
       status: client.status,
-      tags: JSON.parse(client.tags),
+      tags: parseTags(client.tags),
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
     }));
@@ -150,7 +162,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
       email: client.emailEncrypted,
       phone: client.phoneEncrypted,
       status: client.status,
-      tags: JSON.parse(client.tags),
+      tags: parseTags(client.tags),
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
       notes: client.notes,
@@ -247,7 +259,7 @@ router.post('/', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest,
       email: client.emailEncrypted,
       phone: client.phoneEncrypted,
       status: client.status,
-      tags: JSON.parse(client.tags),
+      tags: parseTags(client.tags),
       createdAt: client.createdAt,
     });
   } catch (error) {
@@ -341,7 +353,7 @@ router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReques
       email: client.emailEncrypted,
       phone: client.phoneEncrypted,
       status: client.status,
-      tags: JSON.parse(client.tags),
+      tags: parseTags(client.tags),
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
     });

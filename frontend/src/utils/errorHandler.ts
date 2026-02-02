@@ -172,7 +172,7 @@ export function handleFetchError(error: unknown, context: string): void {
 }
 
 /**
- * Wrap fetch with automatic error handling
+ * Wrap fetch with automatic error handling and CSRF protection
  */
 export async function fetchWithErrorHandling(
   url: string,
@@ -180,6 +180,31 @@ export async function fetchWithErrorHandling(
   context: string = 'Request'
 ): Promise<Response> {
   try {
+    // Import auth store dynamically to avoid circular dependencies
+    const { useAuthStore } = await import('../stores/authStore');
+    const { csrfToken, updateCsrfToken } = useAuthStore.getState();
+
+    // Add CSRF token for state-changing methods
+    const method = (options?.method || 'GET').toUpperCase();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && csrfToken) {
+      // Prepare headers with CSRF token
+      const extraHeaders = options?.headers instanceof Headers
+        ? Object.fromEntries(options.headers.entries())
+        : Array.isArray(options?.headers)
+          ? Object.fromEntries(options.headers)
+          : options?.headers;
+
+      const headers: Record<string, string> = {
+        ...(extraHeaders ?? {}),
+        'X-CSRF-Token': csrfToken,
+      };
+
+      options = {
+        ...options,
+        headers,
+      };
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
@@ -189,6 +214,12 @@ export async function fetchWithErrorHandling(
     });
 
     clearTimeout(timeoutId);
+
+    // Update CSRF token from response headers if present
+    const newCsrfToken = response.headers.get('X-CSRF-Token');
+    if (newCsrfToken) {
+      updateCsrfToken(newCsrfToken);
+    }
 
     if (!response.ok) {
       // Try to read error message from response body

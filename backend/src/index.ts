@@ -52,6 +52,7 @@ app.use(cors({
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
+  exposedHeaders: ['X-CSRF-Token'], // Expose CSRF token header to frontend
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
