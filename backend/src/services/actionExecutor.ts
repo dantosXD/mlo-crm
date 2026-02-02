@@ -416,6 +416,311 @@ export async function executeGenerateLetter(
 }
 
 /**
+ * Task action configuration
+ */
+interface TaskActionConfig {
+  text?: string;
+  description?: string;
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+  dueDays?: number;
+  dueDate?: Date;
+  assignedToId?: string;
+  assignedToRole?: string;
+  taskId?: string; // For COMPLETE_TASK
+}
+
+/**
+ * Execute CREATE_TASK action
+ * Creates a new task linked to the trigger client
+ */
+export async function executeCreateTask(
+  config: TaskActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  try {
+    // Validate required fields
+    if (!config.text) {
+      return {
+        success: false,
+        message: 'Task text is required',
+      };
+    }
+
+    // Calculate due date if dueDays is provided
+    let dueDate: Date | null = null;
+    if (config.dueDays) {
+      dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + config.dueDays);
+    } else if (config.dueDate) {
+      dueDate = config.dueDate;
+    }
+
+    // Determine assignee
+    let assignedToId = config.assignedToId;
+    if (!assignedToId && config.assignedToRole) {
+      // Find first user with the specified role
+      const user = await prisma.user.findFirst({
+        where: {
+          role: config.assignedToRole,
+          isActive: true,
+        },
+      });
+      assignedToId = user?.id;
+    }
+
+    // Default to workflow creator if no assignee specified
+    if (!assignedToId) {
+      assignedToId = context.userId;
+    }
+
+    // Replace placeholders in task text
+    const client = await getClientData(context.clientId);
+    const placeholderContext = {
+      ...context,
+      clientData: client,
+    };
+
+    const finalText = replacePlaceholders(config.text, placeholderContext);
+    const finalDescription = config.description
+      ? replacePlaceholders(config.description, placeholderContext)
+      : null;
+
+    // Create task
+    const task = await prisma.task.create({
+      data: {
+        clientId: context.clientId,
+        text: finalText,
+        description: finalDescription,
+        priority: config.priority || 'MEDIUM',
+        dueDate,
+        assignedToId,
+        status: 'TODO',
+      },
+    });
+
+    // Log activity
+    await prisma.activity.create({
+      data: {
+        clientId: context.clientId,
+        userId: context.userId,
+        type: 'TASK_CREATED',
+        description: `Task created via workflow: ${finalText}`,
+        metadata: JSON.stringify({
+          taskId: task.id,
+          priority: task.priority,
+          dueDate: task.dueDate,
+          assignedToId,
+        }),
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Task created successfully',
+      data: {
+        taskId: task.id,
+        text: finalText,
+        priority: task.priority,
+        dueDate: task.dueDate,
+        assignedToId,
+      },
+    };
+  } catch (error) {
+    console.error('Error executing CREATE_TASK action:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to create task',
+    };
+  }
+}
+
+/**
+ * Execute COMPLETE_TASK action
+ * Marks an existing task as complete
+ */
+export async function executeCompleteTask(
+  config: TaskActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  try {
+    if (!config.taskId) {
+      return {
+        success: false,
+        message: 'Task ID is required to complete a task',
+      };
+    }
+
+    // Get the task
+    const task = await prisma.task.findUnique({
+      where: { id: config.taskId },
+    });
+
+    if (!task) {
+      return {
+        success: false,
+        message: `Task not found: ${config.taskId}`,
+      };
+    }
+
+    // Check if task is already complete
+    if (task.status === 'COMPLETE') {
+      return {
+        success: true,
+        message: 'Task is already complete',
+        data: {
+          taskId: task.id,
+          status: task.status,
+        },
+      };
+    }
+
+    // Update task to complete
+    const updatedTask = await prisma.task.update({
+      where: { id: config.taskId },
+      data: {
+        status: 'COMPLETE',
+        completedAt: new Date(),
+      },
+    });
+
+    // Log activity
+    if (task.clientId) {
+      await prisma.activity.create({
+        data: {
+          clientId: task.clientId,
+          userId: context.userId,
+          type: 'TASK_COMPLETED',
+          description: `Task completed via workflow: ${task.text}`,
+          metadata: JSON.stringify({
+            taskId: task.id,
+          }),
+        },
+      });
+    }
+
+    return {
+      success: true,
+      message: 'Task completed successfully',
+      data: {
+        taskId: updatedTask.id,
+        status: updatedTask.status,
+        completedAt: updatedTask.completedAt,
+      },
+    };
+  } catch (error) {
+    console.error('Error executing COMPLETE_TASK action:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to complete task',
+    };
+  }
+}
+
+/**
+ * Execute ASSIGN_TASK action
+ * Assigns or reassigns a task to a user
+ */
+export async function executeAssignTask(
+  config: TaskActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  try {
+    if (!config.taskId) {
+      return {
+        success: false,
+        message: 'Task ID is required to assign a task',
+      };
+    }
+
+    if (!config.assignedToId && !config.assignedToRole) {
+      return {
+        success: false,
+        message: 'Either assignedToId or assignedToRole must be specified',
+      };
+    }
+
+    // Get the task
+    const task = await prisma.task.findUnique({
+      where: { id: config.taskId },
+    });
+
+    if (!task) {
+      return {
+        success: false,
+        message: `Task not found: ${config.taskId}`,
+      };
+    }
+
+    // Determine assignee
+    let assignedToId = config.assignedToId;
+    if (!assignedToId && config.assignedToRole) {
+      // Find first user with the specified role
+      const user = await prisma.user.findFirst({
+        where: {
+          role: config.assignedToRole,
+          isActive: true,
+        },
+      });
+      assignedToId = user?.id;
+    }
+
+    if (!assignedToId) {
+      return {
+        success: false,
+        message: `No active user found with role: ${config.assignedToRole}`,
+      };
+    }
+
+    // Update task assignment
+    const updatedTask = await prisma.task.update({
+      where: { id: config.taskId },
+      data: {
+        assignedToId,
+      },
+    });
+
+    // Get assignee details
+    const assignee = await prisma.user.findUnique({
+      where: { id: assignedToId },
+      select: { id: true, name: true, email: true, role: true },
+    });
+
+    // Log activity
+    if (task.clientId) {
+      await prisma.activity.create({
+        data: {
+          clientId: task.clientId,
+          userId: context.userId,
+          type: 'TASK_ASSIGNED',
+          description: `Task reassigned via workflow: ${task.text}`,
+          metadata: JSON.stringify({
+            taskId: task.id,
+            assignedToId,
+            assignedToName: assignee?.name,
+          }),
+        },
+      });
+    }
+
+    return {
+      success: true,
+      message: 'Task assigned successfully',
+      data: {
+        taskId: updatedTask.id,
+        assignedToId,
+        assignedToName: assignee?.name,
+      },
+    };
+  } catch (error) {
+    console.error('Error executing ASSIGN_TASK action:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to assign task',
+    };
+  }
+}
+
+/**
  * Main dispatcher for communication actions
  * Routes to the appropriate executor based on action type
  */
