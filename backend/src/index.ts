@@ -13,6 +13,7 @@ import loanScenarioRoutes from './routes/loanScenarioRoutes.js';
 import activityRoutes from './routes/activityRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import workflowRoutes from './routes/workflowRoutes.js';
+import workflowExecutionRoutes from './routes/workflowExecutionRoutes.js';
 import communicationRoutes from './routes/communicationRoutes.js';
 import communicationTemplateRoutes from './routes/communicationTemplateRoutes.js';
 
@@ -95,6 +96,9 @@ app.use('/api/notifications', notificationRoutes);
 
 // Workflow routes
 app.use('/api/workflows', workflowRoutes);
+
+// Workflow execution routes
+app.use('/api/workflow-executions', workflowExecutionRoutes);
 
 // Communication routes
 app.use('/api/communications', communicationRoutes);

@@ -19,6 +19,7 @@ import {
   IconNotes,
   IconRobot,
   IconTemplate,
+  IconMail,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import { QuickCapture } from './components/QuickCapture';
@@ -40,6 +41,7 @@ import { Workflows } from './pages/Workflows';
 import WorkflowBuilder from './pages/WorkflowBuilder';
 import { CommunicationTemplates } from './pages/CommunicationTemplates';
 import { CommunicationTemplateEditor } from './pages/CommunicationTemplateEditor';
+import { Communications } from './pages/Communications';
 
 const ForgotPassword = () => (
   <Center h="100vh">
