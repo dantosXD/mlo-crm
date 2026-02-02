@@ -160,6 +160,179 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// GET /api/communications/search - Search communications by subject, body, or client name
+// NOTE: This route must come before /:id to avoid 'search' being interpreted as an ID
+router.get('/search', async (req: AuthRequest, res: Response) => {
+  try {
+    const { q, type, status, page = '1', limit = '50' } = req.query;
+
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+
+    // Validation: query parameter is required
+    if (!q || (q as string).trim().length === 0) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Search query is required',
+      });
+    }
+
+    const searchQuery = (q as string).trim();
+
+    // Build where clause
+    // SQLite doesn't support mode: 'insensitive', so we use LIKE with lowercase
+    const where: any = {
+      OR: [
+        { subject: { contains: searchQuery, mode: 'insensitive' } },
+        { body: { contains: searchQuery, mode: 'insensitive' } },
+      ],
+    };
+
+    // Filter by type if specified
+    if (type) {
+      where.type = type as string;
+    }
+
+    // Filter by status if specified
+    if (status) {
+      where.status = status as string;
+    }
+
+    // Role-based data filtering
+    if (userRole !== 'ADMIN' && userRole !== 'MANAGER') {
+      where.createdById = userId;
+    }
+
+    // Pagination
+    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const take = parseInt(limit as string);
+
+    // Search communications
+    const [communications, total] = await Promise.all([
+      prisma.communication.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: {
+          client: {
+            select: { id: true, nameEncrypted: true },
+          },
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
+          template: {
+            select: { id: true, name: true },
+          },
+        },
+      }),
+      prisma.communication.count({ where }),
+    ]);
+
+    // Helper to decrypt client name
+    const decryptName = (encrypted: string | null): string => {
+      if (!encrypted) return 'Unknown';
+      try {
+        const parsed = JSON.parse(encrypted);
+        return parsed.data || 'Unknown';
+      } catch {
+        return encrypted;
+      }
+    };
+
+    // Also search by client name (requires fetching all clients and filtering)
+    // This is less efficient but necessary for encrypted data
+    const allClients = await prisma.client.findMany({
+      where: userRole !== 'ADMIN' && userRole !== 'MANAGER' ? { createdById: userId } : {},
+      select: { id: true, nameEncrypted: true },
+    });
+
+    const matchingClientIds = allClients
+      .filter((client) => decryptName(client.nameEncrypted).toLowerCase().includes(searchQuery.toLowerCase()))
+      .map((client) => client.id);
+
+    // If we have matching clients, fetch those communications too
+    let clientMatchCommunications: any[] = [];
+    if (matchingClientIds.length > 0) {
+      const clientWhere: any = {
+        clientId: { in: matchingClientIds },
+      };
+
+      if (type) clientWhere.type = type as string;
+      if (status) clientWhere.status = status as string;
+      if (userRole !== 'ADMIN' && userRole !== 'MANAGER') {
+        clientWhere.createdById = userId;
+      }
+
+      clientMatchCommunications = await prisma.communication.findMany({
+        where: clientWhere,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          client: {
+            select: { id: true, nameEncrypted: true },
+          },
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
+          template: {
+            select: { id: true, name: true },
+          },
+        },
+      });
+    }
+
+    // Merge results and remove duplicates
+    const allResults = [...communications];
+    const existingIds = new Set(communications.map((c) => c.id));
+
+    clientMatchCommunications.forEach((comm) => {
+      if (!existingIds.has(comm.id)) {
+        allResults.push(comm);
+      }
+    });
+
+    // Apply pagination to merged results
+    const paginatedResults = allResults.slice(skip, skip + take);
+
+    const formattedCommunications = paginatedResults.map((comm) => ({
+      id: comm.id,
+      clientId: comm.clientId,
+      clientName: comm.client ? decryptName(comm.client.nameEncrypted) : 'Unknown',
+      type: comm.type,
+      status: comm.status,
+      subject: comm.subject,
+      body: comm.body,
+      templateId: comm.templateId,
+      templateName: comm.template?.name || null,
+      scheduledAt: comm.scheduledAt,
+      sentAt: comm.sentAt,
+      followUpDate: comm.followUpDate,
+      attachments: comm.attachments ? JSON.parse(comm.attachments) : [],
+      createdBy: comm.createdBy,
+      metadata: comm.metadata ? JSON.parse(comm.metadata) : null,
+      createdAt: comm.createdAt,
+      updatedAt: comm.updatedAt,
+    }));
+
+    res.json({
+      data: formattedCommunications,
+      pagination: {
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+        total: allResults.length,
+        totalPages: Math.ceil(allResults.length / parseInt(limit as string)),
+      },
+      query: searchQuery,
+    });
+  } catch (error) {
+    console.error('Error searching communications:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to search communications',
+    });
+  }
+});
+
 // GET /api/communications/:id - Get single communication
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {

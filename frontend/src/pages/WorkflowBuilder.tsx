@@ -42,11 +42,13 @@ import {
   IconSettings,
   IconTrash,
   IconPlus,
+  IconPlayerPlay,
 } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
 import ActionConfigPanel from '../components/workflows/ActionConfigPanel';
 import TriggerConfigPanel from '../components/workflows/TriggerConfigPanel';
 import ConditionConfigPanel from '../components/workflows/ConditionConfigPanel';
+import TestWorkflowModal from '../components/workflows/TestWorkflowModal';
 
 // Custom node components
 const TriggerNode = ({ data }: { data: any }) => {
@@ -171,6 +173,7 @@ export default function WorkflowBuilder() {
   const [workflowName, setWorkflowName] = useState('');
   const [workflowDescription, setWorkflowDescription] = useState('');
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [testModalOpened, setTestModalOpened] = useState(false);
 
   const isEditing = !!id;
 
@@ -291,6 +294,16 @@ export default function WorkflowBuilder() {
             >
               Delete Selected
             </Button>
+            {isEditing && (
+              <Button
+                variant="light"
+                color="green"
+                leftSection={<IconPlayerPlay size={16} />}
+                onClick={() => setTestModalOpened(true)}
+              >
+                Test Workflow
+              </Button>
+            )}
             <Button
               leftSection={<IconDeviceFloppy size={16} />}
               onClick={() => saveWorkflow.mutate()}
@@ -554,6 +567,21 @@ export default function WorkflowBuilder() {
           </Paper>
         )}
       </Stack>
+
+      {/* Test Workflow Modal */}
+      {isEditing && id && (
+        <TestWorkflowModal
+          opened={testModalOpened}
+          onClose={() => setTestModalOpened(false)}
+          workflowId={id}
+          workflowName={workflowName}
+          triggerType={nodes.find((n) => n.type === 'trigger')?.data?.triggerType || 'MANUAL'}
+          actions={nodes.filter((n) => n.type === 'action').map((n) => ({
+            type: n.data.actionType,
+            config: n.data.config || {},
+          }))}
+        />
+      )}
     </Container>
   );
 }
