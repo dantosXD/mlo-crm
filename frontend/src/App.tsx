@@ -39,6 +39,7 @@ import Analytics from './pages/Analytics';
 import { Workflows } from './pages/Workflows';
 import WorkflowBuilder from './pages/WorkflowBuilder';
 import { CommunicationTemplates } from './pages/CommunicationTemplates';
+import { CommunicationTemplateEditor } from './pages/CommunicationTemplateEditor';
 
 const ForgotPassword = () => (
   <Center h="100vh">
@@ -380,8 +381,8 @@ function ProtectedLayout() {
           <Route path="/notes" element={<Notes />} />
           <Route path="/documents" element={<Documents />} />
           <Route path="/communication-templates" element={<CommunicationTemplates />} />
-          <Route path="/communication-templates/new" element={<CommunicationTemplates />} />
-          <Route path="/communication-templates/:id/edit" element={<CommunicationTemplates />} />
+          <Route path="/communication-templates/new" element={<CommunicationTemplateEditor />} />
+          <Route path="/communication-templates/:id/edit" element={<CommunicationTemplateEditor />} />
           <Route path="/calculator" element={<Calculator />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/workflows" element={<Workflows />} />
