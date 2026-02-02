@@ -1,0 +1,450 @@
+import { useState, useEffect } from 'react';
+import {
+  Title,
+  Stack,
+  Paper,
+  Table,
+  Button,
+  Group,
+  Badge,
+  Text,
+  LoadingOverlay,
+  TextInput,
+  Select,
+  ActionIcon,
+  Container,
+  Pagination,
+  Box,
+} from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import {
+  IconSearch,
+  IconRefresh,
+  IconEdit,
+  IconTrash,
+  IconPower,
+  IconPlayerPlay,
+  IconHistory,
+  IconPlus,
+} from '@tabler/icons-react';
+import { useAuthStore } from '../stores/authStore';
+import { useNavigate } from 'react-router-dom';
+
+interface Workflow {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  isTemplate: boolean;
+  triggerType: string;
+  version: number;
+  executionCount: number;
+  createdBy: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface WorkflowResponse {
+  workflows: Workflow[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
+// Trigger type labels
+const TRIGGER_LABELS: Record<string, string> = {
+  CLIENT_CREATED: 'Client Created',
+  CLIENT_STATUS_CHANGED: 'Status Changed',
+  DOCUMENT_UPLOADED: 'Document Uploaded',
+  DOCUMENT_STATUS_CHANGED: 'Document Status Changed',
+  TASK_DUE: 'Task Due',
+  TASK_COMPLETED: 'Task Completed',
+  MANUAL: 'Manual',
+};
+
+export function Workflows() {
+  const { accessToken, user } = useAuthStore();
+  const navigate = useNavigate();
+
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [isActiveFilter, setIsActiveFilter] = useState<string>('all');
+  const [triggerTypeFilter, setTriggerTypeFilter] = useState<string>('all');
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+  });
+  const [toggling, setToggling] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const canManageWorkflows = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+
+  useEffect(() => {
+    fetchWorkflows();
+  }, [pagination.page, isActiveFilter, triggerTypeFilter]);
+
+  const fetchWorkflows = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: pagination.page.toString(),
+        limit: pagination.limit.toString(),
+      });
+
+      if (isActiveFilter !== 'all') {
+        params.append('is_active', isActiveFilter);
+      }
+
+      if (triggerTypeFilter !== 'all') {
+        params.append('trigger_type', triggerTypeFilter);
+      }
+
+      if (search) {
+        params.append('search', search);
+      }
+
+      const response = await fetch(`${API_URL}/workflows?${params}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch workflows');
+      }
+
+      const data: WorkflowResponse = await response.json();
+      setWorkflows(data.workflows);
+      setPagination({
+        page: data.pagination.page,
+        limit: data.pagination.limit,
+        total: data.pagination.total,
+        totalPages: data.pagination.totalPages,
+      });
+    } catch (error) {
+      console.error('Error fetching workflows:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to load workflows',
+        color: 'red',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = () => {
+    setPagination({ ...pagination, page: 1 });
+    fetchWorkflows();
+  };
+
+  const handleToggleActive = async (id: string, currentStatus: boolean) => {
+    if (!canManageWorkflows) {
+      notifications.show({
+        title: 'Access Denied',
+        message: 'You do not have permission to manage workflows',
+        color: 'red',
+      });
+      return;
+    }
+
+    setToggling(id);
+    try {
+      const response = await fetch(`${API_URL}/workflows/${id}/toggle`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to toggle workflow');
+      }
+
+      notifications.show({
+        title: 'Success',
+        message: `Workflow ${currentStatus ? 'disabled' : 'enabled'}`,
+        color: 'green',
+      });
+
+      fetchWorkflows();
+    } catch (error) {
+      console.error('Error toggling workflow:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to toggle workflow',
+        color: 'red',
+      });
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (user?.role !== 'ADMIN') {
+      notifications.show({
+        title: 'Access Denied',
+        message: 'Only admins can delete workflows',
+        color: 'red',
+      });
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(id);
+    try {
+      const response = await fetch(`${API_URL}/workflows/${id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete workflow');
+      }
+
+      notifications.show({
+        title: 'Success',
+        message: 'Workflow deleted successfully',
+        color: 'green',
+      });
+
+      fetchWorkflows();
+    } catch (error) {
+      console.error('Error deleting workflow:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete workflow',
+        color: 'red',
+      });
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const handleRun = async (id: string) => {
+    notifications.show({
+      title: 'Coming Soon',
+      message: 'Manual workflow execution will be implemented soon',
+      color: 'blue',
+    });
+  };
+
+  const handleViewExecutions = (id: string) => {
+    notifications.show({
+      title: 'Coming Soon',
+      message: 'Execution history viewer will be implemented soon',
+      color: 'blue',
+    });
+  };
+
+  const rows = workflows.map((workflow) => (
+    <Table.Tr key={workflow.id}>
+      <Table.Td>
+        <Stack gap={0}>
+          <Text fw={500}>{workflow.name}</Text>
+          {workflow.description && (
+            <Text size="sm" c="dimmed">
+              {workflow.description}
+            </Text>
+          )}
+        </Stack>
+      </Table.Td>
+      <Table.Td>
+        <Badge color="blue" variant="light">
+          {TRIGGER_LABELS[workflow.triggerType] || workflow.triggerType}
+        </Badge>
+      </Table.Td>
+      <Table.Td>
+        <Badge
+          color={workflow.isActive ? 'green' : 'gray'}
+          variant="light"
+        >
+          {workflow.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      </Table.Td>
+      <Table.Td>
+        <Text size="sm">{workflow.executionCount}</Text>
+      </Table.Td>
+      <Table.Td>
+        <Text size="sm">{workflow.version}</Text>
+      </Table.Td>
+      <Table.Td>
+        <Text size="sm">{workflow.createdBy.name}</Text>
+      </Table.Td>
+      <Table.Td>
+        <Group gap="xs">
+          <ActionIcon
+            variant="subtle"
+            color={workflow.isActive ? 'orange' : 'green'}
+            onClick={() => handleToggleActive(workflow.id, workflow.isActive)}
+            disabled={toggling === workflow.id || !canManageWorkflows}
+            title={workflow.isActive ? 'Disable' : 'Enable'}
+          >
+            <IconPower size={16} />
+          </ActionIcon>
+          <ActionIcon
+            variant="subtle"
+            color="blue"
+            onClick={() => {/* Navigate to edit page - coming soon */}}
+            disabled={!canManageWorkflows}
+            title="Edit"
+          >
+            <IconEdit size={16} />
+          </ActionIcon>
+          <ActionIcon
+            variant="subtle"
+            color="green"
+            onClick={() => handleRun(workflow.id)}
+            title="Run Now"
+          >
+            <IconPlayerPlay size={16} />
+          </ActionIcon>
+          <ActionIcon
+            variant="subtle"
+            color="grape"
+            onClick={() => handleViewExecutions(workflow.id)}
+            title="View Executions"
+          >
+            <IconHistory size={16} />
+          </ActionIcon>
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            onClick={() => handleDelete(workflow.id, workflow.name)}
+            disabled={deleting === workflow.id || user?.role !== 'ADMIN'}
+            title="Delete"
+          >
+            <IconTrash size={16} />
+          </ActionIcon>
+        </Group>
+      </Table.Td>
+    </Table.Tr>
+  ));
+
+  return (
+    <Container size="xl">
+      <Stack gap="md">
+        <Group justify="space-between">
+          <Title order={2}>Workflows</Title>
+          <Group gap="sm">
+            <Button
+              leftSection={<IconRefresh size={16} />}
+              variant="light"
+              onClick={fetchWorkflows}
+              loading={loading}
+            >
+              Refresh
+            </Button>
+            {canManageWorkflows && (
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={() => {/* Navigate to create page - coming soon */}}
+              >
+                Create Workflow
+              </Button>
+            )}
+          </Group>
+        </Group>
+
+        <Paper p="md" withBorder>
+          <Group gap="sm">
+            <TextInput
+              placeholder="Search workflows..."
+              leftSection={<IconSearch size={16} />}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              style={{ flex: 1 }}
+            />
+            <Select
+              placeholder="Status"
+              data={[
+                { value: 'all', label: 'All Statuses' },
+                { value: 'true', label: 'Active' },
+                { value: 'false', label: 'Inactive' },
+              ]}
+              value={isActiveFilter}
+              onChange={(value) => setIsActiveFilter(value || 'all')}
+              width={150}
+            />
+            <Select
+              placeholder="Trigger Type"
+              data={[
+                { value: 'all', label: 'All Types' },
+                { value: 'CLIENT_CREATED', label: 'Client Created' },
+                { value: 'CLIENT_STATUS_CHANGED', label: 'Status Changed' },
+                { value: 'DOCUMENT_UPLOADED', label: 'Document Uploaded' },
+                { value: 'DOCUMENT_STATUS_CHANGED', label: 'Document Status Changed' },
+                { value: 'TASK_DUE', label: 'Task Due' },
+                { value: 'TASK_COMPLETED', label: 'Task Completed' },
+                { value: 'MANUAL', label: 'Manual' },
+              ]}
+              value={triggerTypeFilter}
+              onChange={(value) => setTriggerTypeFilter(value || 'all')}
+              width={200}
+            />
+            <Button onClick={handleSearch}>Search</Button>
+          </Group>
+        </Paper>
+
+        <Paper p="md" withBorder>
+          <LoadingOverlay visible={loading} />
+          <Box pos="relative">
+            {workflows.length === 0 && !loading ? (
+              <Text c="dimmed" ta="center" py="xl">
+                No workflows found. Create your first workflow to get started.
+              </Text>
+            ) : (
+              <Table>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Name</Table.Th>
+                    <Table.Th>Trigger</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>Executions</Table.Th>
+                    <Table.Th>Version</Table.Th>
+                    <Table.Th>Created By</Table.Th>
+                    <Table.Th>Actions</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>{rows}</Table.Tbody>
+              </Table>
+            )}
+          </Box>
+        </Paper>
+
+        {pagination.totalPages > 1 && (
+          <Group justify="center">
+            <Pagination
+              total={pagination.totalPages}
+              value={pagination.page}
+              onChange={(page) => setPagination({ ...pagination, page })}
+            />
+          </Group>
+        )}
+
+        <Text size="sm" c="dimmed" ta="center">
+          Showing {workflows.length} of {pagination.total} workflows
+        </Text>
+      </Stack>
+    </Container>
+  );
+}

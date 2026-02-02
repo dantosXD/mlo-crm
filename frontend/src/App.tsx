@@ -17,6 +17,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconNotes,
+  IconRobot,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import { QuickCapture } from './components/QuickCapture';
@@ -34,6 +35,7 @@ import Dashboard from './pages/Dashboard';
 import Notes from './pages/Notes';
 import Calculator from './pages/Calculator';
 import Analytics from './pages/Analytics';
+import { Workflows } from './pages/Workflows';
 
 const ForgotPassword = () => (
   <Center h="100vh">
@@ -62,6 +64,7 @@ const navItems = [
   { icon: IconFileText, label: 'Documents', href: '/documents', adminOnly: false },
   { icon: IconCalculator, label: 'Calculator', href: '/calculator', adminOnly: false },
   { icon: IconChartBar, label: 'Analytics', href: '/analytics', adminOnly: false },
+  { icon: IconRobot, label: 'Workflows', href: '/workflows', adminOnly: false },
   { icon: IconSettings, label: 'Settings', href: '/settings', adminOnly: false },
   { icon: IconShield, label: 'Admin', href: '/admin', adminOnly: true },
 ];
@@ -374,6 +377,7 @@ function ProtectedLayout() {
           <Route path="/documents" element={<Documents />} />
           <Route path="/calculator" element={<Calculator />} />
           <Route path="/analytics" element={<Analytics />} />
+          <Route path="/workflows" element={<Workflows />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
           <Route path="/admin/*" element={<AdminRoute><Admin /></AdminRoute>} />
