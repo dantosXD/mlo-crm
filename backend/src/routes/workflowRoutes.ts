@@ -123,6 +123,194 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// =============================================================================
+// WORKFLOW TEMPLATE ROUTES
+// =============================================================================
+
+// GET /api/workflows/templates - List workflow templates
+router.get('/templates', async (req: AuthRequest, res: Response) => {
+  try {
+    const { trigger_type, search } = req.query;
+
+    // Build where clause - always filter for templates
+    const where: any = {
+      isTemplate: true,
+    };
+
+    if (trigger_type) {
+      where.triggerType = trigger_type as string;
+    }
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search as string } },
+        { description: { contains: search as string } },
+      ];
+    }
+
+    // Get all template workflows (no pagination for templates)
+    const templates = await prisma.workflow.findMany({
+      where,
+      orderBy: { name: 'asc' },
+      include: {
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+        _count: {
+          select: { executions: true },
+        },
+      },
+    });
+
+    const formattedTemplates = templates.map((template) => ({
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      isActive: template.isActive,
+      isTemplate: template.isTemplate,
+      triggerType: template.triggerType,
+      triggerConfig: template.triggerConfig ? JSON.parse(template.triggerConfig) : null,
+      conditions: template.conditions ? JSON.parse(template.conditions) : null,
+      actions: JSON.parse(template.actions),
+      version: template.version,
+      usageCount: template._count.executions,
+      createdBy: template.createdBy,
+      createdAt: template.createdAt,
+      updatedAt: template.updatedAt,
+    }));
+
+    res.json({
+      templates: formattedTemplates,
+      count: formattedTemplates.length,
+    });
+  } catch (error) {
+    console.error('Error fetching workflow templates:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch workflow templates',
+    });
+  }
+});
+
+// POST /api/workflows/templates/:id/use - Use a template to create a new workflow
+router.post('/templates/:id/use', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, customize } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'User not authenticated',
+      });
+    }
+
+    // Find the template workflow
+    const template = await prisma.workflow.findUnique({
+      where: { id },
+    });
+
+    if (!template) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Workflow template not found',
+      });
+    }
+
+    if (!template.isTemplate) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'This workflow is not a template',
+      });
+    }
+
+    // Generate workflow name
+    const workflowName = name || `${template.name} (Custom)`;
+
+    // Parse template data
+    const triggerConfig = template.triggerConfig ? JSON.parse(template.triggerConfig) : null;
+    const conditions = template.conditions ? JSON.parse(template.conditions) : null;
+    let actions = JSON.parse(template.actions);
+
+    // Apply customizations if provided
+    if (customize && typeof customize === 'object') {
+      // Customize trigger config
+      if (customize.triggerConfig && typeof customize.triggerConfig === 'object') {
+        Object.assign(triggerConfig, customize.triggerConfig);
+      }
+
+      // Customize conditions
+      if (customize.conditions && typeof customize.conditions === 'object') {
+        Object.assign(conditions, customize.conditions);
+      }
+
+      // Customize specific actions by index
+      if (customize.actions && Array.isArray(customize.actions)) {
+        customize.actions.forEach((customization: any) => {
+          if (customization.index !== undefined && actions[customization.index]) {
+            const action = actions[customization.index];
+            if (customization.config && typeof customization.config === 'object') {
+              action.config = { ...action.config, ...customization.config };
+            }
+            if (customization.description) {
+              action.description = customization.description;
+            }
+          }
+        });
+      }
+    }
+
+    // Create new workflow from template
+    const workflow = await prisma.workflow.create({
+      data: {
+        name: workflowName,
+        description: template.description,
+        isActive: false, // Always start as inactive
+        isTemplate: false, // Not a template
+        triggerType: template.triggerType,
+        triggerConfig: triggerConfig ? JSON.stringify(triggerConfig) : null,
+        conditions: conditions ? JSON.stringify(conditions) : null,
+        actions: JSON.stringify(actions),
+        version: 1,
+        createdById: userId,
+      },
+      include: {
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+    });
+
+    res.status(201).json({
+      id: workflow.id,
+      name: workflow.name,
+      description: workflow.description,
+      isActive: workflow.isActive,
+      isTemplate: workflow.isTemplate,
+      triggerType: workflow.triggerType,
+      triggerConfig: workflow.triggerConfig ? JSON.parse(workflow.triggerConfig) : null,
+      conditions: workflow.conditions ? JSON.parse(workflow.conditions) : null,
+      actions: JSON.parse(workflow.actions),
+      version: workflow.version,
+      createdBy: workflow.createdBy,
+      createdAt: workflow.createdAt,
+      updatedAt: workflow.updatedAt,
+      message: 'Workflow created from template successfully',
+    });
+  } catch (error) {
+    console.error('Error using workflow template:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Failed to use workflow template',
+    });
+  }
+});
+
+// =============================================================================
+// METADATA ROUTES
+// =============================================================================
+
 // GET /api/workflows/meta/trigger-types - Get available trigger types (MUST come before /:id route!)
 router.get('/meta/trigger-types', async (req: AuthRequest, res: Response) => {
   try {
@@ -1100,6 +1288,7 @@ router.delete('/:id', authorizeRoles('ADMIN'), async (req: AuthRequest, res: Res
 router.patch('/:id/toggle', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const userId = req.user?.userId;
 
     const existingWorkflow = await prisma.workflow.findUnique({ where: { id } });
 
@@ -1110,13 +1299,32 @@ router.patch('/:id/toggle', authorizeRoles('ADMIN', 'MANAGER'), async (req: Auth
       });
     }
 
+    const newStatus = !existingWorkflow.isActive;
+
     const workflow = await prisma.workflow.update({
       where: { id },
-      data: { isActive: !existingWorkflow.isActive },
+      data: { isActive: newStatus },
       include: {
         createdBy: {
           select: { id: true, name: true, email: true, role: true },
         },
+      },
+    });
+
+    // Log activity when workflow is enabled/disabled
+    await prisma.activity.create({
+      data: {
+        userId,
+        type: newStatus ? 'WORKFLOW_ENABLED' : 'WORKFLOW_DISABLED',
+        description: `Workflow "${workflow.name}" was ${newStatus ? 'enabled' : 'disabled'}`,
+        metadata: JSON.stringify({
+          workflowId: workflow.id,
+          workflowName: workflow.name,
+          previousStatus: existingWorkflow.isActive,
+          newStatus: newStatus,
+        }),
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
       },
     });
 
