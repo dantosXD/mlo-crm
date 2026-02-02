@@ -231,6 +231,25 @@ router.get('/meta/trigger-types', async (req: AuthRequest, res: Response) => {
         configFields: [],
       },
       {
+        type: 'NOTE_CREATED',
+        label: 'Note Created',
+        description: 'Triggered when a note is created',
+        configFields: [],
+      },
+      {
+        type: 'NOTE_WITH_TAG',
+        label: 'Note with Tag',
+        description: 'Triggered when a note is created with a specific tag',
+        configFields: [
+          {
+            name: 'tag',
+            type: 'text',
+            label: 'Tag Name',
+            description: 'Only trigger when this specific tag is added to a note',
+          },
+        ],
+      },
+      {
         type: 'CLIENT_INACTIVITY',
         label: 'Client Inactivity',
         description: 'Triggered when a client has been inactive for a specified period',
@@ -349,10 +368,82 @@ router.get('/meta/trigger-types', async (req: AuthRequest, res: Response) => {
         ],
       },
       {
+        type: 'SCHEDULED',
+        label: 'Scheduled',
+        description: 'Triggered on a recurring schedule (daily, weekly, monthly)',
+        configFields: [
+          {
+            name: 'schedule',
+            type: 'select',
+            label: 'Schedule',
+            options: ['daily', 'weekly', 'monthly'],
+            description: 'How often to trigger the workflow',
+          },
+          {
+            name: 'time',
+            type: 'time',
+            label: 'Time',
+            description: 'Time of day to trigger (HH:MM format)',
+          },
+          {
+            name: 'dayOfWeek',
+            type: 'number',
+            label: 'Day of Week',
+            description: 'For weekly schedules: 0=Sunday, 1=Monday, etc.',
+          },
+          {
+            name: 'dayOfMonth',
+            type: 'number',
+            label: 'Day of Month',
+            description: 'For monthly schedules: 1-31',
+          },
+        ],
+      },
+      {
+        type: 'DATE_BASED',
+        label: 'Date Based',
+        description: 'Triggered on a specific date or relative to a client field',
+        configFields: [
+          {
+            name: 'dateField',
+            type: 'select',
+            label: 'Date Field',
+            options: ['client.createdAt', 'client.updatedAt', 'custom'],
+            description: 'Which date field to use for triggering',
+          },
+          {
+            name: 'customDate',
+            type: 'date',
+            label: 'Custom Date',
+            description: 'Specific date to trigger (only if dateField is "custom")',
+          },
+          {
+            name: 'offsetDays',
+            type: 'number',
+            label: 'Offset Days',
+            description: 'Number of days before/after the date to trigger (negative for before, positive for after)',
+          },
+        ],
+      },
+      {
         type: 'MANUAL',
         label: 'Manual Trigger',
         description: 'Triggered manually by a user',
         configFields: [],
+      },
+      {
+        type: 'WEBHOOK',
+        label: 'Webhook',
+        description: 'Triggered by an external system via webhook',
+        configFields: [
+          {
+            name: 'secret',
+            type: 'text',
+            label: 'Webhook Secret',
+            description: 'Secret key for verifying webhook signatures (leave empty to auto-generate)',
+            required: false,
+          },
+        ],
       },
     ];
 
@@ -772,10 +863,15 @@ router.post('/', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, re
       'TASK_DUE',
       'TASK_OVERDUE',
       'TASK_COMPLETED',
+      'NOTE_CREATED',
+      'NOTE_WITH_TAG',
+      'SCHEDULED',
+      'DATE_BASED',
       'PIPELINE_STAGE_ENTRY',
       'PIPELINE_STAGE_EXIT',
       'TIME_IN_STAGE_THRESHOLD',
       'MANUAL',
+      'WEBHOOK',
     ];
 
     if (!validTriggerTypes.includes(triggerType)) {
@@ -869,9 +965,16 @@ router.put('/:id', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, 
         'CLIENT_INACTIVITY',
         'DOCUMENT_UPLOADED',
         'DOCUMENT_STATUS_CHANGED',
+        'DOCUMENT_DUE_DATE',
+        'DOCUMENT_EXPIRED',
+        'TASK_CREATED',
+        'TASK_ASSIGNED',
         'TASK_DUE',
         'TASK_OVERDUE',
         'TASK_COMPLETED',
+        'PIPELINE_STAGE_ENTRY',
+        'PIPELINE_STAGE_EXIT',
+        'TIME_IN_STAGE_THRESHOLD',
         'MANUAL',
       ];
 
@@ -1342,6 +1445,73 @@ router.post('/:id/test', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// POST /api/workflows/:id/trigger - Manually trigger a workflow
+router.post('/:id/trigger', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { clientId, triggerData } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'User not authenticated',
+      });
+    }
+
+    // Validate workflow exists
+    const workflow = await prisma.workflow.findUnique({
+      where: { id },
+    });
+
+    if (!workflow) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Workflow not found',
+      });
+    }
+
+    // Validate clientId if provided
+    if (clientId) {
+      const client = await prisma.client.findUnique({
+        where: { id: clientId },
+      });
+
+      if (!client) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'Client not found',
+        });
+      }
+    }
+
+    // Execute workflow
+    const { executeWorkflow } = await import('../services/workflowExecutor.js');
+    const result = await executeWorkflow(id, {
+      clientId,
+      triggerType: 'MANUAL',
+      triggerData,
+      userId,
+    });
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: 'Workflow triggered successfully',
+        executionId: result.executionId,
+      });
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Error triggering workflow:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Failed to trigger workflow',
+    });
+  }
+});
+
 // GET /api/workflows/:id/versions - Get workflow version history
 router.get('/:id/versions', async (req: AuthRequest, res: Response) => {
   try {
@@ -1675,10 +1845,10 @@ router.post('/executions/:id/resume', authorizeRoles('ADMIN', 'MANAGER'), async 
     // Trigger workflow executor to continue from current step
     const { resumeWorkflowExecution } = await import('../services/workflowExecutor.js');
     const result = await resumeWorkflowExecution(id, {
-      clientId: execution.clientId,
+      clientId: execution.clientId || undefined,
       triggerType: 'MANUAL',
-      triggerData: execution.triggerData ? JSON.parse(execution.triggerData) : null,
-      userId,
+      triggerData: execution.triggerData ? JSON.parse(execution.triggerData) : undefined,
+      userId: userId || execution.workflow.createdById,
     });
 
     if (result.success) {
@@ -1815,10 +1985,15 @@ router.post('/import', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthReque
       'TASK_DUE',
       'TASK_OVERDUE',
       'TASK_COMPLETED',
+      'NOTE_CREATED',
+      'NOTE_WITH_TAG',
+      'SCHEDULED',
+      'DATE_BASED',
       'PIPELINE_STAGE_ENTRY',
       'PIPELINE_STAGE_EXIT',
       'TIME_IN_STAGE_THRESHOLD',
       'MANUAL',
+      'WEBHOOK',
     ];
 
     if (!validTriggerTypes.includes(triggerType)) {
@@ -1902,6 +2077,112 @@ router.post('/import', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthReque
     res.status(500).json({
       error: 'Internal Server Error',
       message: error instanceof Error ? error.message : 'Failed to import workflow',
+    });
+  }
+});
+
+// =============================================================================
+// WEBHOOK ROUTES
+// =============================================================================
+
+// POST /api/webhooks/:workflow_id - Receive webhook trigger from external systems
+// This endpoint does NOT require authentication - it's for external systems
+router.post('/webhooks/:workflow_id', async (req: any, res: Response) => {
+  try {
+    const { workflow_id } = req.params;
+    const signature = req.headers['x-webhook-signature'] as string | undefined;
+    const payload = JSON.stringify(req.body);
+
+    // Get workflow
+    const workflow = await prisma.workflow.findUnique({
+      where: { id: workflow_id },
+    });
+
+    if (!workflow) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Workflow not found',
+      });
+    }
+
+    if (!workflow.isActive) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Workflow is not active',
+      });
+    }
+
+    if (workflow.triggerType !== 'WEBHOOK') {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Workflow is not a webhook trigger',
+      });
+    }
+
+    // Get webhook secret from trigger config
+    const triggerConfig = workflow.triggerConfig ? JSON.parse(workflow.triggerConfig) : {};
+    const secret = triggerConfig.secret;
+
+    // Verify signature if secret is configured
+    if (secret && signature) {
+      const { verifyWebhookSignature } = await import('../services/triggerHandler.js');
+      const isValid = verifyWebhookSignature(payload, signature, secret);
+
+      if (!isValid) {
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Invalid webhook signature',
+        });
+      }
+    } else if (secret && !signature) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Webhook signature is required',
+      });
+    }
+
+    // Parse webhook payload
+    const webhookData = req.body;
+    let clientId: string | undefined;
+    let userId: string | undefined;
+
+    // Extract clientId and userId from payload if provided
+    if (webhookData.clientId) {
+      clientId = String(webhookData.clientId);
+    }
+    if (webhookData.userId) {
+      userId = String(webhookData.userId);
+    }
+
+    // Validate clientId if provided
+    if (clientId) {
+      const client = await prisma.client.findUnique({
+        where: { id: clientId },
+      });
+
+      if (!client) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'Client not found',
+        });
+      }
+    }
+
+    // Fire webhook trigger
+    const { fireWebhookTrigger } = await import('../services/triggerHandler.js');
+    await fireWebhookTrigger(workflow_id, webhookData, clientId, userId);
+
+    res.json({
+      success: true,
+      message: 'Webhook received and workflow triggered',
+      workflowId: workflow_id,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error processing webhook:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Failed to process webhook',
     });
   }
 });

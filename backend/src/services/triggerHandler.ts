@@ -345,7 +345,7 @@ export async function checkDocumentDueDates(
 
           // Calculate days until due
           const daysUntilDue = Math.ceil(
-            (document.dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+            (document.dueDate!.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
           );
 
           // Check if this document matches the workflow's criteria
@@ -358,7 +358,7 @@ export async function checkDocumentDueDates(
               triggerData: {
                 documentId: document.id,
                 clientId: document.clientId,
-                dueDate: document.dueDate.toISOString(),
+                dueDate: document.dueDate!.toISOString(),
                 daysUntilDue,
               },
               userId: document.client.createdById,
@@ -593,10 +593,11 @@ export async function fireTaskOverdueTrigger(
   await fireTrigger('TASK_OVERDUE', {
     taskId,
     clientId,
+    userId: '', // Will be set by scheduled job
     dueDate: dueDate.toISOString(),
     daysOverdue,
     timestamp: new Date().toISOString(),
-  });
+  } as any);
 }
 
 /**
@@ -619,10 +620,11 @@ export async function fireTaskAssignedTrigger(
   await fireTrigger('TASK_ASSIGNED', {
     taskId,
     clientId,
+    userId: assignedBy,
     assignedToId,
     assignedBy,
     timestamp: new Date().toISOString(),
-  });
+  } as any);
 }
 
 /**
@@ -692,7 +694,7 @@ export async function checkOverdueTasks(): Promise<void> {
                 dueDate: task.dueDate!.toISOString(),
                 daysOverdue,
               },
-              userId: task.client.createdById,
+              userId: task.client!.createdById,
             });
           }
         } catch (error) {
@@ -768,7 +770,7 @@ export async function checkTaskDueDates(daysBefore: number = 1): Promise<void> {
               dueDate: task.dueDate!.toISOString(),
               daysUntilDue: daysBefore,
             },
-            userId: task.client.createdById,
+            userId: task.client!.createdById,
           });
         } catch (error) {
           console.error(
@@ -781,4 +783,134 @@ export async function checkTaskDueDates(daysBefore: number = 1): Promise<void> {
   } catch (error) {
     console.error('[Trigger Handler] Failed to check task due dates:', error);
   }
+}
+
+// ============================================================================
+// WEBHOOK TRIGGER
+// ============================================================================
+
+/**
+ * Fire WEBHOOK trigger
+ * @param workflowId - ID of the workflow to trigger
+ * @param payload - The webhook payload data
+ * @param clientId - Optional client ID if payload contains client information
+ * @param userId - Optional user ID (defaults to system user or workflow creator)
+ */
+export async function fireWebhookTrigger(
+  workflowId: string,
+  payload: any,
+  clientId?: string,
+  userId?: string
+): Promise<void> {
+  try {
+    // Verify the workflow exists and is active
+    const workflow = await prisma.workflow.findUnique({
+      where: { id: workflowId },
+      include: { createdBy: true },
+    });
+
+    if (!workflow) {
+      throw new Error(`Workflow ${workflowId} not found`);
+    }
+
+    if (!workflow.isActive) {
+      throw new Error(`Workflow ${workflowId} is not active`);
+    }
+
+    if (workflow.triggerType !== 'WEBHOOK') {
+      throw new Error(`Workflow ${workflowId} is not a webhook trigger`);
+    }
+
+    // Use provided userId or default to workflow creator
+    const executorUserId = userId || workflow.createdById;
+
+    // Execute the workflow with the webhook payload
+    await executeWorkflow(workflowId, {
+      clientId,
+      triggerType: 'WEBHOOK',
+      triggerData: {
+        ...payload,
+        timestamp: new Date().toISOString(),
+      },
+      userId: executorUserId,
+    });
+
+    console.log(`[Trigger Handler] Webhook trigger executed for workflow ${workflowId}`);
+  } catch (error) {
+    console.error(`[Trigger Handler] Failed to fire webhook trigger for workflow ${workflowId}:`, error);
+    throw error; // Re-throw to allow caller to handle
+  }
+}
+
+/**
+ * Generate a webhook secret for a workflow
+ * @returns A random 32-character hex string
+ */
+export function generateWebhookSecret(): string {
+  const crypto = require('crypto');
+  return crypto.randomBytes(16).toString('hex');
+}
+
+/**
+ * Verify webhook signature
+ * @param payload - The raw request body
+ * @param signature - The signature from the X-Webhook-Signature header
+ * @param secret - The webhook secret
+ * @returns true if signature is valid
+ */
+export function verifyWebhookSignature(
+  payload: string,
+  signature: string,
+  secret: string
+): boolean {
+  const crypto = require('crypto');
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(payload);
+  const expectedSignature = hmac.digest('hex');
+  return signature === expectedSignature;
+}
+
+// ============================================================================
+// NOTE TRIGGERS
+// ============================================================================
+
+/**
+ * Fire NOTE_CREATED trigger
+ * @param noteId - ID of the created note
+ * @param clientId - ID of the client
+ * @param userId - ID of the user who created the note
+ */
+export async function fireNoteCreatedTrigger(
+  noteId: string,
+  clientId: string,
+  userId: string
+): Promise<void> {
+  await fireTrigger('NOTE_CREATED', {
+    noteId,
+    clientId,
+    userId,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+/**
+ * Fire NOTE_WITH_TAG trigger
+ * @param noteId - ID of the note
+ * @param clientId - ID of the client
+ * @param tag - The tag that was added
+ * @param userId - ID of the user who added the tag
+ */
+export async function fireNoteWithTagTrigger(
+  noteId: string,
+  clientId: string,
+  tag: string,
+  userId: string
+): Promise<void> {
+  await fireTrigger('NOTE_WITH_TAG', {
+    noteId,
+    clientId,
+    tag,
+    userId,
+    timestamp: new Date().toISOString(),
+  });
 }

@@ -1,6 +1,10 @@
 import { Router, Response } from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
+import {
+  fireNoteCreatedTrigger,
+  fireNoteWithTagTrigger,
+} from '../services/triggerHandler.js';
 
 const router = Router();
 
@@ -143,6 +147,16 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         description: 'Note added to client',
       },
     });
+
+    // Fire NOTE_CREATED workflow trigger
+    await fireNoteCreatedTrigger(note.id, clientId, userId);
+
+    // Fire NOTE_WITH_TAG trigger for each tag
+    if (tags && Array.isArray(tags) && tags.length > 0) {
+      for (const tag of tags) {
+        await fireNoteWithTagTrigger(note.id, clientId, tag, userId);
+      }
+    }
 
     res.status(201).json({
       id: note.id,
