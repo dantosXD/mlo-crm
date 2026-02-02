@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   Title,
   Stack,
@@ -114,6 +114,7 @@ export function CommunicationComposer() {
   const { accessToken, user } = useAuthStore();
   const navigate = useNavigate();
   const { clientId } = useParams();
+  const location = useLocation();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -155,6 +156,28 @@ export function CommunicationComposer() {
       setSelectedClient(clientId);
     }
   }, [clientId]);
+
+  useEffect(() => {
+    // Handle cloning from existing communication
+    const cloneFrom = location.state as { cloneFrom?: any } | null;
+    if (cloneFrom?.cloneFrom) {
+      const comm = cloneFrom.cloneFrom;
+      setType(comm.type);
+      setSubject(comm.subject || '');
+      setBody(comm.body);
+      if (comm.followUpDate) {
+        setFollowUpDate(new Date(comm.followUpDate));
+      }
+      // Clear scheduled date for cloned communications
+      setScheduledAt(null);
+
+      notifications.show({
+        title: 'Communication Cloned',
+        message: 'You can now edit and send this communication',
+        color: 'blue',
+      });
+    }
+  }, [location.state]);
 
   useEffect(() => {
     // Update preview when body or template changes
