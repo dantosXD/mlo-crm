@@ -7,7 +7,7 @@
 const http = require('http');
 
 const API_URL = 'http://localhost:3000';
-const ADMIN_EMAIL = 'admin@mlo.com';
+const ADMIN_EMAIL = 'admin@example.com';
 const ADMIN_PASSWORD = 'admin123';
 
 // Get auth token
