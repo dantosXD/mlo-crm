@@ -17,12 +17,33 @@ async function loginAndGetClientId() {
   const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
   console.log('User ID from token:', payload.userId);
 
-  // Get a client
-  const clientRes = await fetch('http://localhost:3000/api/clients?limit=1', {
+  // Get or create a client
+  let clientRes = await fetch('http://localhost:3000/api/clients', {
     headers: {'Authorization': `Bearer ${token}`}
   });
-  const clientData = await clientRes.json();
-  const clientId = clientData.clients?.[0]?.id || 'test-client-id';
+  let clients = await clientRes.json();
+
+  let clientId;
+  if (Array.isArray(clients) && clients.length > 0) {
+    clientId = clients[0].id;
+  } else {
+    // Create a test client
+    const createRes = await fetch('http://localhost:3000/api/clients', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: 'Webhook Test Client',
+        email: 'webhook@test.com',
+        phone: '555-9999',
+        status: 'LEAD'
+      })
+    });
+    const createData = await createRes.json();
+    clientId = createData.id;
+  }
   console.log('Client ID:', clientId);
 
   return { token, userId: payload.userId, clientId };
