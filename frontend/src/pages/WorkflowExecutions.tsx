@@ -28,9 +28,10 @@ import {
   IconX,
   IconClock,
   IconCheck,
-  IconXcircle,
+  IconCircleX,
   IconLoader,
   IconBan,
+  IconCircle,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -114,9 +115,15 @@ const STATUS_ICONS: Record<string, any> = {
   PENDING: IconClock,
   RUNNING: IconLoader,
   COMPLETED: IconCheck,
-  FAILED: IconXcircle,
+  FAILED: IconCircleX,
   CANCELLED: IconBan,
   SKIPPED: IconX,
+};
+
+// Helper to render status icon
+const renderStatusIcon = (status: string) => {
+  const IconComponent = STATUS_ICONS[status] || IconCircle;
+  return <IconComponent size={14} />;
 };
 
 export function WorkflowExecutions() {
@@ -326,7 +333,7 @@ export function WorkflowExecutions() {
       </Table.Td>
       <Table.Td>
         <Badge
-          leftSection={<STATUS_ICONS[execution.status] size={14} />}
+          leftSection={renderStatusIcon(execution.status)}
           color={STATUS_COLORS[execution.status] || 'gray'}
         >
           {execution.status}
@@ -458,7 +465,7 @@ export function WorkflowExecutions() {
                       </Text>
                       <Badge
                         color={STATUS_COLORS[selectedExecution.status] || 'gray'}
-                        leftSection={<STATUS_ICONS[selectedExecution.status] size={14} />}
+                        leftSection={renderStatusIcon(selectedExecution.status)}
                       >
                         {selectedExecution.status}
                       </Badge>
@@ -470,6 +477,7 @@ export function WorkflowExecutions() {
                 </Paper>
 
                 {/* Info */}
+                <Paper p="md" withBorder>
                   <Stack gap="xs">
                     <Text size="sm">
                       <Text span fw={500}>
