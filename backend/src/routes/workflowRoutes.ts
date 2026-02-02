@@ -745,4 +745,55 @@ router.patch('/:id/toggle', authorizeRoles('ADMIN', 'MANAGER'), async (req: Auth
   }
 });
 
+// POST /api/workflows/test-action - Test endpoint for workflow actions (development only)
+if (process.env.NODE_ENV === 'development') {
+  router.post('/test-action', async (req: AuthRequest, res: Response) => {
+    try {
+      const { actionType, config, context } = req.body;
+      const { executeDocumentAction, executeCommunicationAction, executeTaskAction, executeClientAction } = await import('../services/actionExecutor.js');
+
+      if (!actionType || !config || !context) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'actionType, config, and context are required',
+        });
+      }
+
+      // Determine action category and execute
+      let result;
+      const documentActions = ['UPDATE_DOCUMENT_STATUS', 'REQUEST_DOCUMENT'];
+      const communicationActions = ['SEND_EMAIL', 'SEND_SMS', 'GENERATE_LETTER'];
+      const taskActions = ['CREATE_TASK', 'COMPLETE_TASK', 'ASSIGN_TASK'];
+      const clientActions = ['UPDATE_CLIENT_STATUS', 'ADD_TAG', 'REMOVE_TAG', 'ASSIGN_CLIENT'];
+
+      if (documentActions.includes(actionType)) {
+        result = await executeDocumentAction(actionType, config, context);
+      } else if (communicationActions.includes(actionType)) {
+        result = await executeCommunicationAction(actionType, config, context);
+      } else if (taskActions.includes(actionType)) {
+        result = await executeTaskAction(actionType, config, context);
+      } else if (clientActions.includes(actionType)) {
+        result = await executeClientAction(actionType, config, context);
+      } else {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: `Unknown action type: ${actionType}`,
+        });
+      }
+
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error executing test action:', error);
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: error instanceof Error ? error.message : 'Failed to execute action',
+      });
+    }
+  });
+}
+
 export default router;

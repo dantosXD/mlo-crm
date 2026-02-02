@@ -1351,6 +1351,312 @@ export async function executeDocumentAction(
 }
 
 /**
+ * Main dispatcher for task actions
+ * Routes to the appropriate executor based on action type
+ */
+export async function executeTaskAction(
+  actionType: string,
+  config: TaskActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  switch (actionType) {
+    case 'CREATE_TASK':
+      return executeCreateTask(config, context);
+    case 'COMPLETE_TASK':
+      return executeCompleteTask(config, context);
+    case 'ASSIGN_TASK':
+      return executeAssignTask(config, context);
+    default:
+      return {
+        success: false,
+        message: `Unknown task action type: ${actionType}`,
+      };
+  }
+}
+
+/**
+ * Main dispatcher for client actions
+ * Routes to the appropriate executor based on action type
+ */
+export async function executeClientAction(
+  actionType: string,
+  config: ClientActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  switch (actionType) {
+    case 'UPDATE_CLIENT_STATUS':
+      return executeUpdateClientStatus(config, context);
+    case 'ADD_TAG':
+      return executeAddTag(config, context);
+    case 'REMOVE_TAG':
+      return executeRemoveTag(config, context);
+    case 'ASSIGN_CLIENT':
+      return executeAssignClient(config, context);
+    default:
+      return {
+        success: false,
+        message: `Unknown client action type: ${actionType}`,
+      };
+  }
+}
+
+/**
+ * Webhook action configuration
+ */
+interface WebhookActionConfig {
+  url: string; // Webhook URL to call
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; // HTTP method
+  headers?: Record<string, string>; // Custom headers
+  bodyTemplate?: string; // Request body template with placeholders
+  retryOnFailure?: boolean; // Whether to retry on failure
+  maxRetries?: number; // Maximum retry attempts
+  retryDelaySeconds?: number; // Delay between retries
+  timeoutSeconds?: number; // Request timeout
+}
+
+/**
+ * Execute CALL_WEBHOOK action
+ * Calls an external webhook/API with configurable retry logic
+ */
+export async function executeCallWebhook(
+  config: WebhookActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  try {
+    // Validate required fields
+    if (!config.url) {
+      return {
+        success: false,
+        message: 'Webhook URL is required',
+      };
+    }
+
+    // Validate URL format
+    try {
+      new URL(config.url);
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Invalid webhook URL format',
+      };
+    }
+
+    // Get client data for placeholder replacement
+    const client = await getClientData(context.clientId);
+    const placeholderContext = {
+      ...context,
+      clientData: client,
+    };
+
+    // Prepare request options
+    const method = config.method || 'POST';
+    const timeoutSeconds = config.timeoutSeconds || 30;
+    const maxRetries = config.maxRetries ?? 3;
+    const retryDelaySeconds = config.retryDelaySeconds ?? 5;
+
+    // Prepare headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'User-Agent': 'MLO-Dashboard-Webhook/1.0',
+      ...(config.headers || {}),
+    };
+
+    // Replace placeholders in headers
+    const processedHeaders: Record<string, string> = {};
+    for (const [key, value] of Object.entries(headers)) {
+      processedHeaders[key] = replacePlaceholders(value, placeholderContext);
+    }
+
+    // Prepare body
+    let body: string | undefined;
+    if (config.bodyTemplate && ['POST', 'PUT', 'PATCH'].includes(method)) {
+      // Replace placeholders in body template
+      const processedBody = replacePlaceholders(config.bodyTemplate, placeholderContext);
+
+      // Try to parse as JSON to validate
+      try {
+        JSON.parse(processedBody);
+        body = processedBody;
+      } catch (error) {
+        return {
+          success: false,
+          message: 'Invalid JSON body template after placeholder replacement',
+        };
+      }
+    }
+
+    // Execute webhook call with retry logic
+    let lastError: Error | null = null;
+    let attempt = 0;
+    let response: {
+      statusCode: number;
+      headers: Record<string, string>;
+      body: string;
+    } | null = null;
+
+    while (attempt <= maxRetries) {
+      attempt++;
+
+      try {
+        // Create abort controller for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
+
+        // Make HTTP request using fetch
+        const fetchResponse = await fetch(config.url, {
+          method,
+          headers: processedHeaders,
+          body,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        // Get response body
+        const responseBody = await fetchResponse.text();
+        const responseHeaders: Record<string, string> = {};
+        fetchResponse.headers.forEach((value, key) => {
+          responseHeaders[key] = value;
+        });
+
+        response = {
+          statusCode: fetchResponse.status,
+          headers: responseHeaders,
+          body: responseBody,
+        };
+
+        // Check if request was successful (2xx status)
+        if (fetchResponse.status >= 200 && fetchResponse.status < 300) {
+          // Log successful webhook call
+          await prisma.activity.create({
+            data: {
+              clientId: context.clientId,
+              userId: context.userId,
+              type: 'WEBHOOK_CALLED',
+              description: `Webhook called successfully: ${config.url}`,
+              metadata: JSON.stringify({
+                url: config.url,
+                method,
+                statusCode: response.statusCode,
+                attempt,
+                retries: attempt - 1,
+              }),
+            },
+          });
+
+          return {
+            success: true,
+            message: 'Webhook called successfully',
+            data: {
+              url: config.url,
+              method,
+              statusCode: response.statusCode,
+              attempt,
+              retries: attempt - 1,
+              responseBody: responseBody.slice(0, 1000), // Truncate large responses
+            },
+          };
+        }
+
+        // Non-2xx status - treat as error
+        lastError = new Error(`Webhook returned status ${fetchResponse.status}: ${responseBody.slice(0, 200)}`);
+
+        // Don't retry on client errors (4xx) except 429 (rate limit)
+        if (fetchResponse.status >= 400 && fetchResponse.status < 500 && fetchResponse.status !== 429) {
+          break;
+        }
+
+        // Retry on server errors (5xx) and rate limit (429)
+        if (config.retryOnFailure !== false && attempt <= maxRetries) {
+          console.log(`Webhook call attempt ${attempt} failed with status ${fetchResponse.status}. Retrying in ${retryDelaySeconds}s...`);
+          await sleep(retryDelaySeconds * 1000);
+          continue;
+        }
+
+        break;
+      } catch (fetchError) {
+        lastError = fetchError instanceof Error ? fetchError : new Error(String(fetchError));
+
+        // Retry on network errors
+        if (config.retryOnFailure !== false && attempt <= maxRetries) {
+          console.log(`Webhook call attempt ${attempt} failed: ${lastError.message}. Retrying in ${retryDelaySeconds}s...`);
+          await sleep(retryDelaySeconds * 1000);
+          continue;
+        }
+
+        break;
+      }
+    }
+
+    // All retries exhausted
+    const errorMessage = lastError?.message || 'Unknown error';
+
+    // Log failed webhook call
+    await prisma.activity.create({
+      data: {
+        clientId: context.clientId,
+        userId: context.userId,
+        type: 'WEBHOOK_FAILED',
+        description: `Webhook call failed after ${attempt} attempts: ${config.url}`,
+        metadata: JSON.stringify({
+          url: config.url,
+          method,
+          error: errorMessage,
+          attempts: attempt,
+          maxRetries,
+        }),
+      },
+    });
+
+    return {
+      success: false,
+      message: `Webhook call failed after ${attempt} attempt(s): ${errorMessage}`,
+      data: {
+        url: config.url,
+        method,
+        attempts: attempt,
+        lastResponse: response ? {
+          statusCode: response.statusCode,
+          body: response.body.slice(0, 500),
+        } : null,
+      },
+    };
+  } catch (error) {
+    console.error('Error executing CALL_WEBHOOK action:', error);
+
+    // Log unexpected error
+    try {
+      await prisma.activity.create({
+        data: {
+          clientId: context.clientId,
+          userId: context.userId,
+          type: 'WEBHOOK_FAILED',
+          description: `Webhook execution error: ${config.url}`,
+          metadata: JSON.stringify({
+            url: config.url,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        },
+      });
+    } catch (logError) {
+      console.error('Failed to log webhook error:', logError);
+    }
+
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to call webhook',
+    };
+  }
+}
+
+/**
+ * Sleep utility for retry delays
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Main dispatcher for communication actions
  * Routes to the appropriate executor based on action type
  */
@@ -1370,6 +1676,26 @@ export async function executeCommunicationAction(
       return {
         success: false,
         message: `Unknown communication action type: ${actionType}`,
+      };
+  }
+}
+
+/**
+ * Main dispatcher for webhook actions
+ * Routes to the appropriate executor based on action type
+ */
+export async function executeWebhookAction(
+  actionType: string,
+  config: WebhookActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  switch (actionType) {
+    case 'CALL_WEBHOOK':
+      return executeCallWebhook(config, context);
+    default:
+      return {
+        success: false,
+        message: `Unknown webhook action type: ${actionType}`,
       };
   }
 }
