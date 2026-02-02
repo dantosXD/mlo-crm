@@ -71,6 +71,7 @@ export async function executeWorkflow(
         clientId: context.clientId,
         triggerType: context.triggerType,
         triggerData: context.triggerData || {},
+        userId: context.userId,
       };
       const conditionResult = await evaluateConditions(conditions, conditionContext);
       if (!conditionResult.matched) {
@@ -403,6 +404,7 @@ export async function testWorkflow(
         clientId: context.clientId,
         triggerType: context.triggerType,
         triggerData: context.triggerData || {},
+        userId: context.userId,
       };
       const conditionResult = await evaluateConditions(conditions, conditionContext);
       conditionsMet = conditionResult.matched;

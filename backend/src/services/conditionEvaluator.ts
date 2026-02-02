@@ -7,6 +7,7 @@ export interface ConditionContext {
   clientId: string;
   triggerType: string;
   triggerData: Record<string, any>;
+  userId?: string; // Optional: user who triggered the workflow
 }
 
 /**
@@ -78,6 +79,12 @@ async function evaluateCondition(
         return await evaluateTaskOverdueExists(condition, context);
       case 'LOAN_AMOUNT_THRESHOLD':
         return await evaluateLoanAmountThreshold(condition, context);
+      case 'USER_ROLE_EQUALS':
+        return await evaluateUserRoleEquals(condition, context);
+      case 'TIME_OF_DAY':
+        return await evaluateTimeOfDay(condition, context);
+      case 'DAY_OF_WEEK':
+        return await evaluateDayOfWeek(condition, context);
       case 'AND':
         return await evaluateAndCondition(condition, context);
       case 'OR':
@@ -252,6 +259,156 @@ async function evaluateClientMissingDocuments(
       : `Client has all required documents${
           category ? ` in category: ${category}` : ''
         }`,
+  };
+}
+
+/**
+ * Condition: User role equals
+ * Checks if the user who triggered the workflow has a specific role
+ */
+async function evaluateUserRoleEquals(
+  condition: Condition,
+  context: ConditionContext
+): Promise<ConditionResult> {
+  const expectedRole = condition.value;
+
+  if (!expectedRole) {
+    return {
+      success: false,
+      matched: false,
+      message: 'USER_ROLE_EQUALS requires a value (role)',
+    };
+  }
+
+  if (!context.userId) {
+    return {
+      success: false,
+      matched: false,
+      message: 'USER_ROLE_EQUALS requires userId in context',
+    };
+  }
+
+  // Fetch user data
+  const user = await prisma.user.findUnique({
+    where: { id: context.userId },
+  });
+
+  if (!user) {
+    return {
+      success: false,
+      matched: false,
+      message: `User not found: ${context.userId}`,
+    };
+  }
+
+  const matched = user.role === expectedRole;
+
+  return {
+    success: true,
+    matched,
+    message: `User role is ${user.role} (expected: ${expectedRole})`,
+  };
+}
+
+/**
+ * Condition: Time of day
+ * Checks if current time is within a specific range
+ * Value should be an object: { start: "HH:MM", end: "HH:MM" }
+ * Example: { start: "09:00", end: "17:00" } for business hours
+ */
+async function evaluateTimeOfDay(
+  condition: Condition,
+  context: ConditionContext
+): Promise<ConditionResult> {
+  const timeRange = condition.value;
+
+  if (!timeRange || !timeRange.start || !timeRange.end) {
+    return {
+      success: false,
+      matched: false,
+      message: 'TIME_OF_DAY requires value with start and end times (HH:MM format)',
+    };
+  }
+
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+  // Parse start time
+  const [startHour, startMinute] = timeRange.start.split(':').map(Number);
+  const startTimeInMinutes = startHour * 60 + startMinute;
+
+  // Parse end time
+  const [endHour, endMinute] = timeRange.end.split(':').map(Number);
+  const endTimeInMinutes = endHour * 60 + endMinute;
+
+  // Check if current time is within range
+  let matched = false;
+  if (startTimeInMinutes <= endTimeInMinutes) {
+    // Normal range (e.g., 09:00 - 17:00)
+    matched = currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes;
+  } else {
+    // Overnight range (e.g., 22:00 - 06:00)
+    matched = currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= endTimeInMinutes;
+  }
+
+  const currentTimeStr = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+
+  return {
+    success: true,
+    matched,
+    message: `Current time is ${currentTimeStr} (range: ${timeRange.start} - ${timeRange.end})`,
+  };
+}
+
+/**
+ * Condition: Day of week
+ * Checks if current day is in the specified list of days
+ * Value should be an array of day numbers (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
+ * or day names: ["Monday", "Tuesday", "Wednesday"]
+ * Example: [1, 2, 3, 4, 5] for weekdays
+ */
+async function evaluateDayOfWeek(
+  condition: Condition,
+  context: ConditionContext
+): Promise<ConditionResult> {
+  const allowedDays = condition.value;
+
+  if (!Array.isArray(allowedDays) || allowedDays.length === 0) {
+    return {
+      success: false,
+      matched: false,
+      message: 'DAY_OF_WEEK requires an array of days (numbers 0-6 or day names)',
+    };
+  }
+
+  const now = new Date();
+  const currentDayNumber = now.getDay(); // 0 = Sunday, 6 = Saturday
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const currentDayName = dayNames[currentDayNumber];
+
+  // Check if allowed days are numbers or strings
+  let matched = false;
+  if (typeof allowedDays[0] === 'number') {
+    // Array of numbers
+    matched = allowedDays.includes(currentDayNumber);
+  } else if (typeof allowedDays[0] === 'string') {
+    // Array of day names (case-insensitive)
+    const normalizedAllowedDays = allowedDays.map((day: string) => day.toLowerCase());
+    matched = normalizedAllowedDays.includes(currentDayName.toLowerCase());
+  } else {
+    return {
+      success: false,
+      matched: false,
+      message: 'DAY_OF_WEEK days must be numbers (0-6) or day names',
+    };
+  }
+
+  return {
+    success: true,
+    matched,
+    message: `Current day is ${currentDayName} (${currentDayNumber}) - allowed: ${allowedDays.join(', ')}`,
   };
 }
 

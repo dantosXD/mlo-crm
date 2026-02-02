@@ -43,6 +43,7 @@ import { WorkflowExecutions } from './pages/WorkflowExecutions';
 import { CommunicationTemplates } from './pages/CommunicationTemplates';
 import { CommunicationTemplateEditor } from './pages/CommunicationTemplateEditor';
 import { Communications } from './pages/Communications';
+import { CommunicationComposer } from './pages/CommunicationComposer';
 
 const ForgotPassword = () => (
   <Center h="100vh">
@@ -388,6 +389,8 @@ function ProtectedLayout() {
           <Route path="/communication-templates/new" element={<CommunicationTemplateEditor />} />
           <Route path="/communication-templates/:id/edit" element={<CommunicationTemplateEditor />} />
           <Route path="/communications" element={<Communications />} />
+          <Route path="/communications/compose" element={<CommunicationComposer />} />
+          <Route path="/communications/:clientId/compose" element={<CommunicationComposer />} />
           <Route path="/calculator" element={<Calculator />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/workflows" element={<Workflows />} />

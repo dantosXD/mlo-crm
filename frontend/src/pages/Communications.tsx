@@ -28,6 +28,7 @@ import {
   IconCalendar,
   IconBell,
   IconBellOff,
+  IconPlus,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
@@ -310,12 +311,21 @@ export function Communications() {
       <Stack gap="md">
         <Group justify="space-between">
           <Title order={2}>Communications</Title>
-          <Button
-            leftSection={<IconRefresh size={16} />}
-            onClick={fetchCommunications}
-          >
-            Refresh
-          </Button>
+          <Group>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => navigate('/communications/compose')}
+            >
+              Compose
+            </Button>
+            <Button
+              variant="default"
+              leftSection={<IconRefresh size={16} />}
+              onClick={fetchCommunications}
+            >
+              Refresh
+            </Button>
+          </Group>
         </Group>
 
         <Paper p="md" withBorder>
