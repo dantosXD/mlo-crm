@@ -15,6 +15,7 @@ import {
 } from '@mantine/core';
 import { IconBell, IconBellRinging, IconCheck, IconTrash } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
+import { API_URL } from '../utils/apiBase';
 
 interface Notification {
   id: string;
@@ -39,7 +40,7 @@ export function NotificationCenter() {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications?limit=20`, {
+      const response = await fetch(`${API_URL}/notifications?limit=20`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -60,7 +61,7 @@ export function NotificationCenter() {
   const fetchUnreadCount = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/unread-count`, {
+      const response = await fetch(`${API_URL}/notifications/unread-count`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -79,7 +80,7 @@ export function NotificationCenter() {
   const markAsRead = async (notificationId: string) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/${notificationId}/read`, {
+      const response = await fetch(`${API_URL}/notifications/${notificationId}/read`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -101,7 +102,7 @@ export function NotificationCenter() {
   const markAllAsRead = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/read-all`, {
+      const response = await fetch(`${API_URL}/notifications/read-all`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -121,7 +122,7 @@ export function NotificationCenter() {
   const deleteNotification = async (notificationId: string) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/${notificationId}`, {
+      const response = await fetch(`${API_URL}/notifications/${notificationId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,

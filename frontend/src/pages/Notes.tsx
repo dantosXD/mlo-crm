@@ -19,6 +19,7 @@ import { notifications } from '@mantine/notifications';
 import { IconSearch, IconPin, IconEye, IconNotes } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
+import { API_URL } from '../utils/apiBase';
 
 // Helper function to format relative time (e.g., "just now", "5 minutes ago", "2 hours ago")
 const formatRelativeTime = (dateString: string): string => {
@@ -63,8 +64,6 @@ interface Note {
   createdAt: string;
   updatedAt: string;
 }
-
-const API_URL = 'http://localhost:3000/api';
 
 export default function Notes() {
   const navigate = useNavigate();

@@ -14,7 +14,10 @@ import {
   NodeTypes,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { notifications } from '@mantine/notifications';
+import { useAuthStore } from '../stores/authStore';
 import { useParams, useNavigate } from 'react-router-dom';
+import { API_URL } from '../utils/apiBase';
 import {
   Button,
   Container,
@@ -210,7 +213,7 @@ export default function WorkflowBuilder() {
       const token = localStorage.getItem('token');
       if (isEditing && id) {
         // Update existing workflow
-        const response = await fetch(`http://localhost:3000/api/workflows/${id}`, {
+        const response = await fetch(`${API_URL}/workflows/${id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -222,7 +225,7 @@ export default function WorkflowBuilder() {
         return await response.json();
       } else {
         // Create new workflow
-        const response = await fetch('http://localhost:3000/api/workflows', {
+        const response = await fetch(`${API_URL}/workflows`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

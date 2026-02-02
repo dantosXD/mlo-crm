@@ -29,6 +29,7 @@ import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
 import { canWriteClients } from '../utils/roleUtils';
 import { handleFetchError, fetchWithErrorHandling } from '../utils/errorHandler';
+import { API_URL } from '../utils/apiBase';
 
 interface Client {
   id: string;
@@ -52,8 +53,6 @@ const statusColors: Record<string, string> = {
   DENIED: 'red',
   INACTIVE: 'gray',
 };
-
-const API_URL = 'http://localhost:3000/api';
 
 // Mask email: show first 2 chars, mask middle, show domain
 function maskEmail(email: string): string {

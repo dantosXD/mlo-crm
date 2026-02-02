@@ -20,6 +20,7 @@ import { notifications } from '@mantine/notifications';
 import { IconSearch, IconFilter, IconX, IconEye, IconFile, IconFileText, IconAlertTriangle } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
+import { API_URL } from '../utils/apiBase';
 
 interface Document {
   id: string;
@@ -57,8 +58,6 @@ const categoryColors: Record<string, string> = {
   CREDIT: 'pink',
   OTHER: 'gray',
 };
-
-const API_URL = 'http://localhost:3000/api';
 
 // Helper function to check if a document is expired
 const isDocumentExpired = (doc: Document): boolean => {

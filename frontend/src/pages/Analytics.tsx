@@ -31,8 +31,7 @@ import {
   IconClock,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
-
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../utils/apiBase';
 
 // Pipeline stages in order
 const PIPELINE_STAGES = [

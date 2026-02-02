@@ -30,6 +30,7 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
+import { API_URL } from '../utils/apiBase';
 
 interface CommunicationTemplate {
   id: string;
@@ -59,8 +60,6 @@ interface MetaOption {
   label: string;
   description: string;
 }
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 // Type labels and colors
 const TYPE_CONFIG: Record<string, { label: string; color: string }> = {

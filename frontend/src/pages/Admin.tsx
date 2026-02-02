@@ -18,6 +18,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconUserPlus, IconUsers } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
+import { API_URL } from '../utils/apiBase';
 
 interface User {
   id: string;
@@ -29,8 +30,6 @@ interface User {
   updatedAt: string;
   lastLoginAt: string | null;
 }
-
-const API_URL = 'http://localhost:3000/api';
 
 export function Admin() {
   const { accessToken } = useAuthStore();

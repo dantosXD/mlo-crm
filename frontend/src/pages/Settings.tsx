@@ -28,8 +28,7 @@ import {
   IconAlertCircle,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
-
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../utils/apiBase';
 
 export default function Settings() {
   const { user, accessToken, updateUser } = useAuthStore();

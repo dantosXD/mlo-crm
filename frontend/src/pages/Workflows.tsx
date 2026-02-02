@@ -35,6 +35,7 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
+import { API_URL } from '../utils/apiBase';
 
 interface Workflow {
   id: string;
@@ -63,8 +64,6 @@ interface WorkflowResponse {
     totalPages: number;
   };
 }
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 // Trigger type labels
 const TRIGGER_LABELS: Record<string, string> = {

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { getUserFriendlyErrorMessage } from '../utils/errorHandler';
+import { API_URL } from '../utils/apiBase';
 
 interface User {
   id: string;
@@ -30,8 +31,6 @@ interface AuthState {
   checkSessionTimeout: (timeoutMinutes: number) => boolean;
   updateCsrfToken: (token: string) => void;
 }
-
-const API_URL = 'http://localhost:3000/api';
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -63,19 +62,38 @@ export const useAuthStore = create<AuthState>()(
             throw new Error(data.message || 'Login failed');
           }
 
-          // Extract CSRF token from response headers
-          const csrfToken = response.headers.get('X-CSRF-Token');
-
+          // Set auth data first (CSRF token will be null initially)
           set({
             user: data.user,
             accessToken: data.accessToken,
             refreshToken: data.refreshToken,
-            csrfToken: csrfToken || null,
+            csrfToken: null,
             isAuthenticated: true,
             isLoading: false,
             error: null,
             lastActivity: Date.now(),
           });
+
+          // Make an authenticated GET request to obtain CSRF token
+          // The backend's generateCsrfToken middleware will add it to response headers
+          try {
+            const csrfResponse = await fetch(`${API_URL}/auth/me`, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${data.accessToken}`,
+              },
+            });
+
+            // Extract CSRF token from response headers
+            const csrfToken = csrfResponse.headers.get('X-CSRF-Token');
+
+            if (csrfToken) {
+              set({ csrfToken });
+            }
+          } catch (csrfError) {
+            // Non-critical error - user is logged in but CSRF token fetch failed
+            console.warn('Failed to fetch CSRF token:', csrfError);
+          }
 
           return true;
         } catch (error) {

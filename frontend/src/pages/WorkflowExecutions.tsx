@@ -37,6 +37,7 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { API_URL } from '../utils/apiBase';
 
 interface WorkflowExecution {
   id: string;
@@ -99,8 +100,6 @@ interface ExecutionsResponse {
     totalPages: number;
   };
 }
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 // Status badge colors
 const STATUS_COLORS: Record<string, string> = {
@@ -629,7 +628,7 @@ export function WorkflowExecutions() {
                   </Stack>
 
                   {selectedExecution.errorMessage && (
-                    <Alert color="red" title="Error" icon={<IconXcircle size={16} />}>
+                    <Alert color="red" title="Error" icon={<IconCircleX size={16} />}>
                       {selectedExecution.errorMessage}
                     </Alert>
                   )}

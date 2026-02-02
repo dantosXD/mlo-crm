@@ -1,8 +1,8 @@
+import { API_URL } from './apiBase';
+
 /**
  * API client utility for making authenticated requests with CSRF protection
  */
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 /**
  * Make an authenticated API request with CSRF token
@@ -16,9 +16,15 @@ export async function apiRequest(
   const { accessToken, csrfToken, updateCsrfToken } = useAuthStore.getState();
 
   // Prepare headers
-  const headers: HeadersInit = {
+  const extraHeaders = options.headers instanceof Headers
+    ? Object.fromEntries(options.headers.entries())
+    : Array.isArray(options.headers)
+      ? Object.fromEntries(options.headers)
+      : options.headers;
+
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(extraHeaders ?? {}),
   };
 
   // Add authorization header if token exists

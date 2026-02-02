@@ -19,6 +19,7 @@ import { notifications } from '@mantine/notifications';
 import { IconUser, IconMail, IconPhone, IconLayoutKanban, IconTable } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
+import { API_URL } from '../utils/apiBase';
 import {
   DndContext,
   DragEndEvent,
@@ -62,8 +63,6 @@ const PIPELINE_STAGES = [
   { key: 'CLEAR_TO_CLOSE', label: 'Clear to Close', color: 'lime' },
   { key: 'CLOSED', label: 'Closed', color: 'green.9' },
 ];
-
-const API_URL = 'http://localhost:3000/api';
 
 // Draggable client card component
 function DraggableClientCard({ client, onClick }: { client: Client; onClick: () => void }) {

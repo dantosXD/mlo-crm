@@ -33,8 +33,7 @@ import {
   IconCalendar,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+import { API_URL } from '../utils/apiBase';
 
 interface Client {
   id: string;
@@ -294,7 +293,7 @@ export function QuickCapture() {
   const fetchClients = async () => {
     setIsLoadingClients(true);
     try {
-      const response = await fetch(`${API_BASE}/clients`, {
+      const response = await fetch(`${API_URL}/clients`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },
@@ -330,7 +329,7 @@ export function QuickCapture() {
         taskData.dueDate = dueDate.toISOString();
       }
 
-      const response = await fetch(`${API_BASE}/tasks`, {
+      const response = await fetch(`${API_URL}/tasks`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -381,7 +380,7 @@ export function QuickCapture() {
 
     setIsCreating(true);
     try {
-      const response = await fetch(`${API_BASE}/notes`, {
+      const response = await fetch(`${API_URL}/notes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

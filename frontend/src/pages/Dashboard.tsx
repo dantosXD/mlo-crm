@@ -13,6 +13,7 @@ import { IconRefresh } from '@tabler/icons-react';
 import ReactGridLayout from 'react-grid-layout';
 import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../stores/authStore';
+import { API_URL } from '../utils/apiBase';
 import { StatsCardsWidget } from '../widgets/StatsCardsWidget';
 import { PipelineOverviewWidget } from '../widgets/PipelineOverviewWidget';
 import { PendingTasksWidget } from '../widgets/PendingTasksWidget';
@@ -108,7 +109,7 @@ export default function Dashboard() {
 
   const fetchUserPreferences = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/users/preferences', {
+      const res = await fetch(`${API_URL}/users/preferences`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
@@ -126,7 +127,7 @@ export default function Dashboard() {
   const saveUserPreferences = async (newLayouts: typeof DEFAULT_LAYOUTS.lg) => {
     try {
       setSavingLayout(true);
-      await fetch('http://localhost:3000/api/users/preferences', {
+      await fetch(`${API_URL}/users/preferences`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -155,7 +156,7 @@ export default function Dashboard() {
       setLoading(true);
 
       // Fetch clients count
-      const clientsRes = await fetch('http://localhost:3000/api/clients', {
+      const clientsRes = await fetch(`${API_URL}/clients`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
@@ -192,7 +193,7 @@ export default function Dashboard() {
       // Fetch documents count
       let totalDocuments = 0;
       try {
-        const docsRes = await fetch('http://localhost:3000/api/documents', {
+        const docsRes = await fetch(`${API_URL}/documents`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (docsRes.ok) {
@@ -208,7 +209,7 @@ export default function Dashboard() {
       let pendingTasks = 0;
       let pendingTasksList: Task[] = [];
       try {
-        const tasksRes = await fetch('http://localhost:3000/api/tasks', {
+        const tasksRes = await fetch(`${API_URL}/tasks`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (tasksRes.ok) {
@@ -234,7 +235,7 @@ export default function Dashboard() {
       // Fetch loan scenarios count
       let totalLoanScenarios = 0;
       try {
-        const scenariosRes = await fetch('http://localhost:3000/api/loan-scenarios', {
+        const scenariosRes = await fetch(`${API_URL}/loan-scenarios`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (scenariosRes.ok) {
@@ -252,7 +253,7 @@ export default function Dashboard() {
         today.setHours(0, 0, 0, 0);
 
         // Fetch running executions
-        const runningRes = await fetch('http://localhost:3000/api/workflow-executions?status=RUNNING&limit=5', {
+        const runningRes = await fetch(`${API_URL}/workflow-executions?status=RUNNING&limit=5`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (runningRes.ok) {
@@ -261,7 +262,7 @@ export default function Dashboard() {
         }
 
         // Fetch completed executions from today
-        const completedRes = await fetch('http://localhost:3000/api/workflow-executions?status=COMPLETED&limit=100', {
+        const completedRes = await fetch(`${API_URL}/workflow-executions?status=COMPLETED&limit=100`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (completedRes.ok) {
@@ -272,7 +273,7 @@ export default function Dashboard() {
         }
 
         // Fetch failed executions from today
-        const failedRes = await fetch('http://localhost:3000/api/workflow-executions?status=FAILED&limit=100', {
+        const failedRes = await fetch(`${API_URL}/workflow-executions?status=FAILED&limit=100`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (failedRes.ok) {
@@ -283,7 +284,7 @@ export default function Dashboard() {
         }
 
         // Count active workflows (excluding completed/failed)
-        const activeRes = await fetch('http://localhost:3000/api/workflows', {
+        const activeRes = await fetch(`${API_URL}/workflows`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (activeRes.ok) {
@@ -319,7 +320,7 @@ export default function Dashboard() {
 
   const handleTaskComplete = async (taskId: string) => {
     try {
-      const res = await fetch(`http://localhost:3000/api/tasks/${taskId}`, {
+      const res = await fetch(`${API_URL}/tasks/${taskId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
