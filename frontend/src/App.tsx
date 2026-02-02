@@ -39,6 +39,7 @@ import Calculator from './pages/Calculator';
 import Analytics from './pages/Analytics';
 import { Workflows } from './pages/Workflows';
 import WorkflowBuilder from './pages/WorkflowBuilder';
+import { WorkflowExecutions } from './pages/WorkflowExecutions';
 import { CommunicationTemplates } from './pages/CommunicationTemplates';
 import { CommunicationTemplateEditor } from './pages/CommunicationTemplateEditor';
 import { Communications } from './pages/Communications';
@@ -390,6 +391,7 @@ function ProtectedLayout() {
           <Route path="/calculator" element={<Calculator />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/workflows" element={<Workflows />} />
+          <Route path="/workflows/executions" element={<WorkflowExecutions />} />
           <Route path="/workflows/builder" element={<WorkflowBuilder />} />
           <Route path="/workflows/:id/edit" element={<WorkflowBuilder />} />
           <Route path="/settings" element={<Settings />} />

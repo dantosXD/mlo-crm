@@ -16,8 +16,8 @@ import {
   Pagination,
   Box,
   Modal,
-  DateInput,
 } from '@mantine/core';
+import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
 import {
   IconSearch,
@@ -179,14 +179,6 @@ export function Communications() {
     setPreviewOpened(true);
   };
 
-  const formatClientName = (encryptedName: string) => {
-    try {
-      return decryptData(encryptedName);
-    } catch {
-      return 'Encrypted Client';
-    }
-  };
-
   const rows = communications.map(comm => {
     const typeConfig = TYPE_CONFIG[comm.type] || { label: comm.type, color: 'gray' };
     const statusConfig = STATUS_CONFIG[comm.status] || { label: comm.status, color: 'gray' };
@@ -195,7 +187,7 @@ export function Communications() {
       <Table.Tr key={comm.id}>
         <Table.Td>
           <Text size="sm" fw={500}>
-            {formatClientName(comm.client.nameEncrypted)}
+            {comm.clientName}
           </Text>
         </Table.Td>
         <Table.Td>
@@ -217,8 +209,8 @@ export function Communications() {
         </Table.Td>
         <Table.Td>
           <Text size="sm">
-            {comm.scheduledFor
-              ? new Date(comm.scheduledFor).toLocaleDateString()
+            {comm.scheduledAt
+              ? new Date(comm.scheduledAt).toLocaleDateString()
               : comm.sentAt
               ? new Date(comm.sentAt).toLocaleDateString()
               : '-'}
@@ -399,7 +391,7 @@ export function Communications() {
             <Stack gap="md">
               <Group justify="space-between">
                 <Text size="xl" fw={600}>
-                  {formatClientName(previewCommunication.client.nameEncrypted)}
+                  {previewCommunication.clientName}
                 </Text>
                 <Group gap="xs">
                   <Badge
@@ -448,7 +440,7 @@ export function Communications() {
 
               <Group gap="md">
                 <Text size="sm" c="dimmed">
-                  Template: <strong>{previewCommunication.template?.name || 'None'}</strong>
+                  Template: <strong>{previewCommunication.templateName || 'None'}</strong>
                 </Text>
                 <Text size="sm" c="dimmed">
                   Created: <strong>{new Date(previewCommunication.createdAt).toLocaleString()}</strong>
@@ -458,9 +450,9 @@ export function Communications() {
                 </Text>
               </Group>
 
-              {previewCommunication.scheduledFor && (
+              {previewCommunication.scheduledAt && (
                 <Text size="sm" c="dimmed">
-                  Scheduled: <strong>{new Date(previewCommunication.scheduledFor).toLocaleString()}</strong>
+                  Scheduled: <strong>{new Date(previewCommunication.scheduledAt).toLocaleString()}</strong>
                 </Text>
               )}
 
