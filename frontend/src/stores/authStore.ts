@@ -170,16 +170,31 @@ export const useAuthStore = create<AuthState>()(
 
           const data = await response.json();
 
-          // Extract CSRF token from response headers
-          const csrfToken = response.headers.get('X-CSRF-Token');
-
+          // Set auth data first
           set({
             user: data.user,
             accessToken: data.accessToken,
             refreshToken: data.refreshToken,
-            csrfToken: csrfToken || null,
+            csrfToken: null,
             isAuthenticated: true,
           });
+
+          // Fetch CSRF token with authenticated request
+          try {
+            const csrfResponse = await fetch(`${API_URL}/auth/me`, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${data.accessToken}`,
+              },
+            });
+
+            const csrfToken = csrfResponse.headers.get('X-CSRF-Token');
+            if (csrfToken) {
+              set({ csrfToken });
+            }
+          } catch (csrfError) {
+            console.warn('Failed to fetch CSRF token during refresh:', csrfError);
+          }
 
           return true;
         } catch (error) {
