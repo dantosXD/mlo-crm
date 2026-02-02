@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticateToken, authorizeRoles, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
+import { previewTemplate, extractPlaceholders } from '../utils/placeholders.js';
 
 const router = Router();
 
@@ -863,6 +864,102 @@ router.post('/:id/send', async (req: AuthRequest, res: Response) => {
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to send communication',
+    });
+  }
+});
+
+// POST /api/communications/preview - Preview communication with placeholders filled
+router.post('/preview', async (req: AuthRequest, res: Response) => {
+  try {
+    const { clientId, body, subject, additionalContext } = req.body;
+    const userId = req.user?.userId;
+
+    // Validation
+    if (!clientId) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Client ID is required',
+      });
+    }
+
+    if (!body) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Message body is required',
+      });
+    }
+
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'User ID not found',
+      });
+    }
+
+    // Check if client exists
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+    });
+
+    if (!client) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Client not found',
+      });
+    }
+
+    // Preview body
+    const bodyPreview = await previewTemplate(
+      body,
+      clientId,
+      userId,
+      additionalContext
+    );
+
+    // Preview subject if provided
+    let subjectPreview = null;
+    if (subject) {
+      subjectPreview = await previewTemplate(
+        subject,
+        clientId,
+        userId,
+        additionalContext
+      );
+    }
+
+    res.json({
+      body: {
+        original: bodyPreview.original,
+        filled: bodyPreview.filled,
+        placeholders: bodyPreview.placeholders,
+        missing: bodyPreview.missing,
+      },
+      subject: subjectPreview
+        ? {
+            original: subjectPreview.original,
+            filled: subjectPreview.filled,
+            placeholders: subjectPreview.placeholders,
+            missing: subjectPreview.missing,
+          }
+        : null,
+      context: {
+        // Return safe context values (no sensitive data)
+        client_name: bodyPreview.context.client_name || '',
+        client_status: bodyPreview.context.client_status || '',
+        loan_officer_name: bodyPreview.context.loan_officer_name || '',
+        company_name: bodyPreview.context.company_name || '',
+        date: bodyPreview.context.date || '',
+        time: bodyPreview.context.time || '',
+        has_loan_amount: !!bodyPreview.context.loan_amount,
+        has_client_email: !!bodyPreview.context.client_email,
+        has_client_phone: !!bodyPreview.context.client_phone,
+      },
+    });
+  } catch (error) {
+    console.error('Error previewing communication:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to preview communication',
     });
   }
 });
