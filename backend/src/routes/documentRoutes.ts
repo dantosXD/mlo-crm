@@ -1,6 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
+import {
+  fireDocumentUploadedTrigger,
+  fireDocumentStatusChangedTrigger,
+} from '../services/triggerHandler.js';
 import crypto from 'crypto';
 import multer from 'multer';
 import path from 'path';
@@ -343,6 +347,9 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       },
     });
 
+    // Fire DOCUMENT_UPLOADED trigger
+    await fireDocumentUploadedTrigger(document.id, clientId, userId);
+
     res.status(201).json(document);
   } catch (error) {
     console.error('Error creating document:', error);
@@ -385,6 +392,17 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         notes: notes !== undefined ? notes : document.notes,
       },
     });
+
+    // Fire DOCUMENT_STATUS_CHANGED trigger if status changed
+    if (status && status !== document.status) {
+      await fireDocumentStatusChangedTrigger(
+        document.id,
+        document.clientId,
+        userId,
+        document.status,
+        status
+      );
+    }
 
     res.json(updatedDocument);
   } catch (error) {
