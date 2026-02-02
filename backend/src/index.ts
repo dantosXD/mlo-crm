@@ -13,6 +13,8 @@ import loanScenarioRoutes from './routes/loanScenarioRoutes.js';
 import activityRoutes from './routes/activityRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import workflowRoutes from './routes/workflowRoutes.js';
+import communicationRoutes from './routes/communicationRoutes.js';
+import communicationTemplateRoutes from './routes/communicationTemplateRoutes.js';
 
 // Load environment variables
 config();
@@ -67,6 +69,8 @@ app.get('/api', (_req, res) => {
       activities: '/api/activities/*',
       analytics: '/api/analytics/*',
       workflows: '/api/workflows/*',
+      communications: '/api/communications/*',
+      communicationTemplates: '/api/communication-templates/*',
     },
   });
 });
@@ -91,6 +95,12 @@ app.use('/api/notifications', notificationRoutes);
 
 // Workflow routes
 app.use('/api/workflows', workflowRoutes);
+
+// Communication routes
+app.use('/api/communications', communicationRoutes);
+
+// Communication template routes
+app.use('/api/communication-templates', communicationTemplateRoutes);
 
 // TODO: Implement remaining route modules
 // app.use('/api/analytics', analyticsRoutes);
