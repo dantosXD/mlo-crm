@@ -205,12 +205,14 @@ router.post('/', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest,
     }
 
     // In production, encrypt these values
+    // Sanitize name before storing in hash to prevent issues with special characters
+    const sanitizedName = trimmedName.replace(/<[^>]*>/g, '');
     const client = await prisma.client.create({
       data: {
         nameEncrypted: trimmedName,
         emailEncrypted: trimmedEmail,
         phoneEncrypted: trimmedPhone || '',
-        nameHash: trimmedName.toLowerCase(),
+        nameHash: sanitizedName.toLowerCase(),
         emailHash: trimmedEmail.toLowerCase(),
         phoneHash: trimmedPhone || '',
         status: status || 'LEAD',
@@ -225,7 +227,7 @@ router.post('/', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest,
         clientId: client.id,
         userId,
         type: 'CLIENT_CREATED',
-        description: `Client ${trimmedName} created`,
+        description: `Client ${sanitizedName} created`,
       },
     });
 
@@ -272,10 +274,12 @@ router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReques
       });
     }
 
+    // Sanitize name for hash field to prevent issues with special characters
+    const sanitizedName = name ? name.replace(/<[^>]*>/g, '') : undefined;
     const client = await prisma.client.update({
       where: { id },
       data: {
-        ...(name && { nameEncrypted: name, nameHash: name.toLowerCase() }),
+        ...(name && { nameEncrypted: name, nameHash: sanitizedName!.toLowerCase() }),
         ...(email && { emailEncrypted: email, emailHash: email.toLowerCase() }),
         ...(phone !== undefined && { phoneEncrypted: phone, phoneHash: phone }),
         ...(status && { status }),
@@ -283,13 +287,14 @@ router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReques
       },
     });
 
-    // Log activity
+    // Log activity (sanitize name to prevent XSS in activity logs)
+    const sanitizedName = (name || existingClient.nameEncrypted).replace(/<[^>]*>/g, '');
     await prisma.activity.create({
       data: {
         clientId: client.id,
         userId: userId!,
         type: 'CLIENT_UPDATED',
-        description: `Client ${name || existingClient.nameEncrypted} updated`,
+        description: `Client ${sanitizedName} updated`,
       },
     });
 
@@ -338,12 +343,13 @@ router.delete('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReq
 
     await prisma.client.delete({ where: { id } });
 
-    // Log activity
+    // Log activity (sanitize name to prevent XSS in activity logs)
+    const sanitizedName = existingClient.nameEncrypted.replace(/<[^>]*>/g, '');
     await prisma.activity.create({
       data: {
         userId: userId!,
         type: 'CLIENT_DELETED',
-        description: `Client ${existingClient.nameEncrypted} deleted`,
+        description: `Client ${sanitizedName} deleted`,
       },
     });
 
@@ -402,14 +408,15 @@ router.patch('/bulk', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReq
       data: { status },
     });
 
-    // Log activities
+    // Log activities (sanitize names to prevent XSS in activity logs)
     for (const client of clients) {
+      const sanitizedName = client.nameEncrypted.replace(/<[^>]*>/g, '');
       await prisma.activity.create({
         data: {
           clientId: client.id,
           userId: userId!,
           type: 'CLIENT_UPDATED',
-          description: `Client ${client.nameEncrypted} status changed to ${status}`,
+          description: `Client ${sanitizedName} status changed to ${status}`,
         },
       });
     }
