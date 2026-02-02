@@ -29,6 +29,7 @@ import {
   IconCheck,
   IconX,
   IconClock,
+  IconMail,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { API_URL } from '../utils/apiBase';
@@ -83,6 +84,30 @@ interface WorkflowAnalyticsData {
   timeSeries: Array<{ date: string; count: number }>;
 }
 
+interface CommunicationsAnalyticsData {
+  overview: {
+    totalCommunications: number;
+    totalAllTime: number;
+    sentCommunications: number;
+    draftCommunications: number;
+    readyCommunications: number;
+    failedCommunications: number;
+    sendRate: number;
+  };
+  countsByType: {
+    EMAIL: number;
+    SMS: number;
+    LETTER: number;
+  };
+  countsByStatus: {
+    DRAFT: number;
+    READY: number;
+    SENT: number;
+    FAILED: number;
+  };
+  timeSeries: Array<{ date: string; count: number; sent: number }>;
+}
+
 // Date range options
 const DATE_RANGE_OPTIONS = [
   { value: 'all', label: 'All Time' },
@@ -95,6 +120,7 @@ export default function Analytics() {
   const { accessToken } = useAuthStore();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [workflowData, setWorkflowData] = useState<WorkflowAnalyticsData | null>(null);
+  const [communicationsData, setCommunicationsData] = useState<CommunicationsAnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<string>('all');
@@ -102,6 +128,7 @@ export default function Analytics() {
   useEffect(() => {
     fetchAnalytics();
     fetchWorkflowAnalytics();
+    fetchCommunicationsAnalytics();
   }, [accessToken, dateRange]);
 
   const fetchAnalytics = async () => {
@@ -177,6 +204,23 @@ export default function Analytics() {
       }
     } catch (error) {
       console.error('Error fetching workflow analytics:', error);
+    }
+  };
+
+  const fetchCommunicationsAnalytics = async () => {
+    try {
+      const days = dateRange === 'all' ? '365' : dateRange; // Default to 1 year for "all"
+
+      const response = await fetch(`${API_URL}/analytics/communications?days=${days}&group_by=day`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCommunicationsData(data);
+      }
+    } catch (error) {
+      console.error('Error fetching communications analytics:', error);
     }
   };
 
@@ -582,6 +626,155 @@ export default function Analytics() {
                   </Text>
                   <Text size="sm" c="dimmed">
                     Workflow analytics will appear here once workflows are executed
+                  </Text>
+                </Stack>
+              </Card>
+            )}
+          </Stack>
+        ) : (
+          <Center py="xl">
+            <Loader size="lg" />
+          </Center>
+        )}
+      </Paper>
+
+      {/* Communications Analytics Section */}
+      <Paper shadow="xs" p="lg" withBorder mt="xl">
+        <Title order={3} mb="md">
+          <Group gap="xs">
+            <IconMail size={24} aria-hidden="true" />
+            Communications Analytics
+          </Group>
+        </Title>
+
+        {communicationsData ? (
+          <Stack gap="lg">
+            {/* Communications Summary Cards */}
+            <SimpleGrid cols={{ base: 2, sm: 4 }}>
+              <Card padding="lg" withBorder>
+                <Group justify="space-between">
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Total Communications
+                    </Text>
+                    <Text size="xl" fw={700}>
+                      {communicationsData.overview.totalCommunications}
+                    </Text>
+                  </div>
+                  <ThemeIcon size="lg" variant="light" color="blue">
+                    <IconMail size={20} aria-hidden="true" />
+                  </ThemeIcon>
+                </Group>
+              </Card>
+
+              <Card padding="lg" withBorder>
+                <Group justify="space-between">
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Sent
+                    </Text>
+                    <Text size="xl" fw={700} c="green">
+                      {communicationsData.overview.sentCommunications}
+                    </Text>
+                  </div>
+                  <ThemeIcon size="lg" variant="light" color="green">
+                    <IconCheck size={20} aria-hidden="true" />
+                  </ThemeIcon>
+                </Group>
+              </Card>
+
+              <Card padding="lg" withBorder>
+                <Group justify="space-between">
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Draft
+                    </Text>
+                    <Text size="xl" fw={700} c="gray">
+                      {communicationsData.overview.draftCommunications}
+                    </Text>
+                  </div>
+                  <ThemeIcon size="lg" variant="light" color="gray">
+                    <IconClock size={20} aria-hidden="true" />
+                  </ThemeIcon>
+                </Group>
+              </Card>
+
+              <Card padding="lg" withBorder>
+                <Group justify="space-between">
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Send Rate
+                    </Text>
+                    <Text size="xl" fw={700} c="blue">
+                      {communicationsData.overview.sendRate.toFixed(1)}%
+                    </Text>
+                  </div>
+                  <ThemeIcon size="lg" variant="light" color="blue">
+                    <IconTrendingUp size={20} aria-hidden="true" />
+                  </ThemeIcon>
+                </Group>
+              </Card>
+            </SimpleGrid>
+
+            {/* By Type and Status */}
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              <Card withBorder>
+                <Title order={5} mb="sm">
+                  By Type
+                </Title>
+                <Stack gap="sm">
+                  <Group justify="space-between">
+                    <Text size="sm">Email</Text>
+                    <Badge color="blue">{communicationsData.countsByType.EMAIL}</Badge>
+                  </Group>
+                  <Group justify="space-between">
+                    <Text size="sm">SMS</Text>
+                    <Badge color="cyan">{communicationsData.countsByType.SMS}</Badge>
+                  </Group>
+                  <Group justify="space-between">
+                    <Text size="sm">Letter</Text>
+                    <Badge color="grape">{communicationsData.countsByType.LETTER}</Badge>
+                  </Group>
+                </Stack>
+              </Card>
+
+              <Card withBorder>
+                <Title order={5} mb="sm">
+                  By Status
+                </Title>
+                <Stack gap="sm">
+                  <Group justify="space-between">
+                    <Text size="sm">Sent</Text>
+                    <Badge color="green">{communicationsData.countsByStatus.SENT}</Badge>
+                  </Group>
+                  <Group justify="space-between">
+                    <Text size="sm">Ready</Text>
+                    <Badge color="cyan">{communicationsData.countsByStatus.READY}</Badge>
+                  </Group>
+                  <Group justify="space-between">
+                    <Text size="sm">Draft</Text>
+                    <Badge color="gray">{communicationsData.countsByStatus.DRAFT}</Badge>
+                  </Group>
+                  <Group justify="space-between">
+                    <Text size="sm">Failed</Text>
+                    <Badge color="red">{communicationsData.countsByStatus.FAILED}</Badge>
+                  </Group>
+                </Stack>
+              </Card>
+            </SimpleGrid>
+
+            {/* Empty state for no communications data */}
+            {communicationsData.overview.totalCommunications === 0 && (
+              <Card withBorder>
+                <Stack align="center" gap="sm" py="xl">
+                  <ThemeIcon size={64} radius="xl" color="blue" variant="light">
+                    <IconMail size={32} aria-hidden="true" />
+                  </ThemeIcon>
+                  <Text size="lg" fw={600} c="dimmed">
+                    No communications yet
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    Communication analytics will appear here once you send messages
                   </Text>
                 </Stack>
               </Card>
