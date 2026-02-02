@@ -17,6 +17,7 @@ import {
   Box,
   Modal,
   Checkbox,
+  Tooltip,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
@@ -25,6 +26,8 @@ import {
   IconRefresh,
   IconEye,
   IconCalendar,
+  IconBell,
+  IconBellOff,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
@@ -103,6 +106,8 @@ export function Communications() {
   // Preview modal state
   const [previewOpened, setPreviewOpened] = useState(false);
   const [previewCommunication, setPreviewCommunication] = useState<Communication | null>(null);
+  const [editingFollowUpDate, setEditingFollowUpDate] = useState<Date | null>(null);
+  const [isSavingFollowUp, setIsSavingFollowUp] = useState(false);
 
   const canViewAll = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
@@ -189,7 +194,60 @@ export function Communications() {
 
   const handlePreview = (communication: Communication) => {
     setPreviewCommunication(communication);
+    setEditingFollowUpDate(communication.followUpDate ? new Date(communication.followUpDate) : null);
     setPreviewOpened(true);
+  };
+
+  const handleUpdateFollowUpDate = async () => {
+    if (!previewCommunication) return;
+
+    setIsSavingFollowUp(true);
+    try {
+      const response = await fetch(`${API_URL}/communications/${previewCommunication.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          followUpDate: editingFollowUpDate ? editingFollowUpDate.toISOString() : null,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update follow-up date');
+      }
+
+      notifications.show({
+        title: 'Success',
+        message: 'Follow-up date updated successfully',
+        color: 'green',
+      });
+
+      // Refresh the communication data
+      await fetchCommunications();
+
+      // Update the preview communication
+      const updatedComm = await response.json();
+      setPreviewCommunication({
+        ...previewCommunication,
+        followUpDate: updatedComm.followUpDate,
+      });
+    } catch (error) {
+      console.error('Error updating follow-up date:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update follow-up date',
+        color: 'red',
+      });
+    } finally {
+      setIsSavingFollowUp(false);
+    }
+  };
+
+  const handleClearFollowUp = async () => {
+    setEditingFollowUpDate(null);
+    await handleUpdateFollowUpDate();
   };
 
   const rows = communications.map(comm => {
@@ -493,6 +551,57 @@ export function Communications() {
                 <Text size="sm" c="dimmed">
                   Sent: <strong>{new Date(previewCommunication.sentAt).toLocaleString()}</strong>
                 </Text>
+              )}
+
+              {/* Follow-up Date Section */}
+              {previewCommunication.status !== 'SENT' && (
+                <Stack gap="xs" mt="md">
+                  <Group gap="sm" justify="space-between">
+                    <Text size="sm" fw={500} c="dimmed">
+                      Follow-up Reminder
+                    </Text>
+                    {(previewCommunication.followUpDate || editingFollowUpDate) && (
+                      <Tooltip label="Clear follow-up">
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          size="sm"
+                          onClick={handleClearFollowUp}
+                          disabled={isSavingFollowUp}
+                        >
+                          <IconBellOff size={14} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                  </Group>
+                  <Group gap="sm">
+                    <DateInput
+                      placeholder="Set follow-up date"
+                      value={editingFollowUpDate}
+                      onChange={setEditingFollowUpDate}
+                      leftSection={<IconCalendar size={14} />}
+                      minDate={new Date()}
+                      clearable
+                      style={{ flex: 1 }}
+                      disabled={isSavingFollowUp}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleUpdateFollowUpDate}
+                      loading={isSavingFollowUp}
+                      disabled={!editingFollowUpDate || editingFollowUpDate.getTime() === new Date(previewCommunication.followUpDate || 0).getTime()}
+                    >
+                      Set
+                    </Button>
+                  </Group>
+                  {previewCommunication.followUpDate && (
+                    <Text size="xs" c="blue">
+                      {editingFollowUpDate && editingFollowUpDate.getTime() === new Date(previewCommunication.followUpDate).getTime()
+                        ? `Follow-up set for ${new Date(previewCommunication.followUpDate).toLocaleDateString()}`
+                        : `Current: ${new Date(previewCommunication.followUpDate).toLocaleDateString()}`}
+                    </Text>
+                  )}
+                </Stack>
               )}
             </Stack>
           )}

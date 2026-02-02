@@ -93,7 +93,7 @@ export async function runScheduledWorkflows(scheduleType: string): Promise<void>
           // For scheduled workflows, we don't have a specific client
           // The workflow actions should handle what to do (e.g., send notifications, create reports, etc.)
           await executeWorkflow(workflow.id, {
-            clientId: null, // No specific client
+            clientId: undefined, // No specific client
             triggerType: 'SCHEDULED',
             triggerData: {
               schedule,

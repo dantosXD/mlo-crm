@@ -16,9 +16,14 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import workflowRoutes from './routes/workflowRoutes.js';
 import workflowExecutionRoutes from './routes/workflowExecutionRoutes.js';
 import workflowAnalyticsRoutes from './routes/workflowAnalyticsRoutes.js';
+import webhookRoutes from './routes/webhookRoutes.js';
 import communicationRoutes from './routes/communicationRoutes.js';
 import communicationTemplateRoutes from './routes/communicationTemplateRoutes.js';
 import { generateCsrfToken, validateCsrfToken } from './middleware/csrf.js';
+import {
+  checkOverdueTasks,
+  checkTaskDueDates,
+} from './services/triggerHandler.js';
 
 // Load environment variables
 config();
@@ -118,6 +123,9 @@ app.use('/api/communication-templates', validateCsrfToken, communicationTemplate
 // Analytics routes
 app.use('/api/analytics', validateCsrfToken, workflowAnalyticsRoutes);
 
+// Webhook routes (no authentication or CSRF - for external systems)
+app.use('/api/webhooks', webhookRoutes);
+
 // 404 handler
 app.use((_req, res) => {
   res.status(404).json({
@@ -149,6 +157,28 @@ app.listen(PORT, () => {
   ║  API:    http://localhost:${PORT}/api          ║
   ╚════════════════════════════════════════════╝
   `);
+
+  // Start scheduled job to check for overdue tasks (runs every hour)
+  setInterval(async () => {
+    try {
+      await checkOverdueTasks();
+      await checkTaskDueDates(1); // Check tasks due within 1 day
+    } catch (error) {
+      console.error('[Scheduled Jobs] Error checking task triggers:', error);
+    }
+  }, 60 * 60 * 1000); // Run every hour
+
+  // Run once on startup
+  setTimeout(async () => {
+    try {
+      console.log('[Scheduled Jobs] Running initial task trigger checks...');
+      await checkOverdueTasks();
+      await checkTaskDueDates(1);
+      console.log('[Scheduled Jobs] Initial task trigger checks completed');
+    } catch (error) {
+      console.error('[Scheduled Jobs] Error in initial task trigger checks:', error);
+    }
+  }, 5000); // Run 5 seconds after server starts
 });
 
 export default app;
