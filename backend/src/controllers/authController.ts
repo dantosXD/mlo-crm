@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import prisma from '../utils/prisma.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production-min-32-chars';
@@ -115,16 +116,21 @@ export async function login(req: Request, res: Response) {
       },
     });
 
-    return res.json({
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
-    });
+    // Generate CSRF token for the session
+    const csrfToken = crypto.randomBytes(32).toString('hex');
+
+    return res
+      .header('X-CSRF-Token', csrfToken)
+      .json({
+        accessToken,
+        refreshToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
+      });
   } catch (error) {
     console.error('Login error:', error);
     return res.status(500).json({
@@ -278,16 +284,21 @@ export async function refresh(req: Request, res: Response) {
       },
     });
 
-    return res.json({
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
-    });
+    // Generate new CSRF token for the session
+    const csrfToken = crypto.randomBytes(32).toString('hex');
+
+    return res
+      .header('X-CSRF-Token', csrfToken)
+      .json({
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
+      });
   } catch (error) {
     console.error('Refresh error:', error);
     return res.status(500).json({
