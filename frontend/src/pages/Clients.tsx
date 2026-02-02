@@ -24,12 +24,13 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar, IconDownload, IconEyeOff } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar, IconDownload, IconEyeOff, IconMail } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
 import { canWriteClients } from '../utils/roleUtils';
 import { handleFetchError, fetchWithErrorHandling } from '../utils/errorHandler';
 import { API_URL } from '../utils/apiBase';
+import { BulkCommunicationComposer } from './BulkCommunicationComposer';
 
 interface Client {
   id: string;
@@ -142,6 +143,7 @@ export default function Clients() {
   const [bulkStatusModalOpen, setBulkStatusModalOpen] = useState(false);
   const [bulkStatus, setBulkStatus] = useState<string | null>(null);
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkComposeModalOpen, setBulkComposeModalOpen] = useState(false);
 
   // Navigate to client details while storing current filter state
   const navigateToClient = (clientId: string) => {
@@ -564,6 +566,13 @@ export default function Clients() {
               <Group gap="sm">
                 <Button
                   size="sm"
+                  leftSection={<IconMail size={14} />}
+                  onClick={() => setBulkComposeModalOpen(true)}
+                >
+                  Compose Message
+                </Button>
+                <Button
+                  size="sm"
                   onClick={() => setBulkStatusModalOpen(true)}
                 >
                   Change Status
@@ -906,6 +915,13 @@ export default function Clients() {
             </Group>
           </Stack>
         </Modal>
+
+        {/* Bulk Communication Composer Modal */}
+        <BulkCommunicationComposer
+          opened={bulkComposeModalOpen}
+          onClose={() => setBulkComposeModalOpen(false)}
+          clientIds={selectedClientIds}
+        />
       </Container>
     </Box>
   );
