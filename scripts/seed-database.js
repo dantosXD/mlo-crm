@@ -1,5 +1,16 @@
-import { PrismaClient } from './backend/node_modules/@prisma/client/index.js';
-import bcrypt from './backend/node_modules/bcryptjs/index.js';
+/**
+ * Database Seed Script
+ *
+ * This script seeds the database with test users for development and testing.
+ * Run with: npx tsx scripts/seed-database.js
+ *
+ * Test Credentials:
+ * - Email: admin@example.com
+ * - Password: password123
+ */
+
+import { PrismaClient } from '../backend/node_modules/@prisma/client/index.js';
+import bcrypt from '../backend/node_modules/bcryptjs/index.js';
 
 const prisma = new PrismaClient();
 
@@ -19,7 +30,7 @@ async function main() {
 
     const user = await prisma.user.upsert({
       where: { email: userData.email },
-      update: {},
+      update: { passwordHash }, // Update password hash to ensure it uses bcrypt with 12 rounds
       create: {
         email: userData.email,
         passwordHash,
@@ -28,7 +39,7 @@ async function main() {
       },
     });
 
-    console.log(`✅ Created user: ${user.email} (${user.role})`);
+    console.log(`✅ ${user.email} (${user.role})`);
   }
 
   console.log('\n🎉 Database seeding completed!');

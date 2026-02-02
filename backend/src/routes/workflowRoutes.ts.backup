@@ -31,8 +31,8 @@ const validateConditions = (conditions: any): boolean => {
   return true;
 };
 
-// GET /api/workflows - List workflows with filtering and pagination
-router.get('/', async (req: AuthRequest, res: Response) => {
+// GET /api/workflows/meta/trigger-types - Get available trigger types (MUST come before /:id route)
+router.get('/meta/trigger-types', async (req: AuthRequest, res: Response) => {
   try {
     const {
       page = '1',
@@ -64,8 +64,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     if (search) {
       where.OR = [
-        { name: { contains: search as string } },
-        { description: { contains: search as string } },
+        { name: { contains: search as string, mode: 'insensitive' } },
+        { description: { contains: search as string, mode: 'insensitive' } },
       ];
     }
 
@@ -123,7 +123,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// GET /api/workflows/meta/trigger-types - Get available trigger types (MUST come before /:id route!)
+// GET /api/workflows/meta/trigger-types - Get available trigger types (MUST come before /:id route)
 router.get('/meta/trigger-types', async (req: AuthRequest, res: Response) => {
   try {
     const triggerTypes = [
@@ -221,7 +221,7 @@ router.get('/meta/trigger-types', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// GET /api/workflows/meta/action-types - Get available action types (MUST come before /:id route!)
+// GET /api/workflows/meta/action-types - Get available action types (MUST come before /:id route)
 router.get('/meta/action-types', async (req: AuthRequest, res: Response) => {
   try {
     const actionTypes = [
