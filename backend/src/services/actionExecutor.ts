@@ -1650,10 +1650,345 @@ export async function executeCallWebhook(
 }
 
 /**
+ * Note action configuration
+ */
+interface NoteActionConfig {
+  text?: string; // Note content
+  templateId?: string; // Note template to use
+  tags?: string[]; // Tags to add to the note
+  isPinned?: boolean; // Whether to pin the note
+}
+
+/**
+ * Execute CREATE_NOTE action
+ * Creates a note attached to the client
+ */
+export async function executeCreateNote(
+  config: NoteActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  try {
+    // Get template if provided
+    let text = config.text;
+    let templateName = '';
+
+    if (config.templateId) {
+      const template = await prisma.noteTemplate.findUnique({
+        where: { id: config.templateId },
+      });
+
+      if (!template) {
+        return {
+          success: false,
+          message: `Note template not found: ${config.templateId}`,
+        };
+      }
+
+      templateName = template.name;
+      text = template.content || text;
+    }
+
+    if (!text) {
+      return {
+        success: false,
+        message: 'Note text is required (either provide text or templateId)',
+      };
+    }
+
+    // Get client data for placeholder replacement
+    const client = await getClientData(context.clientId);
+    const placeholderContext = {
+      ...context,
+      clientData: client,
+    };
+
+    // Replace placeholders in note text
+    const finalText = replacePlaceholders(text, placeholderContext);
+
+    // Prepare tags
+    const tags = config.tags || [];
+
+    // Create note
+    const note = await prisma.note.create({
+      data: {
+        clientId: context.clientId,
+        text: finalText,
+        tags: JSON.stringify(tags),
+        isPinned: config.isPinned || false,
+        createdById: context.userId,
+      },
+    });
+
+    // Log activity
+    await prisma.activity.create({
+      data: {
+        clientId: context.clientId,
+        userId: context.userId,
+        type: 'NOTE_ADDED',
+        description: `Note created via workflow${templateName ? ` from template: ${templateName}` : ''}`,
+        metadata: JSON.stringify({
+          noteId: note.id,
+          templateName,
+          tags,
+          isPinned: note.isPinned,
+        }),
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Note created successfully',
+      data: {
+        noteId: note.id,
+        text: finalText,
+        tags,
+        isPinned: note.isPinned,
+        templateName,
+      },
+    };
+  } catch (error) {
+    console.error('Error executing CREATE_NOTE action:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to create note',
+    };
+  }
+}
+
+/**
+ * Notification action configuration
+ */
+interface NotificationActionConfig {
+  title?: string; // Notification title
+  message?: string; // Notification message (required)
+  toUserId?: string; // Specific user to notify
+  toRole?: string; // Role of users to notify
+  link?: string; // Optional link to navigate to when clicked
+}
+
+/**
+ * Execute SEND_NOTIFICATION action
+ * Sends an in-app notification to users
+ */
+export async function executeSendNotification(
+  config: NotificationActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  try {
+    if (!config.message) {
+      return {
+        success: false,
+        message: 'Notification message is required',
+      };
+    }
+
+    // Get client data for placeholder replacement
+    const client = await getClientData(context.clientId);
+    const placeholderContext = {
+      ...context,
+      clientData: client,
+    };
+
+    // Replace placeholders in message and title
+    const finalMessage = replacePlaceholders(config.message, placeholderContext);
+    const finalTitle = config.title
+      ? replacePlaceholders(config.title, placeholderContext)
+      : 'Notification';
+
+    // Determine recipients
+    let recipientIds: string[] = [];
+
+    if (config.toUserId) {
+      // Single user
+      recipientIds = [config.toUserId];
+    } else if (config.toRole) {
+      // All users with specified role
+      const users = await prisma.user.findMany({
+        where: {
+          role: config.toRole,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      recipientIds = users.map((u) => u.id);
+    } else {
+      // Default to workflow creator
+      recipientIds = [context.userId];
+    }
+
+    if (recipientIds.length === 0) {
+      return {
+        success: false,
+        message: `No active users found to notify${config.toRole ? ` with role: ${config.toRole}` : ''}`,
+      };
+    }
+
+    // Create notifications for all recipients
+    const notificationPromises = recipientIds.map((userId) =>
+      prisma.notification.create({
+        data: {
+          userId,
+          title: finalTitle,
+          message: finalMessage,
+          type: 'WORKFLOW',
+          link: config.link || `/clients/${context.clientId}`,
+          metadata: JSON.stringify({
+            clientId: context.clientId,
+            clientName: client.name,
+            workflow: true,
+          }),
+        },
+      })
+    );
+
+    const notifications = await Promise.all(notificationPromises);
+
+    // Log activity
+    await prisma.activity.create({
+      data: {
+        clientId: context.clientId,
+        userId: context.userId,
+        type: 'NOTIFICATION_SENT',
+        description: `In-app notification sent to ${recipientIds.length} user(s) via workflow: ${finalTitle}`,
+        metadata: JSON.stringify({
+          notificationIds: notifications.map((n) => n.id),
+          recipientIds,
+          title: finalTitle,
+          message: finalMessage,
+        }),
+      },
+    });
+
+    return {
+      success: true,
+      message: `Notification sent to ${recipientIds.length} user(s)`,
+      data: {
+        notificationIds: notifications.map((n) => n.id),
+        recipientIds,
+        title: finalTitle,
+        message: finalMessage,
+      },
+    };
+  } catch (error) {
+    console.error('Error executing SEND_NOTIFICATION action:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to send notification',
+    };
+  }
+}
+
+/**
+ * Activity log action configuration
+ */
+interface ActivityActionConfig {
+  type?: string; // Activity type (defaults to WORKFLOW_ACTION)
+  description?: string; // Activity description
+  metadata?: Record<string, any>; // Additional metadata
+}
+
+/**
+ * Execute LOG_ACTIVITY action
+ * Logs a custom activity entry
+ */
+export async function executeLogActivity(
+  config: ActivityActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  try {
+    if (!config.description) {
+      return {
+        success: false,
+        message: 'Activity description is required',
+      };
+    }
+
+    // Get client data for placeholder replacement
+    const client = await getClientData(context.clientId);
+    const placeholderContext = {
+      ...context,
+      clientData: client,
+    };
+
+    // Replace placeholders in description
+    const finalDescription = replacePlaceholders(config.description, placeholderContext);
+
+    // Create activity log
+    const activity = await prisma.activity.create({
+      data: {
+        clientId: context.clientId,
+        userId: context.userId,
+        type: config.type || 'WORKFLOW_ACTION',
+        description: finalDescription,
+        metadata: config.metadata ? JSON.stringify(config.metadata) : null,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Activity logged successfully',
+      data: {
+        activityId: activity.id,
+        type: activity.type,
+        description: finalDescription,
+      },
+    };
+  } catch (error) {
+    console.error('Error executing LOG_ACTIVITY action:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to log activity',
+    };
+  }
+}
+
+/**
  * Sleep utility for retry delays
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Main dispatcher for notification actions
+ * Routes to the appropriate executor based on action type
+ */
+export async function executeNotificationAction(
+  actionType: string,
+  config: NotificationActionConfig | ActivityActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  switch (actionType) {
+    case 'SEND_NOTIFICATION':
+      return executeSendNotification(config as NotificationActionConfig, context);
+    case 'LOG_ACTIVITY':
+      return executeLogActivity(config as ActivityActionConfig, context);
+    default:
+      return {
+        success: false,
+        message: `Unknown notification action type: ${actionType}`,
+      };
+  }
+}
+
+/**
+ * Main dispatcher for note actions
+ * Routes to the appropriate executor based on action type
+ */
+export async function executeNoteAction(
+  actionType: string,
+  config: NoteActionConfig,
+  context: ExecutionContext
+): Promise<ActionResult> {
+  switch (actionType) {
+    case 'CREATE_NOTE':
+      return executeCreateNote(config, context);
+    default:
+      return {
+        success: false,
+        message: `Unknown note action type: ${actionType}`,
+      };
+  }
 }
 
 /**

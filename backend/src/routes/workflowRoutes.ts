@@ -360,9 +360,9 @@ router.get('/meta/action-types', async (req: AuthRequest, res: Response) => {
         ],
       },
       {
-        type: 'WEBHOOK',
-        label: 'Webhook',
-        description: 'Send data to an external webhook',
+        type: 'CALL_WEBHOOK',
+        label: 'Call Webhook',
+        description: 'Call an external webhook/API with optional retry logic',
         configFields: [
           {
             name: 'url',
@@ -374,14 +374,47 @@ router.get('/meta/action-types', async (req: AuthRequest, res: Response) => {
             name: 'method',
             type: 'select',
             label: 'HTTP Method',
-            options: ['POST', 'PUT', 'PATCH'],
+            options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
             default: 'POST',
           },
           {
             name: 'headers',
             type: 'json',
             label: 'Headers',
-            description: 'JSON object of headers',
+            description: 'JSON object of headers (e.g., {"Authorization": "Bearer token"})',
+          },
+          {
+            name: 'bodyTemplate',
+            type: 'textarea',
+            label: 'Body Template',
+            description: 'JSON body template with placeholders (use {{client_name}}, {{client_email}}, etc.)',
+          },
+          {
+            name: 'retryOnFailure',
+            type: 'checkbox',
+            label: 'Retry on Failure',
+            default: true,
+          },
+          {
+            name: 'maxRetries',
+            type: 'number',
+            label: 'Max Retries',
+            default: 3,
+            description: 'Maximum number of retry attempts',
+          },
+          {
+            name: 'retryDelaySeconds',
+            type: 'number',
+            label: 'Retry Delay (seconds)',
+            default: 5,
+            description: 'Delay between retry attempts',
+          },
+          {
+            name: 'timeoutSeconds',
+            type: 'number',
+            label: 'Timeout (seconds)',
+            default: 30,
+            description: 'Request timeout in seconds',
           },
         ],
       },
@@ -750,7 +783,15 @@ if (process.env.NODE_ENV === 'development') {
   router.post('/test-action', async (req: AuthRequest, res: Response) => {
     try {
       const { actionType, config, context } = req.body;
-      const { executeDocumentAction, executeCommunicationAction, executeTaskAction, executeClientAction } = await import('../services/actionExecutor.js');
+      const {
+        executeDocumentAction,
+        executeCommunicationAction,
+        executeTaskAction,
+        executeClientAction,
+        executeNoteAction,
+        executeNotificationAction,
+        executeWebhookAction
+      } = await import('../services/actionExecutor.js');
 
       if (!actionType || !config || !context) {
         return res.status(400).json({
@@ -765,6 +806,9 @@ if (process.env.NODE_ENV === 'development') {
       const communicationActions = ['SEND_EMAIL', 'SEND_SMS', 'GENERATE_LETTER'];
       const taskActions = ['CREATE_TASK', 'COMPLETE_TASK', 'ASSIGN_TASK'];
       const clientActions = ['UPDATE_CLIENT_STATUS', 'ADD_TAG', 'REMOVE_TAG', 'ASSIGN_CLIENT'];
+      const noteActions = ['CREATE_NOTE'];
+      const notificationActions = ['SEND_NOTIFICATION', 'LOG_ACTIVITY'];
+      const webhookActions = ['CALL_WEBHOOK'];
 
       if (documentActions.includes(actionType)) {
         result = await executeDocumentAction(actionType, config, context);
@@ -774,6 +818,12 @@ if (process.env.NODE_ENV === 'development') {
         result = await executeTaskAction(actionType, config, context);
       } else if (clientActions.includes(actionType)) {
         result = await executeClientAction(actionType, config, context);
+      } else if (noteActions.includes(actionType)) {
+        result = await executeNoteAction(actionType, config, context);
+      } else if (notificationActions.includes(actionType)) {
+        result = await executeNotificationAction(actionType, config, context);
+      } else if (webhookActions.includes(actionType)) {
+        result = await executeWebhookAction(actionType, config, context);
       } else {
         return res.status(400).json({
           error: 'Bad Request',
