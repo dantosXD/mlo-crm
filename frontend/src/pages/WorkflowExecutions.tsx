@@ -32,6 +32,8 @@ import {
   IconLoader,
   IconBan,
   IconCircle,
+  IconPlayerPause,
+  IconPlayerPlay,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -114,6 +116,7 @@ const STATUS_COLORS: Record<string, string> = {
 const STATUS_ICONS: Record<string, any> = {
   PENDING: IconClock,
   RUNNING: IconLoader,
+  PAUSED: IconPlayerPause,
   COMPLETED: IconCheck,
   FAILED: IconCircleX,
   CANCELLED: IconBan,
@@ -149,6 +152,8 @@ export function WorkflowExecutions() {
   const [selectedExecution, setSelectedExecution] = useState<ExecutionDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [pausing, setPausing] = useState<string | null>(null);
+  const [resuming, setResuming] = useState<string | null>(null);
 
   // Read URL query params on mount
   useEffect(() => {
@@ -283,6 +288,82 @@ export function WorkflowExecutions() {
     }
   };
 
+  const pauseExecution = async (executionId: string) => {
+    setPausing(executionId);
+    try {
+      const response = await fetch(`${API_URL}/workflows/executions/${executionId}/pause`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to pause execution');
+      }
+
+      notifications.show({
+        title: 'Success',
+        message: 'Execution paused successfully',
+        color: 'green',
+      });
+
+      // Refresh executions and detail
+      fetchExecutions();
+      if (selectedExecution && selectedExecution.id === executionId) {
+        viewExecutionDetails(executionId);
+      }
+    } catch (error) {
+      console.error('Error pausing execution:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to pause execution',
+        color: 'red',
+      });
+    } finally {
+      setPausing(null);
+    }
+  };
+
+  const resumeExecution = async (executionId: string) => {
+    setResuming(executionId);
+    try {
+      const response = await fetch(`${API_URL}/workflows/executions/${executionId}/resume`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to resume execution');
+      }
+
+      notifications.show({
+        title: 'Success',
+        message: 'Execution resumed successfully',
+        color: 'green',
+      });
+
+      // Refresh executions and detail
+      fetchExecutions();
+      if (selectedExecution && selectedExecution.id === executionId) {
+        viewExecutionDetails(executionId);
+      }
+    } catch (error) {
+      console.error('Error resuming execution:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to resume execution',
+        color: 'red',
+      });
+    } finally {
+      setResuming(null);
+    }
+  };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
@@ -351,6 +432,30 @@ export function WorkflowExecutions() {
           >
             View
           </Button>
+          {execution.status === 'RUNNING' && (
+            <Button
+              size="xs"
+              variant="light"
+              color="orange"
+              leftSection={<IconPlayerPause size={14} />}
+              loading={pausing === execution.id}
+              onClick={() => pauseExecution(execution.id)}
+            >
+              Pause
+            </Button>
+          )}
+          {execution.status === 'PAUSED' && (
+            <Button
+              size="xs"
+              variant="light"
+              color="green"
+              leftSection={<IconPlayerPlay size={14} />}
+              loading={resuming === execution.id}
+              onClick={() => resumeExecution(execution.id)}
+            >
+              Resume
+            </Button>
+          )}
           {(execution.status === 'RUNNING' || execution.status === 'PENDING') && (
             <Button
               size="xs"
@@ -528,6 +633,26 @@ export function WorkflowExecutions() {
                     </Alert>
                   )}
 
+                  {selectedExecution.status === 'RUNNING' && (
+                    <Button
+                      color="orange"
+                      leftSection={<IconPlayerPause size={14} />}
+                      loading={pausing === selectedExecution.id}
+                      onClick={() => pauseExecution(selectedExecution.id)}
+                    >
+                      Pause Execution
+                    </Button>
+                  )}
+                  {selectedExecution.status === 'PAUSED' && (
+                    <Button
+                      color="green"
+                      leftSection={<IconPlayerPlay size={14} />}
+                      loading={resuming === selectedExecution.id}
+                      onClick={() => resumeExecution(selectedExecution.id)}
+                    >
+                      Resume Execution
+                    </Button>
+                  )}
                   {(selectedExecution.status === 'RUNNING' || selectedExecution.status === 'PENDING') && (
                     <Button
                       color="red"

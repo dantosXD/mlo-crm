@@ -1,4 +1,4 @@
-const bcrypt = require('./backend/node_modules/bcrypt');
+const bcrypt = require('./backend/node_modules/bcryptjs');
 const { PrismaClient } = require('./backend/node_modules/@prisma/client');
 const prisma = new PrismaClient();
 
@@ -11,7 +11,7 @@ async function main() {
     create: {
       email: 'workflowtest@example.com',
       name: 'Workflow Test Manager',
-      password: hashedPassword,
+      passwordHash: hashedPassword,
       role: 'MANAGER',
       isActive: true,
     }

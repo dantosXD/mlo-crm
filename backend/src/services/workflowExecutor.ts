@@ -676,6 +676,260 @@ export async function getExecutionLogs(
 }
 
 /**
+ * Resume a paused workflow execution
+ * @param executionId - ID of the execution to resume
+ * @param context - Execution context
+ * @returns Execution result
+ */
+export async function resumeWorkflowExecution(
+  executionId: string,
+  context: ExecutionContext
+): Promise<ExecutionResult> {
+  try {
+    // Fetch execution
+    const execution = await prisma.workflowExecution.findUnique({
+      where: { id: executionId },
+      include: {
+        workflow: true,
+      },
+    });
+
+    if (!execution) {
+      return {
+        success: false,
+        status: 'FAILED',
+        message: 'Workflow execution not found',
+      };
+    }
+
+    if (execution.status !== 'PAUSED' && execution.status !== 'RUNNING') {
+      return {
+        success: false,
+        status: 'FAILED',
+        message: `Cannot resume execution with status ${execution.status}`,
+      };
+    }
+
+    // Fetch workflow
+    const workflow = execution.workflow;
+
+    if (!workflow.isActive) {
+      return {
+        success: false,
+        status: 'FAILED',
+        message: 'Workflow is not active',
+      };
+    }
+
+    // Parse workflow actions
+    const actions = JSON.parse(workflow.actions);
+    const logs: any[] = execution.logs ? JSON.parse(execution.logs) : [];
+
+    // Resume from current step (continue from where we left off)
+    const startStep = execution.currentStep;
+
+    for (let i = startStep; i < actions.length; i++) {
+      const action = actions[i];
+      const actionType = action.type;
+
+      // Check if execution was paused or cancelled while running
+      const currentExecution = await prisma.workflowExecution.findUnique({
+        where: { id: executionId },
+      });
+
+      if (!currentExecution || currentExecution.status === 'PAUSED') {
+        // Execution was paused, stop here
+        return {
+          success: true,
+          status: 'PAUSED',
+          message: 'Execution paused at step ' + i,
+        };
+      }
+
+      if (currentExecution.status === 'CANCELLED') {
+        return {
+          success: false,
+          status: 'CANCELLED',
+          message: 'Execution was cancelled',
+        };
+      }
+
+      try {
+        // Update current step
+        await prisma.workflowExecution.update({
+          where: { id: executionId },
+          data: { currentStep: i },
+        });
+
+        // Execute action based on type
+        let actionResult: any;
+        const actionCategory = getActionCategory(actionType);
+
+        const actionContext: ActionExecutionContext = {
+          clientId: context.clientId || '',
+          triggerType: context.triggerType,
+          triggerData: context.triggerData || {},
+          userId: context.userId,
+        };
+
+        switch (actionCategory) {
+          case 'document':
+            actionResult = await executeDocumentAction(actionType, action.config || {}, actionContext);
+            break;
+          case 'communication':
+            actionResult = await executeCommunicationAction(actionType, action.config || {}, actionContext);
+            break;
+          case 'task':
+            actionResult = await executeTaskAction(actionType, action.config || {}, actionContext);
+            break;
+          case 'client':
+            actionResult = await executeClientAction(actionType, action.config || {}, actionContext);
+            break;
+          case 'note':
+            actionResult = await executeNoteAction(actionType, action.config || {}, actionContext);
+            break;
+          case 'notification':
+            actionResult = await executeNotificationAction(actionType, action.config || {}, actionContext);
+            break;
+          case 'flowControl':
+            actionResult = await executeFlowControlAction(actionType, action.config || {}, actionContext);
+            break;
+          case 'webhook':
+            actionResult = await executeWebhookAction(actionType, action.config || {}, actionContext);
+            break;
+          default:
+            throw new Error(`Unknown action type: ${actionType}`);
+        }
+
+        // Log action execution
+        const logEntry = {
+          stepIndex: i,
+          actionType,
+          status: actionResult.success ? 'SUCCESS' : 'FAILED',
+          inputData: action.config || {},
+          outputData: actionResult.data || {},
+          errorMessage: actionResult.error || null,
+        };
+
+        logs.push(logEntry);
+
+        // Create execution log record
+        await prisma.workflowExecutionLog.create({
+          data: {
+            executionId,
+            stepIndex: i,
+            actionType,
+            status: actionResult.success ? 'SUCCESS' : 'FAILED',
+            inputData: JSON.stringify(action.config || {}),
+            outputData: JSON.stringify(actionResult.data || {}),
+            errorMessage: actionResult.error || null,
+          },
+        });
+
+        // Update execution logs
+        await prisma.workflowExecution.update({
+          where: { id: executionId },
+          data: { logs: JSON.stringify(logs) },
+        });
+
+        // If action failed, stop execution
+        if (!actionResult.success) {
+          await prisma.workflowExecution.update({
+            where: { id: executionId },
+            data: {
+              status: 'FAILED',
+              completedAt: new Date(),
+              errorMessage: actionResult.error || 'Action failed',
+            },
+          });
+
+          return {
+            success: false,
+            status: 'FAILED',
+            message: `Action ${actionType} failed: ${actionResult.error}`,
+          };
+        }
+
+        // Handle WAIT action special case - can be paused during wait
+        if (actionType === 'WAIT' && actionResult.paused) {
+          await prisma.workflowExecution.update({
+            where: { id: executionId },
+            data: { status: 'PAUSED' },
+          });
+
+          return {
+            success: true,
+            status: 'PAUSED',
+            message: 'Execution paused during WAIT action',
+          };
+        }
+
+      } catch (actionError) {
+        const errorMessage = actionError instanceof Error ? actionError.message : 'Unknown error';
+
+        logs.push({
+          stepIndex: i,
+          actionType,
+          status: 'FAILED',
+          inputData: action.config || {},
+          outputData: {},
+          errorMessage: errorMessage,
+        });
+
+        await prisma.workflowExecution.update({
+          where: { id: executionId },
+          data: {
+            status: 'FAILED',
+            completedAt: new Date(),
+            errorMessage: errorMessage,
+            logs: JSON.stringify(logs),
+          },
+        });
+
+        return {
+          success: false,
+          status: 'FAILED',
+          message: `Action ${actionType} failed: ${errorMessage}`,
+        };
+      }
+    }
+
+    // All actions completed successfully
+    await prisma.workflowExecution.update({
+      where: { id: executionId },
+      data: {
+        status: 'COMPLETED',
+        completedAt: new Date(),
+        currentStep: actions.length,
+      },
+    });
+
+    return {
+      success: true,
+      status: 'COMPLETED',
+      message: 'Workflow execution resumed and completed successfully',
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    await prisma.workflowExecution.update({
+      where: { id: executionId },
+      data: {
+        status: 'FAILED',
+        completedAt: new Date(),
+        errorMessage: errorMessage,
+      },
+    });
+
+    return {
+      success: false,
+      status: 'FAILED',
+      message: `Failed to resume execution: ${errorMessage}`,
+    };
+  }
+}
+
+/**
  * Determine action category based on action type
  */
 function getActionCategory(actionType: string): string {

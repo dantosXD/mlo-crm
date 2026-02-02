@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "exportedAt": "2026-02-02T18:00:00.000Z",
+  "workflow": {
+    "name": "Test Import Workflow",
+    "description": "Testing workflow import functionality",
+    "isActive": false,
+    "isTemplate": false,
+    "triggerType": "MANUAL",
+    "triggerConfig": {},
+    "conditions": null,
+    "actions": [
+      {
+        "type": "SEND_NOTIFICATION",
+        "config": {
+          "title": "Test Notification",
+          "message": "This workflow was imported successfully!"
+        }
+      }
+    ],
+    "version": 1
+  }
+}

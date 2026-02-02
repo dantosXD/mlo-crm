@@ -15,6 +15,9 @@ import {
   Container,
   Pagination,
   Box,
+  Modal,
+  Checkbox,
+  FileButton,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -26,6 +29,9 @@ import {
   IconPlayerPlay,
   IconHistory,
   IconPlus,
+  IconCopy,
+  IconDownload,
+  IconUpload,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
@@ -88,6 +94,12 @@ export function Workflows() {
   });
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [cloning, setCloning] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importAsTemplate, setImportAsTemplate] = useState(false);
 
   const canManageWorkflows = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
@@ -239,6 +251,54 @@ export function Workflows() {
     }
   };
 
+  const handleClone = async (id: string, name: string) => {
+    if (!canManageWorkflows) {
+      notifications.show({
+        title: 'Access Denied',
+        message: 'You do not have permission to clone workflows',
+        color: 'red',
+      });
+      return;
+    }
+
+    setCloning(id);
+    try {
+      const response = await fetch(`${API_URL}/workflows/${id}/clone`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to clone workflow');
+      }
+
+      const clonedWorkflow = await response.json();
+
+      notifications.show({
+        title: 'Success',
+        message: `Workflow "${name}" cloned successfully`,
+        color: 'green',
+      });
+
+      fetchWorkflows();
+
+      // Navigate to edit the cloned workflow
+      navigate(`/workflows/${clonedWorkflow.id}/edit`);
+    } catch (error) {
+      console.error('Error cloning workflow:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to clone workflow',
+        color: 'red',
+      });
+    } finally {
+      setCloning(null);
+    }
+  };
+
   const handleRun = async (id: string) => {
     notifications.show({
       title: 'Coming Soon',
@@ -249,6 +309,108 @@ export function Workflows() {
 
   const handleViewExecutions = (id: string) => {
     navigate(`/workflows/executions?workflow_id=${id}`);
+  };
+
+  const handleExport = async (id: string, name: string) => {
+    setExporting(id);
+    try {
+      const response = await fetch(`${API_URL}/workflows/${id}/export`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to export workflow');
+      }
+
+      // Get the blob from response
+      const blob = await response.blob();
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${name.replace(/[^a-z0-9]/gi, '_')}_workflow.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      notifications.show({
+        title: 'Success',
+        message: `Workflow "${name}" exported successfully`,
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error exporting workflow:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to export workflow',
+        color: 'red',
+      });
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) {
+      notifications.show({
+        title: 'Error',
+        message: 'Please select a file to import',
+        color: 'red',
+      });
+      return;
+    }
+
+    setImporting(true);
+    try {
+      // Read file
+      const text = await importFile.text();
+      const workflowData = JSON.parse(text);
+
+      // Send to API
+      const response = await fetch(`${API_URL}/workflows/import`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workflowData,
+          asTemplate: importAsTemplate,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to import workflow');
+      }
+
+      const importedWorkflow = await response.json();
+
+      notifications.show({
+        title: 'Success',
+        message: `Workflow "${importedWorkflow.name}" imported successfully`,
+        color: 'green',
+      });
+
+      // Close modal and refresh
+      setImportModalOpen(false);
+      setImportFile(null);
+      setImportAsTemplate(false);
+      fetchWorkflows();
+    } catch (error) {
+      console.error('Error importing workflow:', error);
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to import workflow',
+        color: 'red',
+      });
+    } finally {
+      setImporting(false);
+    }
   };
 
   const rows = workflows.map((workflow) => (
@@ -307,6 +469,16 @@ export function Workflows() {
           </ActionIcon>
           <ActionIcon
             variant="subtle"
+            color="cyan"
+            onClick={() => handleClone(workflow.id, workflow.name)}
+            disabled={cloning === workflow.id || !canManageWorkflows}
+            title="Clone"
+            loading={cloning === workflow.id}
+          >
+            <IconCopy size={16} />
+          </ActionIcon>
+          <ActionIcon
+            variant="subtle"
             color="green"
             onClick={() => handleRun(workflow.id)}
             title="Run Now"
@@ -320,6 +492,16 @@ export function Workflows() {
             title="View Executions"
           >
             <IconHistory size={16} />
+          </ActionIcon>
+          <ActionIcon
+            variant="subtle"
+            color="violet"
+            onClick={() => handleExport(workflow.id, workflow.name)}
+            disabled={exporting === workflow.id}
+            title="Export"
+            loading={exporting === workflow.id}
+          >
+            <IconDownload size={16} />
           </ActionIcon>
           <ActionIcon
             variant="subtle"
@@ -350,12 +532,21 @@ export function Workflows() {
               Refresh
             </Button>
             {canManageWorkflows && (
-              <Button
-                leftSection={<IconPlus size={16} />}
-                onClick={() => navigate('/workflows/builder')}
-              >
-                Create Workflow
-              </Button>
+              <>
+                <Button
+                  leftSection={<IconUpload size={16} />}
+                  variant="light"
+                  onClick={() => setImportModalOpen(true)}
+                >
+                  Import
+                </Button>
+                <Button
+                  leftSection={<IconPlus size={16} />}
+                  onClick={() => navigate('/workflows/builder')}
+                >
+                  Create Workflow
+                </Button>
+              </>
             )}
           </Group>
         </Group>
@@ -441,6 +632,64 @@ export function Workflows() {
           Showing {workflows.length} of {pagination.total} workflows
         </Text>
       </Stack>
+
+      {/* Import Workflow Modal */}
+      <Modal
+        opened={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        title="Import Workflow"
+        size="md"
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            Select a workflow JSON file to import. The file should be exported from this system.
+          </Text>
+
+          <FileButton
+            onChange={setImportFile}
+            accept="application/json"
+          >
+            {(props) => (
+              <Button {...props}>
+                {importFile ? importFile.name : 'Select JSON File'}
+              </Button>
+            )}
+          </FileButton>
+
+          <Checkbox
+            label="Import as Template (inactive)"
+            description="If checked, the workflow will be imported as a template and will be inactive"
+            checked={importAsTemplate}
+            onChange={(event) => setImportAsTemplate(event.currentTarget.checked)}
+          />
+
+          {importFile && (
+            <Text size="sm" c="dimmed">
+              Selected: <Text span fw={500}>{importFile.name}</Text>
+            </Text>
+          )}
+
+          <Group justify="flex-end" gap="sm">
+            <Button
+              variant="light"
+              onClick={() => {
+                setImportModalOpen(false);
+                setImportFile(null);
+                setImportAsTemplate(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleImport}
+              disabled={!importFile}
+              loading={importing}
+            >
+              Import Workflow
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Container>
   );
 }

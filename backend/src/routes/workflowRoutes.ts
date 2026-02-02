@@ -924,6 +924,67 @@ router.patch('/:id/toggle', authorizeRoles('ADMIN', 'MANAGER'), async (req: Auth
   }
 });
 
+// POST /api/workflows/:id/clone - Clone workflow (ADMIN, MANAGER only)
+router.post('/:id/clone', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    const existingWorkflow = await prisma.workflow.findUnique({ where: { id } });
+
+    if (!existingWorkflow) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Workflow not found',
+      });
+    }
+
+    // Clone the workflow with modified name and reset values
+    const clonedName = `${existingWorkflow.name} (Copy)`;
+    const clonedWorkflow = await prisma.workflow.create({
+      data: {
+        name: clonedName,
+        description: existingWorkflow.description,
+        isActive: false, // Always start as inactive
+        isTemplate: false, // Cloned workflows are not templates
+        triggerType: existingWorkflow.triggerType,
+        triggerConfig: existingWorkflow.triggerConfig,
+        conditions: existingWorkflow.conditions,
+        actions: existingWorkflow.actions,
+        version: 1, // Reset to version 1
+        createdById: userId!,
+      },
+      include: {
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+    });
+
+    res.status(201).json({
+      id: clonedWorkflow.id,
+      name: clonedWorkflow.name,
+      description: clonedWorkflow.description,
+      isActive: clonedWorkflow.isActive,
+      isTemplate: clonedWorkflow.isTemplate,
+      triggerType: clonedWorkflow.triggerType,
+      triggerConfig: clonedWorkflow.triggerConfig ? JSON.parse(clonedWorkflow.triggerConfig) : null,
+      conditions: clonedWorkflow.conditions ? JSON.parse(clonedWorkflow.conditions) : null,
+      actions: JSON.parse(clonedWorkflow.actions),
+      version: clonedWorkflow.version,
+      createdBy: clonedWorkflow.createdBy,
+      createdAt: clonedWorkflow.createdAt,
+      updatedAt: clonedWorkflow.updatedAt,
+    });
+  } catch (error) {
+    console.error('Error cloning workflow:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to clone workflow',
+    });
+  }
+});
+
 // POST /api/workflows/test-action - Test endpoint for workflow actions (development only)
 if (process.env.NODE_ENV === 'development') {
   router.post('/test-action', async (req: AuthRequest, res: Response) => {
@@ -1296,5 +1357,336 @@ router.post(
     }
   }
 );
+
+// =============================================================================
+// WORKFLOW EXECUTION CONTROL ROUTES
+// =============================================================================
+
+// POST /api/workflows/executions/:id/pause - Pause a running workflow execution
+router.post('/executions/:id/pause', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const execution = await prisma.workflowExecution.findUnique({
+      where: { id },
+      include: {
+        workflow: true,
+      },
+    });
+
+    if (!execution) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Workflow execution not found',
+      });
+    }
+
+    // Can only pause running executions
+    if (execution.status !== 'RUNNING') {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: `Cannot pause execution with status ${execution.status}. Only RUNNING executions can be paused.`,
+      });
+    }
+
+    // Update execution status to PAUSED
+    const updatedExecution = await prisma.workflowExecution.update({
+      where: { id },
+      data: { status: 'PAUSED' },
+      include: {
+        workflow: {
+          select: { id: true, name: true },
+        },
+        client: {
+          select: { id: true, nameEncrypted: true },
+        },
+      },
+    });
+
+    res.json({
+      id: updatedExecution.id,
+      status: updatedExecution.status,
+      workflow: updatedExecution.workflow,
+      clientId: updatedExecution.clientId,
+      currentStep: updatedExecution.currentStep,
+      message: 'Workflow execution paused successfully',
+    });
+  } catch (error) {
+    console.error('Error pausing workflow execution:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Failed to pause workflow execution',
+    });
+  }
+});
+
+// POST /api/workflows/executions/:id/resume - Resume a paused workflow execution
+router.post('/executions/:id/resume', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    const execution = await prisma.workflowExecution.findUnique({
+      where: { id },
+      include: {
+        workflow: true,
+      },
+    });
+
+    if (!execution) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Workflow execution not found',
+      });
+    }
+
+    // Can only resume paused executions
+    if (execution.status !== 'PAUSED') {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: `Cannot resume execution with status ${execution.status}. Only PAUSED executions can be resumed.`,
+      });
+    }
+
+    // Update execution status back to RUNNING
+    const updatedExecution = await prisma.workflowExecution.update({
+      where: { id },
+      data: { status: 'RUNNING' },
+      include: {
+        workflow: {
+          select: { id: true, name: true },
+        },
+        client: {
+          select: { id: true, nameEncrypted: true },
+        },
+      },
+    });
+
+    // Trigger workflow executor to continue from current step
+    const { resumeWorkflowExecution } = await import('../services/workflowExecutor.js');
+    const result = await resumeWorkflowExecution(id, {
+      clientId: execution.clientId,
+      triggerType: 'MANUAL',
+      triggerData: execution.triggerData ? JSON.parse(execution.triggerData) : null,
+      userId,
+    });
+
+    if (result.success) {
+      res.json({
+        id: updatedExecution.id,
+        status: updatedExecution.status,
+        workflow: updatedExecution.workflow,
+        clientId: updatedExecution.clientId,
+        currentStep: updatedExecution.currentStep,
+        message: 'Workflow execution resumed successfully',
+      });
+    } else {
+      // If resume failed, set status back to PAUSED
+      await prisma.workflowExecution.update({
+        where: { id },
+        data: { status: 'PAUSED' },
+      });
+
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Error resuming workflow execution:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Failed to resume workflow execution',
+    });
+  }
+});
+
+// =============================================================================
+// WORKFLOW IMPORT/EXPORT ROUTES
+// =============================================================================
+
+// GET /api/workflows/:id/export - Export workflow as JSON
+router.get('/:id/export', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const workflow = await prisma.workflow.findUnique({
+      where: { id },
+      include: {
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+    });
+
+    if (!workflow) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Workflow not found',
+      });
+    }
+
+    // Create export object with all workflow data
+    const exportData = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      workflow: {
+        name: workflow.name,
+        description: workflow.description,
+        isActive: workflow.isActive,
+        isTemplate: workflow.isTemplate,
+        triggerType: workflow.triggerType,
+        triggerConfig: workflow.triggerConfig ? JSON.parse(workflow.triggerConfig) : null,
+        conditions: workflow.conditions ? JSON.parse(workflow.conditions) : null,
+        actions: JSON.parse(workflow.actions),
+        version: workflow.version,
+        createdBy: workflow.createdBy,
+        createdAt: workflow.createdAt,
+        updatedAt: workflow.updatedAt,
+      },
+    };
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${workflow.name.replace(/[^a-z0-9]/gi, '_')}_workflow.json"`);
+
+    res.json(exportData);
+  } catch (error) {
+    console.error('Error exporting workflow:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to export workflow',
+    });
+  }
+});
+
+// POST /api/workflows/import - Import workflow from JSON
+router.post('/import', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { workflowData, asTemplate = false } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'User not authenticated',
+      });
+    }
+
+    // Validate workflowData exists
+    if (!workflowData) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Workflow data is required',
+      });
+    }
+
+    // Support both direct workflow data and wrapped export format
+    const workflowToImport = workflowData.workflow || workflowData;
+
+    // Validate required fields
+    const { name, triggerType, actions } = workflowToImport;
+
+    if (!name || !triggerType || !actions) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Invalid workflow data. Name, trigger type, and actions are required.',
+      });
+    }
+
+    // Validate trigger type
+    const validTriggerTypes = [
+      'CLIENT_CREATED',
+      'CLIENT_STATUS_CHANGED',
+      'CLIENT_INACTIVITY',
+      'DOCUMENT_UPLOADED',
+      'DOCUMENT_STATUS_CHANGED',
+      'TASK_DUE',
+      'TASK_OVERDUE',
+      'TASK_COMPLETED',
+      'MANUAL',
+    ];
+
+    if (!validTriggerTypes.includes(triggerType)) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: `Invalid trigger type: ${triggerType}`,
+      });
+    }
+
+    // Validate actions
+    if (!validateActions(actions)) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Actions must be a non-empty array with valid action objects',
+      });
+    }
+
+    // Validate conditions if present
+    const { conditions } = workflowToImport;
+    if (conditions && !validateConditions(conditions)) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Conditions must be a valid object',
+      });
+    }
+
+    // Check if workflow with same name exists
+    const existingWorkflow = await prisma.workflow.findFirst({
+      where: { name },
+    });
+
+    let finalName = name;
+    if (existingWorkflow) {
+      // Append timestamp to avoid name conflicts
+      finalName = `${name} (Imported ${new Date().toISOString().split('T')[0]})`;
+    }
+
+    // Create the imported workflow
+    const importedWorkflow = await prisma.workflow.create({
+      data: {
+        name: finalName,
+        description: workflowToImport.description || '',
+        isActive: asTemplate ? false : (workflowToImport.isActive ?? false),
+        isTemplate: asTemplate || workflowToImport.isTemplate || false,
+        triggerType,
+        triggerConfig: workflowToImport.triggerConfig
+          ? JSON.stringify(workflowToImport.triggerConfig)
+          : null,
+        conditions: workflowToImport.conditions
+          ? JSON.stringify(workflowToImport.conditions)
+          : null,
+        actions: JSON.stringify(actions),
+        version: 1, // Reset to version 1 for imported workflows
+        createdById: userId,
+      },
+      include: {
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+    });
+
+    res.status(201).json({
+      id: importedWorkflow.id,
+      name: importedWorkflow.name,
+      description: importedWorkflow.description,
+      isActive: importedWorkflow.isActive,
+      isTemplate: importedWorkflow.isTemplate,
+      triggerType: importedWorkflow.triggerType,
+      triggerConfig: importedWorkflow.triggerConfig ? JSON.parse(importedWorkflow.triggerConfig) : null,
+      conditions: importedWorkflow.conditions ? JSON.parse(importedWorkflow.conditions) : null,
+      actions: JSON.parse(importedWorkflow.actions),
+      version: importedWorkflow.version,
+      createdBy: importedWorkflow.createdBy,
+      createdAt: importedWorkflow.createdAt,
+      updatedAt: importedWorkflow.updatedAt,
+      message: 'Workflow imported successfully',
+    });
+  } catch (error) {
+    console.error('Error importing workflow:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Failed to import workflow',
+    });
+  }
+});
 
 export default router;
