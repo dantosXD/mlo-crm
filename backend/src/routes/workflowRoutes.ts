@@ -784,8 +784,25 @@ router.put('/:id', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, 
 
     // Increment version if actions, conditions, or trigger config changes
     let version = existingWorkflow.version;
-    if (actions || conditions || triggerConfig) {
+    const shouldCreateVersion = actions || conditions || triggerConfig;
+
+    if (shouldCreateVersion) {
       version = version + 1;
+
+      // Save current version to workflow_versions before updating
+      await prisma.workflowVersion.create({
+        data: {
+          workflowId: existingWorkflow.id,
+          version: existingWorkflow.version,
+          name: existingWorkflow.name,
+          description: existingWorkflow.description,
+          triggerType: existingWorkflow.triggerType,
+          triggerConfig: existingWorkflow.triggerConfig,
+          conditions: existingWorkflow.conditions,
+          actions: existingWorkflow.actions,
+          createdById: existingWorkflow.createdById,
+        },
+      });
     }
 
     const workflow = await prisma.workflow.update({
@@ -1146,5 +1163,138 @@ router.post('/:id/test', async (req: AuthRequest, res: Response) => {
     });
   }
 });
+
+// GET /api/workflows/:id/versions - Get workflow version history
+router.get('/:id/versions', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const versions = await prisma.workflowVersion.findMany({
+      where: { workflowId: id },
+      orderBy: { version: 'desc' },
+      include: {
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+    });
+
+    const formattedVersions = versions.map((v) => ({
+      id: v.id,
+      version: v.version,
+      name: v.name,
+      description: v.description,
+      triggerType: v.triggerType,
+      triggerConfig: v.triggerConfig ? JSON.parse(v.triggerConfig) : null,
+      conditions: v.conditions ? JSON.parse(v.conditions) : null,
+      actions: JSON.parse(v.actions),
+      createdAt: v.createdAt,
+      createdBy: v.createdBy,
+    }));
+
+    res.json({ versions: formattedVersions });
+  } catch (error) {
+    console.error('Error fetching workflow versions:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Failed to fetch workflow versions',
+    });
+  }
+});
+
+// POST /api/workflows/:id/rollback/:version - Rollback workflow to specific version
+router.post(
+  '/:id/rollback/:version',
+  authorizeRoles('ADMIN', 'MANAGER'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id, version } = req.params;
+      const targetVersion = parseInt(version, 10);
+      const userId = req.user?.userId;
+
+      const existingWorkflow = await prisma.workflow.findUnique({ where: { id } });
+
+      if (!existingWorkflow) {
+        return res.status(404).json({
+          error: 'Not Found',
+          message: 'Workflow not found',
+        });
+      }
+
+      // Find the target version
+      const targetWorkflowVersion = await prisma.workflowVersion.findFirst({
+        where: {
+          workflowId: id,
+          version: targetVersion,
+        },
+      });
+
+      if (!targetWorkflowVersion) {
+        return res.status(404).json({
+          error: 'Not Found',
+          message: `Version ${targetVersion} not found`,
+        });
+      }
+
+      // Save current version before rolling back
+      await prisma.workflowVersion.create({
+        data: {
+          workflowId: existingWorkflow.id,
+          version: existingWorkflow.version,
+          name: existingWorkflow.name,
+          description: existingWorkflow.description,
+          triggerType: existingWorkflow.triggerType,
+          triggerConfig: existingWorkflow.triggerConfig,
+          conditions: existingWorkflow.conditions,
+          actions: existingWorkflow.actions,
+          createdById: existingWorkflow.createdById,
+        },
+      });
+
+      // Rollback to target version
+      const newVersion = existingWorkflow.version + 1;
+      const workflow = await prisma.workflow.update({
+        where: { id },
+        data: {
+          name: targetWorkflowVersion.name,
+          description: targetWorkflowVersion.description,
+          triggerType: targetWorkflowVersion.triggerType,
+          triggerConfig: targetWorkflowVersion.triggerConfig,
+          conditions: targetWorkflowVersion.conditions,
+          actions: targetWorkflowVersion.actions,
+          version: newVersion,
+        },
+        include: {
+          createdBy: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+        },
+      });
+
+      res.json({
+        id: workflow.id,
+        name: workflow.name,
+        description: workflow.description,
+        isActive: workflow.isActive,
+        isTemplate: workflow.isTemplate,
+        triggerType: workflow.triggerType,
+        triggerConfig: workflow.triggerConfig ? JSON.parse(workflow.triggerConfig) : null,
+        conditions: workflow.conditions ? JSON.parse(workflow.conditions) : null,
+        actions: JSON.parse(workflow.actions),
+        version: workflow.version,
+        createdBy: workflow.createdBy,
+        createdAt: workflow.createdAt,
+        updatedAt: workflow.updatedAt,
+        message: `Rolled back from version ${targetVersion} to new version ${newVersion}`,
+      });
+    } catch (error) {
+      console.error('Error rolling back workflow:', error);
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: error instanceof Error ? error.message : 'Failed to rollback workflow',
+      });
+    }
+  }
+);
 
 export default router;

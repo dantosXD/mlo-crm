@@ -42,13 +42,22 @@ export function generateCsrfToken(req: CsrfRequest, res: Response, next: NextFun
   // Only generate CSRF token for authenticated requests
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const sessionId = getSessionId(req);
-    const token = createCsrfToken();
+    const existingData = tokenStore.get(sessionId);
 
-    // Store token with 1 hour expiration
-    tokenStore.set(sessionId, {
-      token,
-      expiresAt: Date.now() + (60 * 60 * 1000), // 1 hour
-    });
+    // Only generate new token if one doesn't exist or is expired
+    let token;
+    if (!existingData || existingData.expiresAt < Date.now()) {
+      token = createCsrfToken();
+
+      // Store token with 1 hour expiration
+      tokenStore.set(sessionId, {
+        token,
+        expiresAt: Date.now() + (60 * 60 * 1000), // 1 hour
+      });
+    } else {
+      // Use existing token
+      token = existingData.token;
+    }
 
     // Add CSRF token to response headers
     res.setHeader('X-CSRF-Token', token);

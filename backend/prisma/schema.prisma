@@ -357,11 +357,33 @@ model Workflow {
 
   // Relations
   executions    WorkflowExecution[]
+  versions      WorkflowVersion[]
 
   @@index([triggerType])
   @@index([isActive])
   @@index([createdAt])
   @@map("workflows")
+}
+
+// Workflow versions (historical versions for rollback)
+model WorkflowVersion {
+  id            String    @id @default(uuid())
+  workflowId    String    @map("workflow_id")
+  workflow      Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  version       Int
+  name          String
+  description   String?
+  triggerType   String    @map("trigger_type")
+  triggerConfig String?   @map("trigger_config")
+  conditions    String?
+  actions       String
+  createdById   String    @map("created_by_id")
+  createdBy     User      @relation(fields: [createdById], references: [id])
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([workflowId])
+  @@index([version])
+  @@map("workflow_versions")
 }
 
 // Workflow executions (runtime instances)
