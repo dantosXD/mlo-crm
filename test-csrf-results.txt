@@ -1,0 +1,63 @@
+============================================================
+CSRF Protection Test - Feature #16
+============================================================
+
+[Step 1] Testing login...
+✓ Login successful
+  - Auth Token: eyJhbGciOiJIUzI1NiIs...
+  - CSRF Token: NOT FOUND IN HEADERS
+  - Session ID: 8020f64c2501f1de98dd0f84d35eb4b830d9668a7c8186133b83e7493b7c2158
+
+[Step 2] Getting CSRF token from GET request...
+✓ GET request successful (Status: 200)
+  - CSRF Token in headers: a54076651b76f21c4e7a...
+  - All response headers: {
+  "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests",
+  "cross-origin-opener-policy": "same-origin",
+  "cross-origin-resource-policy": "cross-origin",
+  "origin-agent-cluster": "?1",
+  "referrer-policy": "no-referrer",
+  "strict-transport-security": "max-age=15552000; includeSubDomains",
+  "x-content-type-options": "nosniff",
+  "x-dns-prefetch-control": "off",
+  "x-download-options": "noopen",
+  "x-frame-options": "SAMEORIGIN",
+  "x-permitted-cross-domain-policies": "none",
+  "x-xss-protection": "0",
+  "vary": "Origin",
+  "access-control-allow-credentials": "true",
+  "x-csrf-token": "a54076651b76f21c4e7a8683d656f25af94a46280aa0062da17cc7c0db01e0e8",
+  "content-type": "application/json; charset=utf-8",
+  "content-length": "2",
+  "etag": "W/\"2-l9Fw4VUO7kr8CvBlt4zaMCqXZ0w\"",
+  "date": "Mon, 02 Feb 2026 18:06:37 GMT",
+  "connection": "keep-alive",
+  "keep-alive": "timeout=5"
+}
+
+[Step 3] Testing POST request WITHOUT CSRF token...
+✓ Request correctly REJECTED with 403 Forbidden
+  - Error: CSRF Token Missing
+  - Message: CSRF token is required for this request. Include it in the X-CSRF-Token header.
+  ✓ Error message mentions CSRF token requirement
+
+[Step 4] Testing POST request with INVALID CSRF token...
+✓ Request correctly REJECTED with 403 Forbidden
+  - Error: CSRF Token Mismatch
+  - Message: CSRF token does not match. This could indicate a cross-site request forgery attempt.
+
+[Step 5] Testing POST request WITH valid CSRF token...
+✓ Request ACCEPTED with valid CSRF token
+  - Status: 201
+  - Client created: 5a6f7a65-b4c4-4b86-ba09-df8f7d1d853e
+
+[Cleanup] Deleting test client 5a6f7a65-b4c4-4b86-ba09-df8f7d1d853e...
+✓ Test client deleted
+
+[Step 6] Testing GET request WITHOUT CSRF token...
+✓ GET request allowed without CSRF token (correct behavior)
+  - Status: 200
+
+============================================================
+CSRF Protection Test Complete
+============================================================
