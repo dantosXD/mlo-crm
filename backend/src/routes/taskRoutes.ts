@@ -112,7 +112,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       ...(finalStatusFilter && { status: finalStatusFilter }),
       ...(Object.keys(dateFilter).length > 0 && { dueDate: dateFilter }),
       ...(priority && { priority: priority as string }),
-      ...(assigned_to && { assignedToId: assigned_to as string }),
+      ...(assigned_to && assigned_to !== 'unassigned' && { assignedToId: assigned_to as string }),
+      ...(assigned_to === 'unassigned' && { assignedToId: null }),
     };
 
     // Filter by user's clients if userId provided and not filtering by specific client
@@ -459,7 +460,21 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
 // POST /api/tasks - Create new task
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { clientId, text, description, status, priority, dueDate, assignedToId } = req.body;
+    const {
+      clientId,
+      text,
+      description,
+      status,
+      priority,
+      dueDate,
+      assignedToId,
+      type,
+      tags,
+      isRecurring,
+      recurringPattern,
+      recurringInterval,
+      recurringEndDate,
+    } = req.body;
     const userId = req.user?.userId;
 
     if (!text || !userId) {
@@ -486,12 +501,22 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         description,
         status: status || 'TODO',
         priority: priority || 'MEDIUM',
+        type: type || 'GENERAL',
+        tags: tags || '[]',
         dueDate: dueDate ? new Date(dueDate) : null,
         assignedToId,
+        createdById: userId,
+        isRecurring: isRecurring || false,
+        recurringPattern,
+        recurringInterval,
+        recurringEndDate: recurringEndDate ? new Date(recurringEndDate) : null,
       },
       include: {
         assignedTo: {
           select: { id: true, name: true },
+        },
+        subtasks: {
+          orderBy: { order: 'asc' },
         },
       },
     });
@@ -525,7 +550,20 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { text, description, status, priority, dueDate, assignedToId } = req.body;
+    const {
+      text,
+      description,
+      status,
+      priority,
+      dueDate,
+      assignedToId,
+      type,
+      tags,
+      isRecurring,
+      recurringPattern,
+      recurringInterval,
+      recurringEndDate,
+    } = req.body;
     const userId = req.user?.userId;
 
     const existingTask = await prisma.task.findUnique({
@@ -558,8 +596,14 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
         ...(description !== undefined && { description }),
         ...(status !== undefined && { status }),
         ...(priority !== undefined && { priority }),
+        ...(type !== undefined && { type }),
+        ...(tags !== undefined && { tags }),
         ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
         ...(assignedToId !== undefined && { assignedToId }),
+        ...(isRecurring !== undefined && { isRecurring }),
+        ...(recurringPattern !== undefined && { recurringPattern }),
+        ...(recurringInterval !== undefined && { recurringInterval }),
+        ...(recurringEndDate !== undefined && { recurringEndDate: recurringEndDate ? new Date(recurringEndDate) : null }),
         ...(status === 'COMPLETE' && !existingTask.completedAt && { completedAt: new Date() }),
       },
       include: {
@@ -1228,6 +1272,392 @@ router.get('/:taskId/reminder-history', async (req: AuthRequest, res: Response) 
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to fetch reminder history',
+    });
+  }
+});
+
+// ========== TASK TEMPLATE ROUTES ==========
+
+// GET /api/tasks/templates - Get all task templates
+router.get('/templates', async (req: AuthRequest, res: Response) => {
+  try {
+    const templates = await prisma.taskTemplate.findMany({
+      orderBy: { name: 'asc' },
+    });
+
+    res.json(templates);
+  } catch (error) {
+    console.error('Error fetching task templates:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch task templates',
+    });
+  }
+});
+
+// POST /api/tasks/templates - Create task template
+router.post('/templates', async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, description, text, type, priority, tags, dueDays, steps } = req.body;
+    const userId = req.user?.userId;
+
+    if (!name || !text) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Template name and text are required',
+      });
+    }
+
+    const template = await prisma.taskTemplate.create({
+      data: {
+        name,
+        description,
+        text,
+        type: type || 'GENERAL',
+        priority: priority || 'MEDIUM',
+        tags: tags || '[]',
+        dueDays,
+        steps: steps ? JSON.stringify(steps) : null,
+        createdById: userId,
+      },
+    });
+
+    res.status(201).json(template);
+  } catch (error) {
+    console.error('Error creating task template:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to create task template',
+    });
+  }
+});
+
+// DELETE /api/tasks/templates/:id - Delete task template
+router.delete('/templates/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    await prisma.taskTemplate.delete({
+      where: { id },
+    });
+
+    res.json({ message: 'Task template deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting task template:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to delete task template',
+    });
+  }
+});
+
+// ========== TASK ATTACHMENT ROUTES ==========
+
+// GET /api/tasks/:taskId/attachments - Get task attachments
+router.get('/:taskId/attachments', async (req: AuthRequest, res: Response) => {
+  try {
+    const { taskId } = req.params;
+    const userId = req.user?.userId;
+
+    // Verify task ownership
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        client: {
+          select: { id: true, createdById: true },
+        },
+      },
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Task not found',
+      });
+    }
+
+    if (!userId || task.client?.createdById !== userId) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You do not have permission to view attachments for this task',
+      });
+    }
+
+    const attachments = await prisma.taskAttachment.findMany({
+      where: { taskId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(attachments);
+  } catch (error) {
+    console.error('Error fetching task attachments:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch task attachments',
+    });
+  }
+});
+
+// POST /api/tasks/:taskId/attachments - Add task attachment
+router.post('/:taskId/attachments', async (req: AuthRequest, res: Response) => {
+  try {
+    const { taskId } = req.params;
+    const { type, name, url, content, metadata } = req.body;
+    const userId = req.user?.userId;
+
+    if (!type || !name) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Attachment type and name are required',
+      });
+    }
+
+    // Verify task ownership
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        client: {
+          select: { id: true, createdById: true },
+        },
+      },
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Task not found',
+      });
+    }
+
+    if (!userId || task.client?.createdById !== userId) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You do not have permission to add attachments to this task',
+      });
+    }
+
+    const attachment = await prisma.taskAttachment.create({
+      data: {
+        taskId,
+        type,
+        name,
+        url,
+        content,
+        metadata: metadata ? JSON.stringify(metadata) : null,
+        createdBy: userId,
+      },
+    });
+
+    res.status(201).json(attachment);
+  } catch (error) {
+    console.error('Error creating task attachment:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to create task attachment',
+    });
+  }
+});
+
+// DELETE /api/tasks/:taskId/attachments/:attachmentId - Delete task attachment
+router.delete('/:taskId/attachments/:attachmentId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { taskId, attachmentId } = req.params;
+    const userId = req.user?.userId;
+
+    // Verify task ownership
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        client: {
+          select: { id: true, createdById: true },
+        },
+      },
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Task not found',
+      });
+    }
+
+    if (!userId || task.client?.createdById !== userId) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You do not have permission to delete attachments from this task',
+      });
+    }
+
+    await prisma.taskAttachment.delete({
+      where: { id: attachmentId },
+    });
+
+    res.json({ message: 'Task attachment deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting task attachment:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to delete task attachment',
+    });
+  }
+});
+
+// ========== TASK CLONING ==========
+
+// POST /api/tasks/:id/claim - Claim an unassigned task
+router.post('/:id/claim', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    const existingTask = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        client: {
+          select: { id: true, createdById: true },
+        },
+      },
+    });
+
+    if (!existingTask) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Task not found',
+      });
+    }
+
+    if (!userId || existingTask.client?.createdById !== userId) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You do not have permission to claim this task',
+      });
+    }
+
+    if (existingTask.assignedToId) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Task is already assigned',
+      });
+    }
+
+    const task = await prisma.task.update({
+      where: { id },
+      data: { assignedToId: userId },
+      include: {
+        assignedTo: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    // Log activity
+    if (existingTask.clientId) {
+      await prisma.activity.create({
+        data: {
+          clientId: existingTask.clientId,
+          userId: userId!,
+          type: 'TASK_CLAIMED',
+          description: `Task "${existingTask.text}" claimed`,
+        },
+      });
+
+      // Fire assignment trigger
+      await fireTaskAssignedTrigger(task.id, existingTask.clientId, userId, userId);
+    }
+
+    res.json(task);
+  } catch (error) {
+    console.error('Error claiming task:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to claim task',
+    });
+  }
+});
+
+// POST /api/tasks/:id/clone - Clone a task
+router.post('/:id/clone', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    const existingTask = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        subtasks: true,
+        attachments: true,
+      },
+    });
+
+    if (!existingTask) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Task not found',
+      });
+    }
+
+    if (!userId || existingTask.client?.createdById !== userId) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You do not have permission to clone this task',
+      });
+    }
+
+    // Clone the task
+    const clonedTask = await prisma.task.create({
+      data: {
+        text: `${existingTask.text} (Copy)`,
+        description: existingTask.description,
+        type: existingTask.type,
+        priority: existingTask.priority,
+        tags: existingTask.tags,
+        clientId: existingTask.clientId,
+        assignedToId: existingTask.assignedToId,
+        createdById: userId,
+        isRecurring: false, // Cloned tasks are not recurring
+      },
+      include: {
+        subtasks: true,
+        attachments: true,
+        assignedTo: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    // Clone subtasks
+    if (existingTask.subtasks.length > 0) {
+      await prisma.taskSubtask.createMany({
+        data: existingTask.subtasks.map((subtask) => ({
+          taskId: clonedTask.id,
+          text: subtask.text,
+          isCompleted: false,
+          order: subtask.order,
+        })),
+      });
+    }
+
+    // Clone attachments
+    if (existingTask.attachments.length > 0) {
+      await prisma.taskAttachment.createMany({
+        data: existingTask.attachments.map((attachment) => ({
+          taskId: clonedTask.id,
+          type: attachment.type,
+          name: attachment.name,
+          url: attachment.url,
+          content: attachment.content,
+          metadata: attachment.metadata,
+          createdBy: userId,
+        })),
+      });
+    }
+
+    res.status(201).json(clonedTask);
+  } catch (error) {
+    console.error('Error cloning task:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to clone task',
     });
   }
 });

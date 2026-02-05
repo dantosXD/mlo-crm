@@ -35,11 +35,13 @@ import {
   IconCalendarTime,
   IconTrash,
   IconBell,
+  IconPlus,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { notifications } from '@mantine/notifications';
 import { TaskSnoozeButton } from '../components/tasks/TaskSnoozeButton';
+import TaskForm from '../components/tasks/TaskForm';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -49,15 +51,21 @@ interface Task {
   description?: string;
   status: string;
   priority: string;
+  type?: string;
   dueDate?: string;
   completedAt?: string;
   assignedTo?: { id: string; name: string } | null;
   client?: { id: string; name: string } | null;
   subtasks?: Array<{ id: string; text: string; isCompleted: boolean }>;
+  tags?: string[];
   reminderEnabled?: boolean;
   reminderTimes?: string[];
   reminderMessage?: string;
   snoozedUntil?: string;
+  isRecurring?: boolean;
+  recurringPattern?: string;
+  recurringInterval?: number;
+  recurringEndDate?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -99,6 +107,8 @@ const filterOptions = [
   { value: 'upcoming', label: 'Upcoming' },
   { value: 'overdue', label: 'Overdue' },
   { value: 'completed', label: 'Completed' },
+  { value: 'assigned_to_me', label: 'Assigned to Me' },
+  { value: 'unassigned', label: 'Unassigned' },
 ];
 
 const priorityOptions = [
@@ -144,6 +154,8 @@ export default function TasksDashboard() {
   });
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [taskFormOpened, setTaskFormOpened] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
 
   // Fetch tasks
   const fetchTasks = async () => {
@@ -155,7 +167,11 @@ export default function TasksDashboard() {
       params.append('sort_by', sortBy);
       params.append('sort_order', sortDirection);
 
-      if (selectedFilter !== 'all') {
+      if (selectedFilter === 'assigned_to_me') {
+        params.append('assigned_to', user?.id || '');
+      } else if (selectedFilter === 'unassigned') {
+        params.append('assigned_to', 'unassigned');
+      } else if (selectedFilter !== 'all') {
         params.append('due_date', selectedFilter);
       }
 
@@ -408,9 +424,24 @@ export default function TasksDashboard() {
         {/* Header */}
         <Group justify="space-between">
           <Title order={2}>Tasks Dashboard</Title>
-          <Button leftSection={<IconRefresh size={16} />} onClick={() => { fetchTasks(); fetchStatistics(); }}>
-            Refresh
-          </Button>
+          <Group gap="xs">
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => {
+                setEditingTask(undefined);
+                setTaskFormOpened(true);
+              }}
+            >
+              New Task
+            </Button>
+            <Button
+              variant="light"
+              leftSection={<IconRefresh size={16} />}
+              onClick={() => { fetchTasks(); fetchStatistics(); }}
+            >
+              Refresh
+            </Button>
+          </Group>
         </Group>
 
         {/* Statistics Cards */}
@@ -766,6 +797,17 @@ export default function TasksDashboard() {
             </Group>
           )}
         </Paper>
+
+        {/* Task Form Modal */}
+        <TaskForm
+          opened={taskFormOpened}
+          onClose={() => setTaskFormOpened(false)}
+          onSuccess={() => {
+            fetchTasks();
+            fetchStatistics();
+          }}
+          editTask={editingTask}
+        />
       </Stack>
     </Container>
   );
