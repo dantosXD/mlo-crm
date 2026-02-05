@@ -38,6 +38,7 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
 
 interface WorkflowExecution {
   id: string;
@@ -253,12 +254,7 @@ export function WorkflowExecutions() {
 
     setCancelling(true);
     try {
-      const response = await fetch(`${API_URL}/workflow-executions/${executionId}/cancel`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.post(`/workflow-executions/${executionId}/cancel`);
 
       if (!response.ok) {
         throw new Error('Failed to cancel execution');
@@ -290,13 +286,7 @@ export function WorkflowExecutions() {
   const pauseExecution = async (executionId: string) => {
     setPausing(executionId);
     try {
-      const response = await fetch(`${API_URL}/workflows/executions/${executionId}/pause`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await api.post(`/workflows/executions/${executionId}/pause`);
 
       if (!response.ok) {
         throw new Error('Failed to pause execution');
@@ -328,13 +318,7 @@ export function WorkflowExecutions() {
   const resumeExecution = async (executionId: string) => {
     setResuming(executionId);
     try {
-      const response = await fetch(`${API_URL}/workflows/executions/${executionId}/resume`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await api.post(`/workflows/executions/${executionId}/resume`);
 
       if (!response.ok) {
         throw new Error('Failed to resume execution');

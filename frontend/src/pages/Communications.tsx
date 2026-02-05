@@ -32,8 +32,9 @@ import {
   IconPaperclip,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
 
 interface Communication {
   id: string;
@@ -88,6 +89,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 export function Communications() {
   const { accessToken, user } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isReadOnly = ['VIEWER', 'PROCESSOR', 'UNDERWRITER'].includes((user?.role || '').toUpperCase());
 
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,6 +119,19 @@ export function Communications() {
   useEffect(() => {
     fetchCommunications();
   }, [pagination.page, typeFilter, statusFilter, startDate, endDate]);
+
+  useEffect(() => {
+    const state = location.state as { toast?: { title: string; message: string; color?: string } } | null;
+    if (state?.toast) {
+      notifications.show({
+        title: state.toast.title,
+        message: state.toast.message,
+        color: state.toast.color || 'blue',
+        autoClose: 6000,
+      });
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location, navigate]);
 
   const fetchCommunications = async () => {
     setLoading(true);
@@ -205,15 +221,8 @@ export function Communications() {
 
     setIsSavingFollowUp(true);
     try {
-      const response = await fetch(`${API_URL}/communications/${previewCommunication.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          followUpDate: editingFollowUpDate ? editingFollowUpDate.toISOString() : null,
-        }),
+      const response = await api.put(`/communications/${previewCommunication.id}`, {
+        followUpDate: editingFollowUpDate ? editingFollowUpDate.toISOString() : null,
       });
 
       if (!response.ok) {
@@ -326,12 +335,14 @@ export function Communications() {
         <Group justify="space-between">
           <Title order={2}>Communications</Title>
           <Group>
-            <Button
-              leftSection={<IconPlus size={16} />}
-              onClick={() => navigate('/communications/compose')}
-            >
-              Compose
-            </Button>
+            {!isReadOnly && (
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={() => navigate('/communications/compose')}
+              >
+                Compose
+              </Button>
+            )}
             <Button
               variant="default"
               leftSection={<IconRefresh size={16} />}

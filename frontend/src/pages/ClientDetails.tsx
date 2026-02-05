@@ -56,7 +56,6 @@ import {
   IconPin,
   IconPinnedOff,
   IconStar,
-  IconStarFilled,
   IconCurrencyDollar,
   IconPercentage,
   IconCalendar,
@@ -73,6 +72,9 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
 import { canWriteClients } from '../utils/roleUtils';
+import { api } from '../utils/api';
+import { decryptData } from '../utils/encryption';
+import { SubtaskList } from '../components/tasks/SubtaskList';
 
 // Helper function to format relative time (e.g., "just now", "5 minutes ago", "2 hours ago")
 const formatRelativeTime = (dateString: string): string => {
@@ -140,6 +142,13 @@ interface Task {
   assignedTo?: { id: string; name: string };
   createdAt: string;
   updatedAt?: string;
+  subtasks?: Array<{
+    id: string;
+    text: string;
+    isCompleted: boolean;
+    order: number;
+    dueDate?: string;
+  }>;
 }
 
 interface LoanScenario {
@@ -290,7 +299,7 @@ export default function ClientDetails() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { accessToken, user } = useAuthStore();
+  const { accessToken, user, csrfToken, updateCsrfToken } = useAuthStore();
   const canWrite = canWriteClients(user?.role);
 
   // Store the referrer URL when coming from clients list with filters
@@ -401,6 +410,8 @@ export default function ClientDetails() {
   const [selectedScenarios, setSelectedScenarios] = useState<string[]>([]);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [scenarioFormErrors, setScenarioFormErrors] = useState<{ name?: string; amount?: string; interestRate?: string; termYears?: string }>({});
+  const [deleteScenarioModalOpen, setDeleteScenarioModalOpen] = useState(false);
+  const [scenarioToDelete, setScenarioToDelete] = useState<LoanScenario | null>(null);
 
   // Document state
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -582,6 +593,35 @@ export default function ClientDetails() {
     }
   };
 
+  const ensureCsrfToken = async (): Promise<string | null> => {
+    if (csrfToken) {
+      return csrfToken;
+    }
+
+    if (!accessToken) {
+      return null;
+    }
+
+    try {
+      const csrfResponse = await fetch(`${API_URL}/auth/me`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const newCsrfToken = csrfResponse.headers.get('X-CSRF-Token');
+      if (newCsrfToken) {
+        updateCsrfToken(newCsrfToken);
+        return newCsrfToken;
+      }
+    } catch (error) {
+      console.warn('Failed to refresh CSRF token for upload:', error);
+    }
+
+    return null;
+  };
+
   const fetchCommunications = async () => {
     if (!id) return;
     setLoadingCommunications(true);
@@ -618,7 +658,7 @@ export default function ClientDetails() {
     if (!id) return;
     setLoadingWorkflowExecutions(true);
     try {
-      const response = await fetch(`${API_URL}/workflows/executions?client_id=${id}`, {
+      const response = await fetch(`${API_URL}/workflow-executions?client_id=${id}`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -695,7 +735,13 @@ export default function ClientDetails() {
       }
 
       const data = await response.json();
-      setClient(data);
+      const decrypted = {
+        ...data,
+        name: decryptData(data.name),
+        email: decryptData(data.email),
+        phone: decryptData(data.phone),
+      };
+      setClient(decrypted);
     } catch (error) {
       console.error('Error fetching client:', error);
       setError('Failed to load client details');
@@ -728,14 +774,7 @@ export default function ClientDetails() {
 
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/clients/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(editForm),
-      });
+      const response = await api.put(`/clients/${id}`, editForm);
 
       // Handle deleted client scenario (404)
       if (response.status === 404) {
@@ -781,12 +820,7 @@ export default function ClientDetails() {
   const handleDeleteClient = async () => {
     setDeleting(true);
     try {
-      const response = await fetch(`${API_URL}/clients/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.delete(`/clients/${id}`);
 
       if (!response.ok) {
         throw new Error('Failed to delete client');
@@ -821,18 +855,11 @@ export default function ClientDetails() {
     setStatusUpdateSuccess(false);
 
     try {
-      const response = await fetch(`${API_URL}/clients/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          name: client.name,
-          email: client.email,
-          phone: client.phone,
-          status: newStatus,
-        }),
+      const response = await api.put(`/clients/${id}`, {
+        name: client.name,
+        email: client.email,
+        phone: client.phone,
+        status: newStatus,
       });
 
       // Handle deleted client scenario (404)
@@ -882,19 +909,12 @@ export default function ClientDetails() {
     setUpdatingTags(true);
 
     try {
-      const response = await fetch(`${API_URL}/clients/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          name: client.name,
-          email: client.email,
-          phone: client.phone,
-          status: client.status,
-          tags: newTags,
-        }),
+      const response = await api.put(`/clients/${id}`, {
+        name: client.name,
+        email: client.email,
+        phone: client.phone,
+        status: client.status,
+        tags: newTags,
       });
 
       if (!response.ok) {
@@ -945,6 +965,115 @@ export default function ClientDetails() {
     }
   };
 
+  const sortedNotes = useMemo(() => {
+    const copy = [...notes];
+    copy.sort((a, b) => {
+      if (a.isPinned !== b.isPinned) {
+        return a.isPinned ? -1 : 1;
+      }
+      const aTime = new Date(a.updatedAt ?? a.createdAt).getTime();
+      const bTime = new Date(b.updatedAt ?? b.createdAt).getTime();
+      return bTime - aTime;
+    });
+    return copy;
+  }, [notes]);
+
+  const fetchTasks = async () => {
+    if (!id) return;
+    setLoadingTasks(true);
+    try {
+      const response = await fetch(`${API_URL}/tasks?client_id=${id}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // Handle both old array format and new paginated format
+        setTasks(Array.isArray(data) ? data : data.tasks || []);
+      }
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+
+  const fetchLoanScenarios = async () => {
+    if (!id) return;
+    setLoadingScenarios(true);
+    try {
+      const response = await fetch(`${API_URL}/loan-scenarios?client_id=${id}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setLoanScenarios(data);
+      }
+    } catch (error) {
+      console.error('Error fetching loan scenarios:', error);
+    } finally {
+      setLoadingScenarios(false);
+    }
+  };
+
+  const fetchDocuments = async () => {
+    if (!id) return;
+    setLoadingDocuments(true);
+    try {
+      const response = await fetch(`${API_URL}/documents?client_id=${id}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDocuments(data);
+      }
+    } catch (error) {
+      console.error('Error fetching documents:', error);
+    } finally {
+      setLoadingDocuments(false);
+    }
+  };
+
+  const fetchTeamMembers = async () => {
+    setLoadingTeamMembers(true);
+    try {
+      const response = await fetch(`${API_URL}/users/team`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTeamMembers(data);
+      }
+    } catch (error) {
+      console.error('Error fetching team members:', error);
+    } finally {
+      setLoadingTeamMembers(false);
+    }
+  };
+
+  const fetchPackages = async () => {
+    try {
+      const response = await fetch(`${API_URL}/document-packages`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAvailablePackages(data);
+      }
+    } catch (error) {
+      console.error('Error fetching document packages:', error);
+    }
+  };
+
   const fetchNoteTemplates = async () => {
     setLoadingTemplates(true);
     try {
@@ -976,17 +1105,10 @@ export default function ClientDetails() {
 
     setSavingNote(true);
     try {
-      const response = await fetch(`${API_URL}/notes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          clientId: id,
-          text: newNoteText,
-          tags: newNoteTags,
-        }),
+      const response = await api.post('/notes', {
+        clientId: id,
+        text: newNoteText,
+        tags: newNoteTags,
       });
 
       if (!response.ok) {
@@ -1043,16 +1165,9 @@ export default function ClientDetails() {
 
     setSavingNote(true);
     try {
-      const response = await fetch(`${API_URL}/notes/${editingNote.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          text: editNoteText,
-          tags: editNoteTags,
-        }),
+      const response = await api.put(`/notes/${editingNote.id}`, {
+        text: editNoteText,
+        tags: editNoteTags,
       });
 
       if (!response.ok) {
@@ -1070,6 +1185,7 @@ export default function ClientDetails() {
       setEditingNote(null);
       setEditNoteText('');
       setEditNoteTags([]);
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
@@ -1094,18 +1210,14 @@ export default function ClientDetails() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/notes/${noteId}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.delete(`/notes/${noteId}`);
 
       if (!response.ok) {
         throw new Error('Failed to delete note');
       }
 
       setNotes(notes.filter(n => n.id !== noteId));
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
@@ -1126,15 +1238,8 @@ export default function ClientDetails() {
     const newPinnedState = !note.isPinned;
 
     try {
-      const response = await fetch(`${API_URL}/notes/${note.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          isPinned: newPinnedState,
-        }),
+      const response = await api.put(`/notes/${note.id}`, {
+        isPinned: newPinnedState,
       });
 
       if (!response.ok) {
@@ -1143,6 +1248,7 @@ export default function ClientDetails() {
 
       const updatedNote = await response.json();
       setNotes(notes.map(n => n.id === note.id ? { ...n, isPinned: updatedNote.isPinned } : n));
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
@@ -1159,52 +1265,7 @@ export default function ClientDetails() {
     }
   };
 
-  // Sort notes: pinned first, then by date
-  const sortedNotes = [...notes].sort((a, b) => {
-    if (a.isPinned && !b.isPinned) return -1;
-    if (!a.isPinned && b.isPinned) return 1;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
-
-  // Task functions
-  const fetchTasks = async () => {
-    if (!id) return;
-    setLoadingTasks(true);
-    try {
-      const response = await fetch(`${API_URL}/tasks?client_id=${id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setTasks(data);
-      }
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-    } finally {
-      setLoadingTasks(false);
-    }
-  };
-
-  const fetchTeamMembers = async () => {
-    setLoadingTeamMembers(true);
-    try {
-      const response = await fetch(`${API_URL}/users/team`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setTeamMembers(data);
-      }
-    } catch (error) {
-      console.error('Error fetching team members:', error);
-    } finally {
-      setLoadingTeamMembers(false);
-    }
-  };
+  // ...
 
   const handleCreateTask = async () => {
     if (!newTaskForm.text.trim()) {
@@ -1218,20 +1279,13 @@ export default function ClientDetails() {
 
     setSavingTask(true);
     try {
-      const response = await fetch(`${API_URL}/tasks`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          clientId: id,
-          text: newTaskForm.text,
-          description: newTaskForm.description || undefined,
-          priority: newTaskForm.priority,
-          dueDate: newTaskForm.dueDate ? newTaskForm.dueDate.toISOString() : undefined,
-          assignedToId: newTaskForm.assignedToId || undefined,
-        }),
+      const response = await api.post('/tasks', {
+        clientId: id,
+        text: newTaskForm.text,
+        description: newTaskForm.description || undefined,
+        priority: newTaskForm.priority,
+        dueDate: newTaskForm.dueDate ? newTaskForm.dueDate.toISOString() : undefined,
+        assignedToId: newTaskForm.assignedToId || undefined,
       });
 
       if (!response.ok) {
@@ -1248,6 +1302,7 @@ export default function ClientDetails() {
         dueDate: null,
         assignedToId: '',
       });
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
@@ -1267,39 +1322,25 @@ export default function ClientDetails() {
   };
 
   const handleToggleTaskStatus = async (task: Task) => {
-    // Prevent rapid clicks - ignore if already toggling this task
     if (togglingTaskId === task.id) {
       return;
     }
 
     const newStatus = task.status === 'COMPLETE' ? 'TODO' : 'COMPLETE';
-    const oldStatus = task.status;
-    const oldCompletedAt = task.completedAt;
-
     setTogglingTaskId(task.id);
 
-    // OPTIMISTIC UPDATE: Update UI immediately before server responds
-    const optimisticCompletedAt = newStatus === 'COMPLETE' ? new Date().toISOString() : undefined;
-    setTasks(tasks.map(t => t.id === task.id ? { ...t, status: newStatus, completedAt: optimisticCompletedAt } : t));
-
     try {
-      const response = await fetch(`${API_URL}/tasks/${task.id}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
+      const response = await api.patch(`/tasks/${task.id}/status`, {
+        status: newStatus,
       });
 
       if (!response.ok) {
         throw new Error('Failed to update task');
       }
 
-      // Server confirmed the update - no rollback needed
       const updatedTask = await response.json();
-      // Update with server data (may have slight differences like server timestamp)
       setTasks(tasks.map(t => t.id === task.id ? { ...t, status: updatedTask.status, completedAt: updatedTask.completedAt } : t));
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
@@ -1308,13 +1349,9 @@ export default function ClientDetails() {
       });
     } catch (error) {
       console.error('Error updating task:', error);
-
-      // ROLLBACK: Revert the optimistic update on error
-      setTasks(tasks.map(t => t.id === task.id ? { ...t, status: oldStatus, completedAt: oldCompletedAt } : t));
-
       notifications.show({
         title: 'Error',
-        message: 'Failed to update task. Please try again.',
+        message: 'Failed to update task',
         color: 'red',
       });
     } finally {
@@ -1328,18 +1365,14 @@ export default function ClientDetails() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/tasks/${taskId}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.delete(`/tasks/${taskId}`);
 
       if (!response.ok) {
         throw new Error('Failed to delete task');
       }
 
       setTasks(tasks.filter(t => t.id !== taskId));
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
@@ -1362,51 +1395,25 @@ export default function ClientDetails() {
     HIGH: 'red',
   };
 
-  // Helper function to check if a task is overdue
   const isTaskOverdue = (task: Task): boolean => {
     if (!task.dueDate || task.status === 'COMPLETE') return false;
     const dueDate = new Date(task.dueDate);
     const today = new Date();
-    // Set both dates to midnight for accurate comparison
     dueDate.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
     return dueDate < today;
   };
 
-  // Helper function to check if a task is due today
   const isTaskDueToday = (task: Task): boolean => {
-    if (!task.dueDate || task.status === 'COMPLETE') return false;
+    if (!task.dueDate) return false;
     const dueDate = new Date(task.dueDate);
     const today = new Date();
-    // Set both dates to midnight for accurate comparison
     dueDate.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
     return dueDate.getTime() === today.getTime();
   };
 
-  // Loan Scenario functions
-  const fetchLoanScenarios = async () => {
-    if (!id) return;
-    setLoadingScenarios(true);
-    try {
-      const response = await fetch(`${API_URL}/loan-scenarios?client_id=${id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setLoanScenarios(data);
-      }
-    } catch (error) {
-      console.error('Error fetching loan scenarios:', error);
-    } finally {
-      setLoadingScenarios(false);
-    }
-  };
-
   const handleCalculateScenario = async () => {
-    // Validate required fields for calculation
     const errors: { name?: string; amount?: string; interestRate?: string; termYears?: string } = {};
 
     if (!newScenarioForm.name.trim()) {
@@ -1434,26 +1441,18 @@ export default function ClientDetails() {
       return;
     }
 
-    // Clear errors
     setScenarioFormErrors({});
 
     try {
-      const response = await fetch(`${API_URL}/loan-scenarios/calculate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          amount: newScenarioForm.amount,
-          interestRate: newScenarioForm.interestRate,
-          termYears: newScenarioForm.termYears,
-          downPayment: newScenarioForm.downPayment,
-          propertyValue: newScenarioForm.propertyValue,
-          propertyTaxes: newScenarioForm.propertyTaxes,
-          homeInsurance: newScenarioForm.homeInsurance,
-          hoaFees: newScenarioForm.hoaFees,
-        }),
+      const response = await api.post('/loan-scenarios/calculate', {
+        amount: newScenarioForm.amount,
+        interestRate: newScenarioForm.interestRate,
+        termYears: newScenarioForm.termYears,
+        downPayment: newScenarioForm.downPayment,
+        propertyValue: newScenarioForm.propertyValue,
+        propertyTaxes: newScenarioForm.propertyTaxes,
+        homeInsurance: newScenarioForm.homeInsurance,
+        hoaFees: newScenarioForm.hoaFees,
       });
 
       if (!response.ok) {
@@ -1479,26 +1478,22 @@ export default function ClientDetails() {
   };
 
   const handleCreateScenario = async () => {
-    // Validate required fields
     const errors: { name?: string; amount?: string; interestRate?: string; termYears?: string } = {};
 
     if (!newScenarioForm.name.trim()) {
       errors.name = 'Scenario name is required';
     }
 
-    // Validate loan amount - must be positive
     if (newScenarioForm.amount <= 0) {
       errors.amount = 'Loan amount must be greater than 0';
     }
 
-    // Validate interest rate - must be between 0 and 30%
     if (newScenarioForm.interestRate <= 0) {
       errors.interestRate = 'Interest rate must be greater than 0%';
     } else if (newScenarioForm.interestRate > 30) {
       errors.interestRate = 'Interest rate cannot exceed 30%';
     }
 
-    // Validate term years
     if (!newScenarioForm.termYears || newScenarioForm.termYears <= 0) {
       errors.termYears = 'Term is required and must be greater than 0';
     } else if (newScenarioForm.termYears > 40) {
@@ -1510,20 +1505,12 @@ export default function ClientDetails() {
       return;
     }
 
-    // Clear errors
     setScenarioFormErrors({});
     setSavingScenario(true);
     try {
-      const response = await fetch(`${API_URL}/loan-scenarios`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          clientId: id,
-          ...newScenarioForm,
-        }),
+      const response = await api.post('/loan-scenarios', {
+        clientId: id,
+        ...newScenarioForm,
       });
 
       if (!response.ok) {
@@ -1546,6 +1533,7 @@ export default function ClientDetails() {
         hoaFees: 0,
       });
       setCalculatedValues(null);
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
@@ -1566,22 +1554,17 @@ export default function ClientDetails() {
 
   const handleSetPreferred = async (scenarioId: string) => {
     try {
-      const response = await fetch(`${API_URL}/loan-scenarios/${scenarioId}/preferred`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.patch(`/loan-scenarios/${scenarioId}/preferred`);
 
       if (!response.ok) {
         throw new Error('Failed to set preferred');
       }
 
-      // Update local state
       setLoanScenarios(loanScenarios.map(s => ({
         ...s,
         isPreferred: s.id === scenarioId,
       })));
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
@@ -1599,23 +1582,32 @@ export default function ClientDetails() {
   };
 
   const handleDeleteScenario = async (scenarioId: string) => {
-    if (!confirm('Are you sure you want to delete this loan scenario?')) {
+    const scenario = loanScenarios.find(s => s.id === scenarioId) || null;
+    setScenarioToDelete(scenario);
+    setDeleteScenarioModalOpen(true);
+  };
+
+  const cancelDeleteScenario = () => {
+    setDeleteScenarioModalOpen(false);
+    setScenarioToDelete(null);
+  };
+
+  const confirmDeleteScenario = async () => {
+    if (!scenarioToDelete) {
+      cancelDeleteScenario();
       return;
     }
 
     try {
-      const response = await fetch(`${API_URL}/loan-scenarios/${scenarioId}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.delete(`/loan-scenarios/${scenarioToDelete.id}`);
 
       if (!response.ok) {
         throw new Error('Failed to delete loan scenario');
       }
 
-      setLoanScenarios(loanScenarios.filter(s => s.id !== scenarioId));
+      setLoanScenarios(loanScenarios.filter(s => s.id !== scenarioToDelete.id));
+      fetchActivities();
+      cancelDeleteScenario();
 
       notifications.show({
         title: 'Success',
@@ -1632,9 +1624,7 @@ export default function ClientDetails() {
     }
   };
 
-  // Export loan scenario to PDF
   const handleExportScenarioPDF = (scenario: LoanScenario) => {
-    // Generate PDF content as HTML
     const content = `
 <!DOCTYPE html>
 <html>
@@ -1696,7 +1686,7 @@ export default function ClientDetails() {
       <value>${formatCurrency(scenario.monthlyPayment)}</value>
     </div>
     <div class="info-item highlight">
-      <label>Total Monthly (PITI)</label>
+      <label>Total Monthly Payment</label>
       <value>${formatCurrency(scenario.totalMonthlyPayment)}</value>
     </div>
     <div class="info-item">
@@ -1714,74 +1704,61 @@ export default function ClientDetails() {
   </div>
 
   <div class="summary">
-    <h2 style="margin-top: 0;">Total Cost Summary</h2>
+    <h2>Summary</h2>
     <p><strong>Total Interest Over ${scenario.termYears} Years:</strong> ${formatCurrency(scenario.totalInterest)}</p>
     <p><strong>Total Cost of Loan:</strong> ${formatCurrency((scenario.amount || 0) + (scenario.totalInterest || 0))}</p>
   </div>
 
   <div class="footer">
-    <p>This is an estimate based on the information provided. Actual terms may vary.</p>
-    <p>Generated by MLO Dashboard</p>
+    Generated by MLO Dashboard on ${new Date().toLocaleString()}
   </div>
 </body>
 </html>
     `;
 
-    // Open in new window for printing/saving as PDF
     const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(content);
-      printWindow.document.close();
-      printWindow.focus();
-      // Trigger print dialog after a short delay to ensure content is loaded
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
-    }
-
-    notifications.show({
-      title: 'PDF Export',
-      message: 'Use your browser\'s print dialog to save as PDF',
-      color: 'blue',
-    });
+    if (!printWindow) return;
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 500);
   };
 
-  // Generate amortization schedule data
-  const generateAmortizationSchedule = (scenario: LoanScenario) => {
-    const schedule = [];
-    const principal = scenario.amount;
-    const monthlyRate = (scenario.interestRate / 100) / 12;
-    const totalMonths = scenario.termYears * 12;
-    const monthlyPayment = scenario.monthlyPayment || 0;
+  const handleExportAmortizationSchedule = (scenario: LoanScenario) => {
+    const monthlyRate = (scenario.interestRate || 0) / 100 / 12;
+    const totalMonths = (scenario.termYears || 0) * 12;
+    const principal = scenario.amount || 0;
 
+    let monthlyPayment = 0;
+    if (monthlyRate > 0 && totalMonths > 0) {
+      monthlyPayment = principal * (monthlyRate * Math.pow(1 + monthlyRate, totalMonths)) /
+        (Math.pow(1 + monthlyRate, totalMonths) - 1);
+    } else if (totalMonths > 0) {
+      monthlyPayment = principal / totalMonths;
+    }
+
+    const schedule: Array<{ month: number; payment: number; principal: number; interest: number; balance: number }> = [];
     let balance = principal;
+    let totalInterest = 0;
 
-    for (let month = 1; month <= totalMonths; month++) {
+    for (let month = 1; month <= totalMonths; month += 1) {
       const interestPayment = balance * monthlyRate;
       const principalPayment = monthlyPayment - interestPayment;
       balance = Math.max(0, balance - principalPayment);
+      totalInterest += interestPayment;
 
       schedule.push({
         month,
         payment: monthlyPayment,
         principal: principalPayment,
         interest: interestPayment,
-        balance: balance,
+        balance,
       });
     }
 
-    return schedule;
-  };
-
-  // Export amortization schedule to PDF/HTML
-  const handleExportAmortizationSchedule = (scenario: LoanScenario) => {
-    const schedule = generateAmortizationSchedule(scenario);
-    const totalMonths = scenario.termYears * 12;
-    const totalInterest = schedule.reduce((sum, row) => sum + row.interest, 0);
-    const totalPrincipal = schedule.reduce((sum, row) => sum + row.principal, 0);
-
-    // Generate schedule rows HTML
-    const scheduleRows = schedule.map(row => `
+    const rows = schedule.map(row => `
       <tr>
         <td>${row.month}</td>
         <td>${formatCurrency(row.payment)}</td>
@@ -1791,81 +1768,37 @@ export default function ClientDetails() {
       </tr>
     `).join('');
 
+    const totalPrincipal = schedule.reduce((sum, row) => sum + row.principal, 0);
+
     const content = `
 <!DOCTYPE html>
 <html>
 <head>
   <title>Amortization Schedule - ${scenario.name}</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; font-size: 11px; }
-    h1 { color: #228be6; border-bottom: 2px solid #228be6; padding-bottom: 10px; font-size: 20px; }
-    h2 { color: #333; margin-top: 20px; font-size: 16px; }
-    .summary { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
-    .summary-item label { display: block; color: #666; font-size: 10px; margin-bottom: 3px; }
-    .summary-item value { display: block; font-size: 14px; font-weight: bold; color: #333; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    th { background: #228be6; color: white; padding: 8px 6px; text-align: right; font-size: 10px; }
-    th:first-child { text-align: center; }
-    td { padding: 6px; border-bottom: 1px solid #e9ecef; text-align: right; }
-    td:first-child { text-align: center; }
-    tr:nth-child(even) { background: #f8f9fa; }
-    tr:hover { background: #e7f5ff; }
-    .totals { background: #228be6; color: white; font-weight: bold; }
-    .totals td { border-bottom: none; }
-    .footer { margin-top: 20px; color: #666; font-size: 10px; text-align: center; }
-    @media print {
-      body { padding: 10px; font-size: 9px; }
-      h1 { font-size: 16px; }
-      th, td { padding: 4px 3px; }
-    }
+    body { font-family: Arial, sans-serif; padding: 30px; }
+    h1 { color: #228be6; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+    th, td { padding: 8px; border: 1px solid #ddd; text-align: right; }
+    th { background: #f8f9fa; }
+    .summary { margin: 20px 0; padding: 15px; background: #e7f5ff; border-radius: 8px; }
   </style>
 </head>
 <body>
   <h1>Amortization Schedule</h1>
   <h2>${scenario.name}</h2>
   ${client ? `<p><strong>Client:</strong> ${client.name}</p>` : ''}
-  <p><strong>Generated:</strong> ${new Date().toLocaleDateString()}</p>
+  <p><strong>Loan Amount:</strong> ${formatCurrency(scenario.amount)}</p>
+  <p><strong>Interest Rate:</strong> ${scenario.interestRate?.toFixed(2)}%</p>
+  <p><strong>Term:</strong> ${scenario.termYears} years</p>
 
   <div class="summary">
-    <h2 style="margin-top: 0;">Loan Summary</h2>
-    <div class="summary-grid">
-      <div class="summary-item">
-        <label>Loan Amount</label>
-        <value>${formatCurrency(scenario.amount)}</value>
-      </div>
-      <div class="summary-item">
-        <label>Interest Rate</label>
-        <value>${scenario.interestRate?.toFixed(3)}%</value>
-      </div>
-      <div class="summary-item">
-        <label>Loan Term</label>
-        <value>${scenario.termYears} years (${totalMonths} months)</value>
-      </div>
-      <div class="summary-item">
-        <label>Monthly Payment</label>
-        <value>${formatCurrency(scenario.monthlyPayment)}</value>
-      </div>
-      <div class="summary-item">
-        <label>Total Principal</label>
-        <value>${formatCurrency(totalPrincipal)}</value>
-      </div>
-      <div class="summary-item">
-        <label>Total Interest</label>
-        <value>${formatCurrency(totalInterest)}</value>
-      </div>
-      <div class="summary-item">
-        <label>Total Cost of Loan</label>
-        <value>${formatCurrency(totalPrincipal + totalInterest)}</value>
-      </div>
-      <div class="summary-item">
-        <label>LTV Ratio</label>
-        <value>${scenario.loanToValue ? scenario.loanToValue.toFixed(2) + '%' : '-'}</value>
-      </div>
-    </div>
+    <p><strong>Monthly Payment:</strong> ${formatCurrency(scenario.monthlyPayment)}</p>
+    <p><strong>Total Principal:</strong> ${formatCurrency(totalPrincipal)}</p>
+    <p><strong>Total Interest:</strong> ${formatCurrency(totalInterest)}</p>
+    <p><strong>Total Cost:</strong> ${formatCurrency(totalPrincipal + totalInterest)}</p>
   </div>
 
-  <h2>Monthly Payment Schedule</h2>
   <table>
     <thead>
       <tr>
@@ -1877,52 +1810,30 @@ export default function ClientDetails() {
       </tr>
     </thead>
     <tbody>
-      ${scheduleRows}
-      <tr class="totals">
-        <td>TOTAL</td>
+      ${rows}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td><strong>Total</strong></td>
         <td>${formatCurrency(scenario.monthlyPayment ? scenario.monthlyPayment * totalMonths : 0)}</td>
         <td>${formatCurrency(totalPrincipal)}</td>
         <td>${formatCurrency(totalInterest)}</td>
-        <td>$0.00</td>
+        <td>${formatCurrency(0)}</td>
       </tr>
-    </tbody>
+    </tfoot>
   </table>
-
-  <div class="footer">
-    <p>This amortization schedule is an estimate based on the information provided. Actual payments may vary.</p>
-    <p>Generated by MLO Dashboard</p>
-  </div>
 </body>
 </html>
     `;
 
-    // Open in new window for printing/saving as PDF
     const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(content);
-      printWindow.document.close();
-      printWindow.focus();
-      // Trigger print dialog after a short delay to ensure content is loaded
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
-    }
-
-    notifications.show({
-      title: 'Amortization Schedule Export',
-      message: 'Use your browser\'s print dialog to save as PDF',
-      color: 'blue',
-    });
-  };
-
-  const formatCurrency = (value: number | undefined | null) => {
-    if (value === undefined || value === null) return '-';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
-  };
-
-  const formatPercent = (value: number | undefined | null) => {
-    if (value === undefined || value === null) return '-';
-    return `${value.toFixed(2)}%`;
+    if (!printWindow) return;
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 500);
   };
 
   const handleToggleScenarioSelection = (scenarioId: string) => {
@@ -1934,30 +1845,7 @@ export default function ClientDetails() {
     });
   };
 
-  const getSelectedScenariosData = () => {
-    return loanScenarios.filter(s => selectedScenarios.includes(s.id));
-  };
-
-  // Document functions
-  const fetchDocuments = async () => {
-    if (!id) return;
-    setLoadingDocuments(true);
-    try {
-      const response = await fetch(`${API_URL}/documents?client_id=${id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setDocuments(data);
-      }
-    } catch (error) {
-      console.error('Error fetching documents:', error);
-    } finally {
-      setLoadingDocuments(false);
-    }
-  };
+  // ...
 
   const handleCreateDocument = async () => {
     if (!newDocumentForm.name.trim()) {
@@ -2026,6 +1914,8 @@ export default function ClientDetails() {
               message: 'Document uploaded successfully',
               color: 'green',
             });
+
+            fetchActivities();
           } catch {
             notifications.show({
               title: 'Error',
@@ -2034,9 +1924,18 @@ export default function ClientDetails() {
             });
           }
         } else {
+          let message = 'Failed to upload document';
+          try {
+            const errorBody = JSON.parse(xhr.responseText);
+            if (errorBody?.message) {
+              message = errorBody.message;
+            }
+          } catch {
+            // Use default message
+          }
           notifications.show({
             title: 'Error',
-            message: 'Failed to upload document',
+            message,
             color: 'red',
           });
         }
@@ -2054,27 +1953,28 @@ export default function ClientDetails() {
         setUploadProgress(null);
       });
 
-      xhr.open('POST', `${API_URL}/documents/upload`);
-      xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
-      xhr.send(formData);
+      (async () => {
+        const csrf = await ensureCsrfToken();
+        xhr.open('POST', `${API_URL}/documents/upload`);
+        if (accessToken) {
+          xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+        }
+        if (csrf) {
+          xhr.setRequestHeader('X-CSRF-Token', csrf);
+        }
+        xhr.send(formData);
+      })();
     } else {
       // Metadata-only upload (no file)
       try {
-        const response = await fetch(`${API_URL}/documents`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            clientId: id,
-            name: newDocumentForm.name,
-            fileName: newDocumentForm.fileName,
-            category: newDocumentForm.category,
-            status: newDocumentForm.status,
-            expiresAt: newDocumentForm.expiresAt ? newDocumentForm.expiresAt.toISOString() : undefined,
-            notes: newDocumentForm.notes || undefined,
-          }),
+        const response = await api.post('/documents', {
+          clientId: id,
+          name: newDocumentForm.name,
+          fileName: newDocumentForm.fileName,
+          category: newDocumentForm.category,
+          status: newDocumentForm.status,
+          expiresAt: newDocumentForm.expiresAt ? newDocumentForm.expiresAt.toISOString() : undefined,
+          notes: newDocumentForm.notes || undefined,
         });
 
         if (!response.ok) {
@@ -2098,6 +1998,8 @@ export default function ClientDetails() {
           message: 'Document created successfully',
           color: 'green',
         });
+
+        fetchActivities();
       } catch (error) {
         console.error('Error creating document:', error);
         notifications.show({
@@ -2113,26 +2015,21 @@ export default function ClientDetails() {
 
   const handleUpdateDocumentStatus = async (documentId: string, newStatus: Document['status']) => {
     try {
-      const response = await fetch(`${API_URL}/documents/${documentId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
+      const response = await api.put(`/documents/${documentId}`, {
+        status: newStatus,
       });
 
       if (!response.ok) {
         throw new Error('Failed to update document status');
       }
 
-      setDocuments(documents.map(doc =>
-        doc.id === documentId ? { ...doc, status: newStatus } : doc
-      ));
+      const updatedDocument = await response.json();
+      setDocuments(documents.map(doc => doc.id === documentId ? { ...doc, status: updatedDocument.status } : doc));
+      fetchActivities();
 
       notifications.show({
-        title: 'Success',
-        message: `Document status updated to ${newStatus.replace('_', ' ')}`,
+        title: 'Status Updated',
+        message: `Document status changed to ${newStatus.replace('_', ' ')}`,
         color: 'green',
       });
     } catch (error) {
@@ -2145,81 +2042,26 @@ export default function ClientDetails() {
     }
   };
 
-  const handleDownloadDocument = async (documentId: string, fileName: string) => {
-    try {
-      const response = await fetch(`${API_URL}/documents/${documentId}/download`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to download document');
-      }
-
-      // Get the blob from response
-      const blob = await response.blob();
-
-      // Create a temporary URL and trigger download
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-
-      // Clean up
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      notifications.show({
-        title: 'Success',
-        message: 'Document downloaded successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error downloading document:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to download document',
-        color: 'red',
-      });
+  const handleDeleteDocument = async (documentId: string) => {
+    if (!confirm('Are you sure you want to delete this document?')) {
+      return;
     }
-  };
-
-  const handleDeleteDocument = (documentId: string) => {
-    const doc = documents.find(d => d.id === documentId);
-    if (doc) {
-      setDocumentToDelete(doc);
-      setDeleteDocumentModalOpen(true);
-    }
-  };
-
-  const confirmDeleteDocument = async () => {
-    if (!documentToDelete) return;
 
     try {
-      const response = await fetch(`${API_URL}/documents/${documentToDelete.id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.delete(`/documents/${documentId}`);
 
       if (!response.ok) {
         throw new Error('Failed to delete document');
       }
 
-      setDocuments(documents.filter(d => d.id !== documentToDelete.id));
+      setDocuments(documents.filter(doc => doc.id !== documentId));
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
         message: 'Document deleted successfully',
         color: 'green',
       });
-
-      setDeleteDocumentModalOpen(false);
-      setDocumentToDelete(null);
     } catch (error) {
       console.error('Error deleting document:', error);
       notifications.show({
@@ -2235,86 +2077,108 @@ export default function ClientDetails() {
     setDocumentToDelete(null);
   };
 
-  // Fetch available document packages
-  const fetchPackages = async () => {
+  const confirmDeleteDocument = async () => {
+    if (!documentToDelete) {
+      cancelDeleteDocument();
+      return;
+    }
+
     try {
-      const response = await fetch(`${API_URL}/document-packages`, {
+      const response = await api.delete(`/documents/${documentToDelete.id}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to delete document');
+      }
+
+      setDocuments(documents.filter(doc => doc.id !== documentToDelete.id));
+      cancelDeleteDocument();
+      fetchActivities();
+
+      notifications.show({
+        title: 'Success',
+        message: 'Document deleted successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete document',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleDownloadDocument = async (documentId: string, fileName?: string) => {
+    try {
+      const response = await fetch(`${API_URL}/documents/${documentId}/download`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch packages');
+        throw new Error('Failed to download document');
       }
 
-      const packages = await response.json();
-      setAvailablePackages(packages);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName || 'document';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Error fetching packages:', error);
+      console.error('Error downloading document:', error);
       notifications.show({
         title: 'Error',
-        message: 'Failed to load document packages',
+        message: 'Failed to download document',
         color: 'red',
       });
     }
   };
 
-  // Assign a package to the client
   const handleAssignPackage = async () => {
-    if (!selectedPackageId) {
-      notifications.show({
-        title: 'Validation Error',
-        message: 'Please select a package',
-        color: 'red',
-      });
+    if (!selectedPackageId || !id) {
       return;
     }
 
     setAssigningPackage(true);
-
     try {
-      const response = await fetch(`${API_URL}/document-packages/assign`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          clientId: id,
-          packageId: selectedPackageId,
-        }),
+      const response = await api.post('/document-packages/assign', {
+        clientId: id,
+        packageId: selectedPackageId,
       });
 
       if (!response.ok) {
         throw new Error('Failed to assign package');
       }
 
-      const data = await response.json();
-
-      // Refresh documents list
       await fetchDocuments();
+      setAssignPackageModalOpen(false);
+      setSelectedPackageId('');
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
-        message: `${data.documents.length} documents created from ${data.package.name}`,
+        message: 'Document package assigned successfully',
         color: 'green',
       });
-
-      // Reset and close modal
-      setSelectedPackageId('');
-      setAssignPackageModalOpen(false);
     } catch (error) {
       console.error('Error assigning package:', error);
       notifications.show({
         title: 'Error',
-        message: 'Failed to assign package',
+        message: 'Failed to assign document package',
         color: 'red',
       });
     } finally {
       setAssigningPackage(false);
     }
   };
+
+  // ...
 
   const handleRequestDocument = async () => {
     if (!requestDocumentForm.documentName.trim()) {
@@ -2329,19 +2193,12 @@ export default function ClientDetails() {
     setRequestingDocument(true);
 
     try {
-      const response = await fetch(`${API_URL}/documents/request`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          clientId: id,
-          documentName: requestDocumentForm.documentName,
-          category: requestDocumentForm.category,
-          dueDate: requestDocumentForm.dueDate ? requestDocumentForm.dueDate.toISOString() : null,
-          message: requestDocumentForm.message || null,
-        }),
+      const response = await api.post('/documents/request', {
+        clientId: id,
+        documentName: requestDocumentForm.documentName,
+        category: requestDocumentForm.category,
+        dueDate: requestDocumentForm.dueDate ? requestDocumentForm.dueDate.toISOString() : null,
+        message: requestDocumentForm.message || null,
       });
 
       if (!response.ok) {
@@ -2352,6 +2209,7 @@ export default function ClientDetails() {
 
       // Refresh documents list
       await fetchDocuments();
+      fetchActivities();
 
       notifications.show({
         title: 'Success',
@@ -2379,6 +2237,24 @@ export default function ClientDetails() {
     } finally {
       setRequestingDocument(false);
     }
+  };
+
+  const formatCurrency = (value: number | undefined | null) => {
+    if (value === undefined || value === null || Number.isNaN(value)) return '-';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 2,
+    }).format(value);
+  };
+
+  const formatPercent = (value: number | undefined | null) => {
+    if (value === undefined || value === null || Number.isNaN(value)) return '-';
+    return `${value.toFixed(2)}%`;
+  };
+
+  const getSelectedScenariosData = () => {
+    return loanScenarios.filter(s => selectedScenarios.includes(s.id));
   };
 
   if (loading) {
@@ -2920,6 +2796,24 @@ export default function ClientDetails() {
                         Created: {new Date(task.createdAt).toLocaleDateString()}
                       </Text>
                     </Group>
+
+                    {/* Subtasks Section */}
+                    {task.subtasks && task.subtasks.length > 0 && (
+                      <Box mt="md">
+                        <Divider mb="sm" />
+                        <SubtaskList
+                          taskId={task.id}
+                          subtasks={task.subtasks}
+                          onSubtasksChange={(updatedSubtasks) => {
+                            setTasks(tasks.map(t =>
+                              t.id === task.id
+                                ? { ...t, subtasks: updatedSubtasks }
+                                : t
+                            ));
+                          }}
+                        />
+                      </Box>
+                    )}
                   </Paper>
                 );
               })}
@@ -2985,7 +2879,12 @@ export default function ClientDetails() {
                         />
                         {scenario.isPreferred && (
                           <ThemeIcon color="yellow" size="sm" variant="light">
-                            <IconStarFilled size={14} aria-hidden="true" />
+                            <IconStar
+                              size={14}
+                              aria-hidden="true"
+                              fill="currentColor"
+                              stroke="currentColor"
+                            />
                           </ThemeIcon>
                         )}
                         <Text fw={600} size="lg">{scenario.name}</Text>
@@ -3895,6 +3794,31 @@ export default function ClientDetails() {
             </Button>
             <Button color="red" onClick={confirmDeleteDocument}>
               Delete Document
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Delete Loan Scenario Confirmation Modal */}
+      <Modal
+        opened={deleteScenarioModalOpen}
+        onClose={cancelDeleteScenario}
+        title="Delete Loan Scenario"
+        centered
+      >
+        <Stack>
+          <Text>
+            Are you sure you want to delete the loan scenario <Text fw={700}>"{scenarioToDelete?.name}"</Text>?
+          </Text>
+          <Text size="sm" c="dimmed">
+            This action cannot be undone.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={cancelDeleteScenario}>
+              Cancel
+            </Button>
+            <Button color="red" onClick={confirmDeleteScenario}>
+              Delete Scenario
             </Button>
           </Group>
         </Stack>

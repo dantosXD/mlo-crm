@@ -20,6 +20,7 @@ import {
   IconRobot,
   IconTemplate,
   IconMail,
+  IconCheck,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import { QuickCapture } from './components/QuickCapture';
@@ -44,6 +45,7 @@ import { CommunicationTemplates } from './pages/CommunicationTemplates';
 import { CommunicationTemplateEditor } from './pages/CommunicationTemplateEditor';
 import { Communications } from './pages/Communications';
 import { CommunicationComposer } from './pages/CommunicationComposer';
+import TasksDashboard from './pages/TasksDashboard';
 
 const ForgotPassword = () => (
   <Center h="100vh">
@@ -63,11 +65,24 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Role-protected route wrapper for write actions
+function WriteRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useAuthStore();
+  const isReadOnly = isReadOnlyRole(user?.role);
+
+  if (isReadOnly) {
+    return <AccessDenied />;
+  }
+
+  return <>{children}</>;
+}
+
 // Navigation items
 const navItems = [
   { icon: IconDashboard, label: 'Dashboard', href: '/', adminOnly: false },
   { icon: IconUsers, label: 'Clients', href: '/clients', adminOnly: false },
   { icon: IconLayoutKanban, label: 'Pipeline', href: '/pipeline', adminOnly: false },
+  { icon: IconCheck, label: 'Tasks', href: '/tasks', adminOnly: false },
   { icon: IconNotes, label: 'Notes', href: '/notes', adminOnly: false },
   { icon: IconFileText, label: 'Documents', href: '/documents', adminOnly: false },
   { icon: IconTemplate, label: 'Templates', href: '/communication-templates', adminOnly: false },
@@ -383,14 +398,15 @@ function ProtectedLayout() {
           <Route path="/clients" element={<Clients />} />
           <Route path="/clients/:id" element={<ClientDetails />} />
           <Route path="/pipeline" element={<Pipeline />} />
+          <Route path="/tasks" element={<TasksDashboard />} />
           <Route path="/notes" element={<Notes />} />
           <Route path="/documents" element={<Documents />} />
           <Route path="/communication-templates" element={<CommunicationTemplates />} />
           <Route path="/communication-templates/new" element={<CommunicationTemplateEditor />} />
           <Route path="/communication-templates/:id/edit" element={<CommunicationTemplateEditor />} />
           <Route path="/communications" element={<Communications />} />
-          <Route path="/communications/compose" element={<CommunicationComposer />} />
-          <Route path="/communications/:clientId/compose" element={<CommunicationComposer />} />
+          <Route path="/communications/compose" element={<WriteRoute><CommunicationComposer /></WriteRoute>} />
+          <Route path="/communications/:clientId/compose" element={<WriteRoute><CommunicationComposer /></WriteRoute>} />
           <Route path="/calculator" element={<Calculator />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/workflows" element={<Workflows />} />
@@ -415,7 +431,16 @@ function RequireAuth() {
 }
 
 function App() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, hasHydrated } = useAuthStore();
+
+  // Wait for auth store to hydrate from persisted state before making routing decisions
+  if (!hasHydrated) {
+    return (
+      <Center h="100vh">
+        <Text size="lg" c="dimmed">Loading...</Text>
+      </Center>
+    );
+  }
 
   if (!isAuthenticated) {
     return (

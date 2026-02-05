@@ -410,7 +410,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/communications - Create new communication (draft)
-router.post('/', async (req: AuthRequest, res: Response) => {
+router.post('/', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const {
       clientId,
@@ -553,7 +553,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 });
 
 // PUT /api/communications/:id - Update communication
-router.put('/:id', async (req: AuthRequest, res: Response) => {
+router.put('/:id', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const {
@@ -778,7 +778,7 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
 });
 
 // PATCH /api/communications/:id/status - Update communication status
-router.patch('/:id/status', async (req: AuthRequest, res: Response) => {
+router.patch('/:id/status', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -932,7 +932,7 @@ router.patch('/:id/status', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/communications/:id/send - Mark communication as sent
-router.post('/:id/send', async (req: AuthRequest, res: Response) => {
+router.post('/:id/send', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { metadata } = req.body; // Optional metadata (e.g., email provider response)

@@ -48,20 +48,28 @@ interface AmortizationEntry {
   balance: number;
 }
 
+const parseNumberInput = (value: number | string) => {
+  if (typeof value === 'number') return value;
+  const normalized = value.replace(/[^0-9.-]/g, '');
+  if (normalized === '' || normalized === '-' || normalized === '.' || normalized === '-.') return 0;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 export default function Calculator() {
   // Form state
-  const [loanAmount, setLoanAmount] = useState<number>(300000);
-  const [interestRate, setInterestRate] = useState<number>(7);
+  const [loanAmount, setLoanAmount] = useState<number | string>(300000);
+  const [interestRate, setInterestRate] = useState<number | string>(7);
   const [termYears, setTermYears] = useState<number>(30);
-  const [downPayment, setDownPayment] = useState<number>(60000);
-  const [propertyValue, setPropertyValue] = useState<number>(375000);
-  const [propertyTaxes, setPropertyTaxes] = useState<number>(3600);
-  const [homeInsurance, setHomeInsurance] = useState<number>(1200);
-  const [hoaFees, setHoaFees] = useState<number>(0);
+  const [downPayment, setDownPayment] = useState<number | string>(60000);
+  const [propertyValue, setPropertyValue] = useState<number | string>(375000);
+  const [propertyTaxes, setPropertyTaxes] = useState<number | string>(3600);
+  const [homeInsurance, setHomeInsurance] = useState<number | string>(1200);
+  const [hoaFees, setHoaFees] = useState<number | string>(0);
 
   // DTI calculation inputs
-  const [monthlyIncome, setMonthlyIncome] = useState<number>(0);
-  const [existingDebts, setExistingDebts] = useState<number>(0);
+  const [monthlyIncome, setMonthlyIncome] = useState<number | string>(0);
+  const [existingDebts, setExistingDebts] = useState<number | string>(0);
 
   // Results
   const [result, setResult] = useState<CalculationResult | null>(null);
@@ -70,8 +78,15 @@ export default function Calculator() {
 
   // Calculate loan payment
   const calculateLoan = useCallback(() => {
-    const principal = loanAmount;
-    const monthlyRate = interestRate / 100 / 12;
+    const principal = parseNumberInput(loanAmount);
+    const rate = parseNumberInput(interestRate);
+    const propertyValueValue = parseNumberInput(propertyValue);
+    const propertyTaxesValue = parseNumberInput(propertyTaxes);
+    const homeInsuranceValue = parseNumberInput(homeInsurance);
+    const hoaFeesValue = parseNumberInput(hoaFees);
+    const monthlyIncomeValue = parseNumberInput(monthlyIncome);
+    const existingDebtsValue = parseNumberInput(existingDebts);
+    const monthlyRate = rate / 100 / 12;
     const numPayments = termYears * 12;
 
     // Calculate monthly mortgage payment (P&I)
@@ -85,14 +100,14 @@ export default function Calculator() {
 
     // Calculate LTV (Loan to Value)
     let loanToValue: number | null = null;
-    if (propertyValue && propertyValue > 0) {
-      loanToValue = (principal / propertyValue) * 100;
+    if (propertyValueValue > 0) {
+      loanToValue = (principal / propertyValueValue) * 100;
     }
 
     // Calculate total monthly payment (PITI + HOA)
-    const monthlyPropertyTaxes = (propertyTaxes || 0) / 12;
-    const monthlyInsurance = (homeInsurance || 0) / 12;
-    const monthlyHOA = hoaFees || 0;
+    const monthlyPropertyTaxes = propertyTaxesValue / 12;
+    const monthlyInsurance = homeInsuranceValue / 12;
+    const monthlyHOA = hoaFeesValue;
 
     const totalMonthlyPayment = monthlyPayment + monthlyPropertyTaxes + monthlyInsurance + monthlyHOA;
 
@@ -102,9 +117,9 @@ export default function Calculator() {
 
     // Calculate DTI (Debt-to-Income) ratio
     let dti: number | null = null;
-    if (monthlyIncome > 0) {
-      const totalMonthlyDebt = totalMonthlyPayment + (existingDebts || 0);
-      dti = (totalMonthlyDebt / monthlyIncome) * 100;
+    if (monthlyIncomeValue > 0) {
+      const totalMonthlyDebt = totalMonthlyPayment + existingDebtsValue;
+      dti = (totalMonthlyDebt / monthlyIncomeValue) * 100;
     }
 
     setResult({
@@ -155,6 +170,9 @@ export default function Calculator() {
     return `${value.toFixed(2)}%`;
   };
 
+  const principalValue = parseNumberInput(loanAmount);
+  const interestRateValue = parseNumberInput(interestRate);
+
   return (
     <Container size="xl" py="md">
       <Group mb="lg">
@@ -175,7 +193,7 @@ export default function Calculator() {
                 label="Loan Amount"
                 description="The amount you want to borrow"
                 value={loanAmount}
-                onChange={(val) => setLoanAmount(typeof val === 'number' ? val : 300000)}
+                onChange={(val) => setLoanAmount(val)}
                 min={1000}
                 max={10000000}
                 step={10000}
@@ -188,7 +206,7 @@ export default function Calculator() {
                 label="Interest Rate"
                 description="Annual interest rate"
                 value={interestRate}
-                onChange={(val) => setInterestRate(typeof val === 'number' ? val : 7)}
+                onChange={(val) => setInterestRate(val)}
                 min={0.1}
                 max={30}
                 step={0.125}
@@ -225,7 +243,7 @@ export default function Calculator() {
                         label="Property Value"
                         description="For LTV calculation"
                         value={propertyValue}
-                        onChange={(val) => setPropertyValue(typeof val === 'number' ? val : 0)}
+                        onChange={(val) => setPropertyValue(val)}
                         min={0}
                         prefix="$"
                         thousandSeparator=","
@@ -235,7 +253,7 @@ export default function Calculator() {
                         label="Down Payment"
                         description="Amount paid upfront"
                         value={downPayment}
-                        onChange={(val) => setDownPayment(typeof val === 'number' ? val : 0)}
+                        onChange={(val) => setDownPayment(val)}
                         min={0}
                         prefix="$"
                         thousandSeparator=","
@@ -244,7 +262,7 @@ export default function Calculator() {
                       <NumberInput
                         label="Annual Property Taxes"
                         value={propertyTaxes}
-                        onChange={(val) => setPropertyTaxes(typeof val === 'number' ? val : 0)}
+                        onChange={(val) => setPropertyTaxes(val)}
                         min={0}
                         prefix="$"
                         thousandSeparator=","
@@ -253,7 +271,7 @@ export default function Calculator() {
                       <NumberInput
                         label="Annual Home Insurance"
                         value={homeInsurance}
-                        onChange={(val) => setHomeInsurance(typeof val === 'number' ? val : 0)}
+                        onChange={(val) => setHomeInsurance(val)}
                         min={0}
                         prefix="$"
                         thousandSeparator=","
@@ -262,7 +280,7 @@ export default function Calculator() {
                       <NumberInput
                         label="Monthly HOA Fees"
                         value={hoaFees}
-                        onChange={(val) => setHoaFees(typeof val === 'number' ? val : 0)}
+                        onChange={(val) => setHoaFees(val)}
                         min={0}
                         prefix="$"
                         thousandSeparator=","
@@ -280,7 +298,7 @@ export default function Calculator() {
                         label="Monthly Income"
                         description="Gross monthly income before taxes"
                         value={monthlyIncome}
-                        onChange={(val) => setMonthlyIncome(typeof val === 'number' ? val : 0)}
+                        onChange={(val) => setMonthlyIncome(val)}
                         min={0}
                         prefix="$"
                         thousandSeparator=","
@@ -291,7 +309,7 @@ export default function Calculator() {
                         label="Existing Monthly Debts"
                         description="Car payments, credit cards, student loans, etc."
                         value={existingDebts}
-                        onChange={(val) => setExistingDebts(typeof val === 'number' ? val : 0)}
+                        onChange={(val) => setExistingDebts(val)}
                         min={0}
                         prefix="$"
                         thousandSeparator=","
@@ -418,11 +436,11 @@ export default function Calculator() {
                 <Grid gutter="xs">
                   <Grid.Col span={6}>
                     <Text size="sm" c="dimmed">Principal</Text>
-                    <Text fw={500}>{formatCurrency(loanAmount)}</Text>
+                    <Text fw={500}>{formatCurrency(principalValue)}</Text>
                   </Grid.Col>
                   <Grid.Col span={6}>
                     <Text size="sm" c="dimmed">Interest Rate</Text>
-                    <Text fw={500}>{formatPercent(interestRate)} APR</Text>
+                    <Text fw={500}>{formatPercent(interestRateValue)} APR</Text>
                   </Grid.Col>
                   <Grid.Col span={6}>
                     <Text size="sm" c="dimmed">Term</Text>
@@ -430,7 +448,12 @@ export default function Calculator() {
                   </Grid.Col>
                   <Grid.Col span={6}>
                     <Text size="sm" c="dimmed">Interest / Principal Ratio</Text>
-                    <Text fw={500}>{((result.totalInterest / loanAmount) * 100).toFixed(1)}%</Text>
+                    <Text fw={500}>
+                      {(principalValue > 0
+                        ? ((result.totalInterest / principalValue) * 100)
+                        : 0
+                      ).toFixed(1)}%
+                    </Text>
                   </Grid.Col>
                 </Grid>
               </Paper>

@@ -31,6 +31,7 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
 
 interface CommunicationTemplate {
   id: string;
@@ -189,10 +190,7 @@ export function CommunicationTemplates() {
 
     setDeleting(id);
     try {
-      const response = await fetch(`${API_URL}/communication-templates/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const response = await api.delete(`/communication-templates/${id}`);
 
       if (!response.ok) {
         const error = await response.json();

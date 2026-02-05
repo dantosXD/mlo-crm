@@ -1,10 +1,10 @@
 import { Stack, Text, Button, ThemeIcon, Box } from '@mantine/core';
-import { IconPlus, IconUsers, IconFileText, IconChecklist, IconClipboard, IconFolder, IconNotes, IconAlertCircle, IconRobot } from '@tabler/icons-react';
+import { IconPlus, IconUsers, IconFileText, IconChecklist, IconClipboard, IconFolder, IconNotes, IconAlertCircle, IconRobot, IconMail } from '@tabler/icons-react';
 import { ReactNode } from 'react';
 
 interface EmptyStateProps {
   icon?: ReactNode;
-  iconType?: 'clients' | 'notes' | 'tasks' | 'documents' | 'scenarios' | 'activity' | 'workflows' | 'general';
+  iconType?: 'clients' | 'notes' | 'tasks' | 'documents' | 'scenarios' | 'activity' | 'workflows' | 'communications' | 'general';
   title: string;
   description?: string;
   ctaLabel?: string;
@@ -20,6 +20,7 @@ const iconMap = {
   scenarios: IconFileText,
   activity: IconClipboard,
   workflows: IconRobot,
+  communications: IconMail,
   general: IconAlertCircle,
 };
 

@@ -18,6 +18,7 @@ import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../stores/authStore';
 import { useParams, useNavigate } from 'react-router-dom';
 import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
 import {
   Button,
   Container,
@@ -178,6 +179,8 @@ export default function WorkflowBuilder() {
   const [testModalOpened, setTestModalOpened] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
+  const { accessToken } = useAuthStore();
+
   const isEditing = !!id;
 
   // Load workflow data when editing
@@ -185,10 +188,9 @@ export default function WorkflowBuilder() {
     const loadWorkflow = async () => {
       if (isEditing && id) {
         try {
-          const token = localStorage.getItem('token');
           const response = await fetch(`${API_URL}/workflows/${id}`, {
             headers: {
-              Authorization: `Bearer ${token}`,
+              Authorization: `Bearer ${accessToken}`,
             },
           });
 
@@ -476,17 +478,9 @@ export default function WorkflowBuilder() {
         })),
       };
 
-      const token = localStorage.getItem('token');
       if (isEditing && id) {
         // Update existing workflow
-        const response = await fetch(`${API_URL}/workflows/${id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(workflowData),
-        });
+        const response = await api.put(`/workflows/${id}`, workflowData);
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ message: 'Failed to update workflow' }));
           throw new Error(errorData.message || 'Failed to update workflow');
@@ -494,14 +488,7 @@ export default function WorkflowBuilder() {
         return await response.json();
       } else {
         // Create new workflow
-        const response = await fetch(`${API_URL}/workflows`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(workflowData),
-        });
+        const response = await api.post('/workflows', workflowData);
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ message: 'Failed to create workflow' }));
           throw new Error(errorData.message || 'Failed to create workflow');

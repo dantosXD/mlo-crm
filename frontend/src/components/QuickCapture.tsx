@@ -34,6 +34,7 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
 
 interface Client {
   id: string;
@@ -329,14 +330,7 @@ export function QuickCapture() {
         taskData.dueDate = dueDate.toISOString();
       }
 
-      const response = await fetch(`${API_URL}/tasks`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(taskData),
-      });
+      const response = await api.post('/tasks', taskData);
 
       if (!response.ok) {
         throw new Error('Failed to create task');
@@ -380,16 +374,9 @@ export function QuickCapture() {
 
     setIsCreating(true);
     try {
-      const response = await fetch(`${API_URL}/notes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          clientId,
-          text: text.trim(),
-        }),
+      const response = await api.post('/notes', {
+        clientId,
+        text: text.trim(),
       });
 
       if (!response.ok) {

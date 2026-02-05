@@ -1,4 +1,5 @@
 import { API_URL } from './apiBase';
+import { api } from './api';
 
 export interface Attachment {
   fileName: string;
@@ -36,19 +37,12 @@ export async function uploadAttachment(
 
   const base64Data = await base64Promise;
 
-  const response = await fetch(`${API_URL}/attachments/upload`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      communicationId,
-      fileName: file.name,
-      fileSize: file.size,
-      mimeType: file.type,
-      fileData: base64Data,
-    }),
+  const response = await api.post('/attachments/upload', {
+    communicationId,
+    fileName: file.name,
+    fileSize: file.size,
+    mimeType: file.type,
+    fileData: base64Data,
   });
 
   if (!response.ok) {
@@ -95,12 +89,8 @@ export async function deleteAttachment(
   communicationId: string,
   fileName: string
 ): Promise<{ message: string; attachments: Attachment[] }> {
-  const response = await fetch(
-    `${API_URL}/attachments/${communicationId}/${encodeURIComponent(fileName)}`,
-    {
-      method: 'DELETE',
-      credentials: 'include',
-    }
+  const response = await api.delete(
+    `/attachments/${communicationId}/${encodeURIComponent(fileName)}`
   );
 
   if (!response.ok) {
@@ -119,10 +109,7 @@ export async function deleteAttachment(
 export async function deleteAllAttachments(
   communicationId: string
 ): Promise<{ message: string }> {
-  const response = await fetch(`${API_URL}/attachments/${communicationId}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  });
+  const response = await api.delete(`/attachments/${communicationId}`);
 
   if (!response.ok) {
     const error = await response.json();

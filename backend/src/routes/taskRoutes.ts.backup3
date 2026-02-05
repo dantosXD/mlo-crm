@@ -164,214 +164,6 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// GET /api/tasks/statistics - Get task statistics for dashboard
-router.get('/statistics', async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user?.userId;
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const [
-      totalTasks,
-      dueTodayTasks,
-      overdueTasks,
-      completedTasks,
-      upcomingTasks,
-    ] = await Promise.all([
-      // Total tasks (excluding completed)
-      prisma.task.count({
-        where: {
-          status: { not: 'COMPLETE' },
-          client: { createdById: userId },
-        },
-      }),
-      // Due today
-      prisma.task.count({
-        where: {
-          status: { not: 'COMPLETE' },
-          dueDate: {
-            gte: today,
-            lt: tomorrow,
-          },
-          client: { createdById: userId },
-        },
-      }),
-      // Overdue
-      prisma.task.count({
-        where: {
-          status: { not: 'COMPLETE' },
-          dueDate: { lt: new Date() },
-          client: { createdById: userId },
-        },
-      }),
-      // Completed
-      prisma.task.count({
-        where: {
-          status: 'COMPLETE',
-          client: { createdById: userId },
-        },
-      }),
-      // Upcoming (next 7 days)
-      prisma.task.count({
-        where: {
-          status: { not: 'COMPLETE' },
-          dueDate: {
-            gte: tomorrow,
-            lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          },
-          client: { createdById: userId },
-        },
-      }),
-    ]);
-
-    res.json({
-      total: totalTasks,
-      dueToday: dueTodayTasks,
-      overdue: overdueTasks,
-      completed: completedTasks,
-      upcoming: upcomingTasks,
-    });
-  } catch (error) {
-    console.error('Error fetching task statistics:', error);
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to fetch task statistics',
-    });
-  }
-});
-
-// PATCH /api/tasks/bulk - Bulk update tasks (mark complete, reassign, etc.)
-router.patch('/bulk', async (req: AuthRequest, res: Response) => {
-  try {
-    const { taskIds, action, data } = req.body;
-    const userId = req.user?.userId;
-
-    if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
-      return res.status(400).json({
-        error: 'Validation Error',
-        message: 'taskIds must be a non-empty array',
-      });
-    }
-
-    if (!action) {
-      return res.status(400).json({
-        error: 'Validation Error',
-        message: 'action is required',
-      });
-    }
-
-    // Verify access to all tasks
-    const tasks = await prisma.task.findMany({
-      where: {
-        id: { in: taskIds },
-        client: { createdById: userId },
-      },
-      include: {
-        client: {
-          select: { id: true, createdById: true },
-        },
-      },
-    });
-
-    if (tasks.length !== taskIds.length) {
-      return res.status(403).json({
-        error: 'Access Denied',
-        message: 'You do not have permission to modify some of these tasks',
-      });
-    }
-
-    let updateData: any = {};
-    let activityType = '';
-    let activityDescription = '';
-
-    switch (action) {
-      case 'mark_complete':
-        updateData = { status: 'COMPLETE', completedAt: new Date() };
-        activityType = 'TASKS_BULK_COMPLETED';
-        activityDescription = `${taskIds.length} task(s) marked as complete`;
-        break;
-      case 'mark_incomplete':
-        updateData = { status: 'TODO', completedAt: null };
-        activityType = 'TASKS_BULK_MARKED_INCOMPLETE';
-        activityDescription = `${taskIds.length} task(s) marked as incomplete`;
-        break;
-      case 'reassign':
-        if (!data?.assignedToId) {
-          return res.status(400).json({
-            error: 'Validation Error',
-            message: 'assignedToId is required for reassign action',
-          });
-        }
-        updateData = { assignedToId: data.assignedToId };
-        activityType = 'TASKS_BULK_REASSIGNED';
-        activityDescription = `${taskIds.length} task(s) reassigned`;
-        break;
-      case 'set_priority':
-        if (!data?.priority) {
-          return res.status(400).json({
-            error: 'Validation Error',
-            message: 'priority is required for set_priority action',
-          });
-        }
-        updateData = { priority: data.priority };
-        activityType = 'TASKS_BULK_PRIORITY_UPDATED';
-        activityDescription = `${taskIds.length} task(s) priority updated`;
-        break;
-      case 'snooze':
-        if (!data?.days) {
-          return res.status(400).json({
-            error: 'Validation Error',
-            message: 'days is required for snooze action',
-          });
-        }
-        const newDueDate = new Date();
-        newDueDate.setDate(newDueDate.getDate() + data.days);
-        updateData = { dueDate: newDueDate };
-        activityType = 'TASKS_BULK_SNOOZED';
-        activityDescription = `${taskIds.length} task(s) snoozed by ${data.days} day(s)`;
-        break;
-      default:
-        return res.status(400).json({
-          error: 'Validation Error',
-          message: `Invalid action: ${action}`,
-        });
-    }
-
-    const updatedTasks = await prisma.task.updateMany({
-      where: {
-        id: { in: taskIds },
-      },
-      data: updateData,
-    });
-
-    // Log activity for the first client (if any)
-    if (tasks[0]?.clientId && activityType) {
-      await prisma.activity.create({
-        data: {
-          clientId: tasks[0].clientId,
-          userId: userId!,
-          type: activityType,
-          description: activityDescription,
-        },
-      });
-    }
-
-    res.json({
-      message: `Successfully updated ${updatedTasks.count} tasks`,
-      count: updatedTasks.count,
-    });
-  } catch (error) {
-    console.error('Error bulk updating tasks:', error);
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to bulk update tasks',
-    });
-  }
-});
-
 // GET /api/tasks/:id - Get single task
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
@@ -685,242 +477,111 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// ========== SUBTASK ROUTES ==========
-
-// POST /api/tasks/:taskId/subtasks - Create subtask
-router.post('/:taskId/subtasks', async (req: AuthRequest, res: Response) => {
+// GET /api/tasks/statistics - Get task statistics for dashboard
+router.get('/statistics', async (req: AuthRequest, res: Response) => {
   try {
-    const { taskId } = req.params;
-    const { text, dueDate, assignedToId } = req.body;
     const userId = req.user?.userId;
 
-    if (!text) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const [
+      totalTasks,
+      dueTodayTasks,
+      overdueTasks,
+      completedTasks,
+      upcomingTasks,
+    ] = await Promise.all([
+      // Total tasks (excluding completed)
+      prisma.task.count({
+        where: {
+          status: { not: 'COMPLETE' },
+          client: { createdById: userId },
+        },
+      }),
+      // Due today
+      prisma.task.count({
+        where: {
+          status: { not: 'COMPLETE' },
+          dueDate: {
+            gte: today,
+            lt: tomorrow,
+          },
+          client: { createdById: userId },
+        },
+      }),
+      // Overdue
+      prisma.task.count({
+        where: {
+          status: { not: 'COMPLETE' },
+          dueDate: { lt: new Date() },
+          client: { createdById: userId },
+        },
+      }),
+      // Completed
+      prisma.task.count({
+        where: {
+          status: 'COMPLETE',
+          client: { createdById: userId },
+        },
+      }),
+      // Upcoming (next 7 days)
+      prisma.task.count({
+        where: {
+          status: { not: 'COMPLETE' },
+          dueDate: {
+            gte: tomorrow,
+            lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+          client: { createdById: userId },
+        },
+      }),
+    ]);
+
+    res.json({
+      total: totalTasks,
+      dueToday: dueTodayTasks,
+      overdue: overdueTasks,
+      completed: completedTasks,
+      upcoming: upcomingTasks,
+    });
+  } catch (error) {
+    console.error('Error fetching task statistics:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch task statistics',
+    });
+  }
+});
+
+// PATCH /api/tasks/bulk - Bulk update tasks (mark complete, reassign, etc.)
+router.patch('/bulk', async (req: AuthRequest, res: Response) => {
+  try {
+    const { taskIds, action, data } = req.body;
+    const userId = req.user?.userId;
+
+    if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
       return res.status(400).json({
         error: 'Validation Error',
-        message: 'Subtask text is required',
+        message: 'taskIds must be a non-empty array',
       });
     }
 
-    // Verify task ownership
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
-      include: {
-        client: {
-          select: { id: true, createdById: true },
-        },
-      },
-    });
-
-    if (!task) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Task not found',
-      });
-    }
-
-    if (!userId || task.client?.createdById !== userId) {
-      return res.status(403).json({
-        error: 'Access Denied',
-        message: 'You do not have permission to add subtasks to this task',
-      });
-    }
-
-    // Get next order value
-    const maxOrder = await prisma.taskSubtask.findFirst({
-      where: { taskId },
-      orderBy: { order: 'desc' },
-      select: { order: true },
-    });
-
-    const subtask = await prisma.taskSubtask.create({
-      data: {
-        taskId,
-        text,
-        dueDate: dueDate ? new Date(dueDate) : null,
-        order: (maxOrder?.order ?? -1) + 1,
-      },
-    });
-
-    res.status(201).json(subtask);
-  } catch (error) {
-    console.error('Error creating subtask:', error);
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to create subtask',
-    });
-  }
-});
-
-// PUT /api/tasks/:taskId/subtasks/:subtaskId - Update subtask
-router.put('/:taskId/subtasks/:subtaskId', async (req: AuthRequest, res: Response) => {
-  try {
-    const { taskId, subtaskId } = req.params;
-    const { text, isCompleted, dueDate, order } = req.body;
-    const userId = req.user?.userId;
-
-    // Verify task ownership
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
-      include: {
-        client: {
-          select: { id: true, createdById: true },
-        },
-      },
-    });
-
-    if (!task) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Task not found',
-      });
-    }
-
-    if (!userId || task.client?.createdById !== userId) {
-      return res.status(403).json({
-        error: 'Access Denied',
-        message: 'You do not have permission to update subtasks of this task',
-      });
-    }
-
-    const subtask = await prisma.taskSubtask.update({
-      where: { id: subtaskId },
-      data: {
-        ...(text !== undefined && { text }),
-        ...(isCompleted !== undefined && { isCompleted }),
-        ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
-        ...(order !== undefined && { order }),
-      },
-    });
-
-    res.json(subtask);
-  } catch (error) {
-    console.error('Error updating subtask:', error);
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to update subtask',
-    });
-  }
-});
-
-// DELETE /api/tasks/:taskId/subtasks/:subtaskId - Delete subtask
-router.delete('/:taskId/subtasks/:subtaskId', async (req: AuthRequest, res: Response) => {
-  try {
-    const { taskId, subtaskId } = req.params;
-    const userId = req.user?.userId;
-
-    // Verify task ownership
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
-      include: {
-        client: {
-          select: { id: true, createdById: true },
-        },
-      },
-    });
-
-    if (!task) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Task not found',
-      });
-    }
-
-    if (!userId || task.client?.createdById !== userId) {
-      return res.status(403).json({
-        error: 'Access Denied',
-        message: 'You do not have permission to delete subtasks of this task',
-      });
-    }
-
-    await prisma.taskSubtask.delete({
-      where: { id: subtaskId },
-    });
-
-    res.json({ message: 'Subtask deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting subtask:', error);
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to delete subtask',
-    });
-  }
-});
-
-// PATCH /api/tasks/:taskId/subtasks/:subtaskId/toggle - Toggle subtask completion
-router.patch('/:taskId/subtasks/:subtaskId/toggle', async (req: AuthRequest, res: Response) => {
-  try {
-    const { taskId, subtaskId } = req.params;
-    const userId = req.user?.userId;
-
-    // Verify task ownership
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
-      include: {
-        client: {
-          select: { id: true, createdById: true },
-        },
-      },
-    });
-
-    if (!task) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Task not found',
-      });
-    }
-
-    if (!userId || task.client?.createdById !== userId) {
-      return res.status(403).json({
-        error: 'Access Denied',
-        message: 'You do not have permission to toggle subtasks of this task',
-      });
-    }
-
-    const existingSubtask = await prisma.taskSubtask.findUnique({
-      where: { id: subtaskId },
-    });
-
-    if (!existingSubtask) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Subtask not found',
-      });
-    }
-
-    const subtask = await prisma.taskSubtask.update({
-      where: { id: subtaskId },
-      data: {
-        isCompleted: !existingSubtask.isCompleted,
-      },
-    });
-
-    res.json(subtask);
-  } catch (error) {
-    console.error('Error toggling subtask:', error);
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to toggle subtask',
-    });
-  }
-});
-
-// POST /api/tasks/:taskId/subtasks/reorder - Reorder subtasks
-router.post('/:taskId/subtasks/reorder', async (req: AuthRequest, res: Response) => {
-  try {
-    const { taskId } = req.params;
-    const { subtaskIds } = req.body;
-    const userId = req.user?.userId;
-
-    if (!Array.isArray(subtaskIds)) {
+    if (!action) {
       return res.status(400).json({
         error: 'Validation Error',
-        message: 'subtaskIds must be an array',
+        message: 'action is required',
       });
     }
 
-    // Verify task ownership
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
+    // Verify access to all tasks
+    const tasks = await prisma.task.findMany({
+      where: {
+        id: { in: taskIds },
+        client: { createdById: userId },
+      },
       include: {
         client: {
           select: { id: true, createdById: true },
@@ -928,36 +589,98 @@ router.post('/:taskId/subtasks/reorder', async (req: AuthRequest, res: Response)
       },
     });
 
-    if (!task) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Task not found',
-      });
-    }
-
-    if (!userId || task.client?.createdById !== userId) {
+    if (tasks.length !== taskIds.length) {
       return res.status(403).json({
         error: 'Access Denied',
-        message: 'You do not have permission to reorder subtasks of this task',
+        message: 'You do not have permission to modify some of these tasks',
       });
     }
 
-    // Update order for each subtask
-    await Promise.all(
-      subtaskIds.map((subtaskId: string, index: number) =>
-        prisma.taskSubtask.update({
-          where: { id: subtaskId },
-          data: { order: index },
-        })
-      )
-    );
+    let updateData: any = {};
+    let activityType = '';
+    let activityDescription = '';
 
-    res.json({ message: 'Subtasks reordered successfully' });
+    switch (action) {
+      case 'mark_complete':
+        updateData = { status: 'COMPLETE', completedAt: new Date() };
+        activityType = 'TASKS_BULK_COMPLETED';
+        activityDescription = `${taskIds.length} task(s) marked as complete`;
+        break;
+      case 'mark_incomplete':
+        updateData = { status: 'TODO', completedAt: null };
+        activityType = 'TASKS_BULK_MARKED_INCOMPLETE';
+        activityDescription = `${taskIds.length} task(s) marked as incomplete`;
+        break;
+      case 'reassign':
+        if (!data?.assignedToId) {
+          return res.status(400).json({
+            error: 'Validation Error',
+            message: 'assignedToId is required for reassign action',
+          });
+        }
+        updateData = { assignedToId: data.assignedToId };
+        activityType = 'TASKS_BULK_REASSIGNED';
+        activityDescription = `${taskIds.length} task(s) reassigned`;
+        break;
+      case 'set_priority':
+        if (!data?.priority) {
+          return res.status(400).json({
+            error: 'Validation Error',
+            message: 'priority is required for set_priority action',
+          });
+        }
+        updateData = { priority: data.priority };
+        activityType = 'TASKS_BULK_PRIORITY_UPDATED';
+        activityDescription = `${taskIds.length} task(s) priority updated`;
+        break;
+      case 'snooze':
+        if (!data?.days) {
+          return res.status(400).json({
+            error: 'Validation Error',
+            message: 'days is required for snooze action',
+          });
+        }
+        const newDueDate = new Date();
+        newDueDate.setDate(newDueDate.getDate() + data.days);
+        updateData = { dueDate: newDueDate };
+        activityType = 'TASKS_BULK_SNOOZED';
+        activityDescription = `${taskIds.length} task(s) snoozed by ${data.days} day(s)`;
+        break;
+      default:
+        return res.status(400).json({
+          error: 'Validation Error',
+          message: `Invalid action: ${action}`,
+        });
+    }
+
+    const updatedTasks = await prisma.task.updateMany({
+      where: {
+        id: { in: taskIds },
+      },
+      data: updateData,
+    });
+
+    // Log activity for the first client (if any)
+    if (tasks[0]?.clientId && activityType) {
+      await prisma.activity.create({
+        data: {
+          clientId: tasks[0].clientId,
+          userId: userId!,
+          type: activityType,
+          description: activityDescription,
+        },
+      });
+    }
+
+    res.json({
+      message: `Successfully updated ${updatedTasks.count} tasks`,
+      count: updatedTasks.count,
+    });
   } catch (error) {
-    console.error('Error reordering subtasks:', error);
+    console.error('Error bulk updating tasks:', error);
     res.status(500).json({
       error: 'Internal Server Error',
-      message: 'Failed to reorder subtasks',
+      message: 'Failed to bulk update tasks',
     });
   }
 });

@@ -10,10 +10,12 @@ import {
   Group,
 } from '@mantine/core';
 import { IconRefresh } from '@tabler/icons-react';
-import ReactGridLayout from 'react-grid-layout';
+import ReactGridLayout, { WidthProvider } from 'react-grid-layout';
 import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../stores/authStore';
 import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
+import { decryptData } from '../utils/encryption';
 import { StatsCardsWidget } from '../widgets/StatsCardsWidget';
 import { PipelineOverviewWidget } from '../widgets/PipelineOverviewWidget';
 import { PendingTasksWidget } from '../widgets/PendingTasksWidget';
@@ -82,6 +84,8 @@ interface UserPreferences {
   dashboardLayout?: LayoutItem[];
 }
 
+const ResponsiveGridLayout = WidthProvider(ReactGridLayout);
+
 // Default layout configuration
 const DEFAULT_LAYOUTS = {
   lg: [
@@ -103,15 +107,16 @@ export default function Dashboard() {
 
   // Fetch user preferences on mount
   useEffect(() => {
-    fetchUserPreferences();
-    fetchDashboardStats();
+    if (accessToken) {
+      fetchUserPreferences();
+      fetchDashboardStats();
+    }
   }, [accessToken]);
 
   const fetchUserPreferences = async () => {
+    if (!accessToken) return;
     try {
-      const res = await fetch(`${API_URL}/users/preferences`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await api.get('/users/preferences');
 
       if (res.ok) {
         const prefs: UserPreferences = await res.json();
@@ -125,19 +130,13 @@ export default function Dashboard() {
   };
 
   const saveUserPreferences = async (newLayouts: typeof DEFAULT_LAYOUTS.lg) => {
+    if (!accessToken) return;
     try {
       setSavingLayout(true);
-      await fetch(`${API_URL}/users/preferences`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+      await api.put('/users/preferences', {
+        preferences: {
+          dashboardLayout: newLayouts,
         },
-        body: JSON.stringify({
-          preferences: {
-            dashboardLayout: newLayouts,
-          },
-        }),
       });
     } catch (error) {
       console.error('Error saving preferences:', error);
@@ -161,7 +160,14 @@ export default function Dashboard() {
       });
 
       if (!clientsRes.ok) throw new Error('Failed to fetch clients');
-      const clients = await clientsRes.json();
+      const clientsPayload = await clientsRes.json();
+      const clients = Array.isArray(clientsPayload)
+        ? clientsPayload
+        : clientsPayload.data || [];
+      const decryptedClients = clients.map((client: { name: string }) => ({
+        ...client,
+        name: decryptData(client.name),
+      }));
 
       // Initialize workflow stats with default values
       let workflowStats = {
@@ -173,19 +179,19 @@ export default function Dashboard() {
 
       // Calculate clients by status
       const clientsByStatus: Record<string, number> = {};
-      clients.forEach((client: { status: string }) => {
+      decryptedClients.forEach((client: { status: string }) => {
         clientsByStatus[client.status] = (clientsByStatus[client.status] || 0) + 1;
       });
 
       // Get recent clients (last 5)
-      const recentClients = clients
+      const recentClients = decryptedClients
         .sort((a: { createdAt: string }, b: { createdAt: string }) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
         .slice(0, 5)
         .map((client: { id: string; name: string; status: string; createdAt: string }) => ({
           id: client.id,
-          name: client.name,
+          name: decryptData(client.name),
           status: client.status,
           createdAt: client.createdAt,
         }));
@@ -225,7 +231,7 @@ export default function Dashboard() {
             priority: t.priority,
             dueDate: t.dueDate,
             clientId: t.clientId,
-            clientName: t.client?.name || undefined,
+            clientName: t.client?.name ? decryptData(t.client.name) : undefined,
           }));
         }
       } catch {
@@ -320,14 +326,7 @@ export default function Dashboard() {
 
   const handleTaskComplete = async (taskId: string) => {
     try {
-      const res = await fetch(`${API_URL}/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ status: 'COMPLETE' }),
-      });
+      const res = await api.put(`/tasks/${taskId}`, { status: 'COMPLETE' });
 
       if (res.ok) {
         // Update local state to remove completed task
@@ -401,7 +400,7 @@ export default function Dashboard() {
         </Button>
       </Group>
 
-      <ReactGridLayout
+      <ResponsiveGridLayout
         className="layout"
         layout={layouts}
         cols={4}
@@ -464,7 +463,7 @@ export default function Dashboard() {
             />
           </div>
         </div>
-      </ReactGridLayout>
+      </ResponsiveGridLayout>
     </Container>
   );
 }

@@ -30,15 +30,17 @@ import {
   IconPaperclip,
   IconEye,
 } from '@tabler/icons-react';
-import { useAuthStore } from '../stores/authStore';
 import { DateInput } from '@mantine/dates';
-import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
 import { AttachmentManager } from '../components/attachments/AttachmentManager';
 import type { Attachment } from '../utils/attachments';
+import { useAuthStore } from '../stores/authStore';
+import { decryptData } from '../utils/encryption';
 
 interface Client {
   id: string;
   nameEncrypted: string;
+  name?: string;
 }
 
 interface CommunicationTemplate {
@@ -113,10 +115,10 @@ const PLACEHOLDER_INFO: Record<string, { description: string; example: string }>
 const PLACEHOLDER_KEYS = Object.keys(PLACEHOLDER_INFO);
 
 export function CommunicationComposer() {
-  const { accessToken, user } = useAuthStore();
   const navigate = useNavigate();
   const { clientId } = useParams();
   const location = useLocation();
+  const { accessToken, hasHydrated } = useAuthStore();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -142,23 +144,19 @@ export function CommunicationComposer() {
   const [previewBody, setPreviewBody] = useState('');
 
   // Helper to decrypt client name
-  const decryptName = (encrypted: string | null): string => {
-    if (!encrypted) return 'Unknown';
-    try {
-      const parsed = JSON.parse(encrypted);
-      return parsed.data || 'Unknown';
-    } catch {
-      return encrypted;
-    }
+  const decryptName = (value: string | null): string => {
+    const decoded = decryptData(value ?? '');
+    return decoded || 'Unknown';
   };
 
   useEffect(() => {
+    if (!hasHydrated || !accessToken) return;
     fetchClients();
     fetchTemplates();
     if (clientId) {
       setSelectedClient(clientId);
     }
-  }, [clientId]);
+  }, [accessToken, clientId, hasHydrated]);
 
   useEffect(() => {
     // Handle cloning from existing communication
@@ -189,16 +187,15 @@ export function CommunicationComposer() {
 
   const fetchClients = async () => {
     try {
-      const response = await fetch(`${API_URL}/clients`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const response = await api.get('/clients');
 
       if (!response.ok) {
         throw new Error('Failed to fetch clients');
       }
 
       const data = await response.json();
-      setClients(data.data || []);
+      const normalized = Array.isArray(data) ? data : data.data || [];
+      setClients(normalized);
     } catch (error) {
       console.error('Error fetching clients:', error);
       notifications.show({
@@ -211,9 +208,7 @@ export function CommunicationComposer() {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch(`${API_URL}/communication-templates?is_active=true`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const response = await api.get('/communication-templates?is_active=true');
 
       if (!response.ok) {
         throw new Error('Failed to fetch templates');
@@ -286,8 +281,10 @@ export function CommunicationComposer() {
     }, 0);
   };
 
+  const resolveClientId = (): string | null => selectedClient || clientId || null;
+
   const validateForm = (): string | null => {
-    if (!selectedClient) {
+    if (!resolveClientId()) {
       return 'Please select a client';
     }
 
@@ -320,7 +317,7 @@ export function CommunicationComposer() {
     setSaving(true);
     try {
       const payload = {
-        clientId: selectedClient,
+        clientId: resolveClientId(),
         type,
         subject: (type === 'EMAIL' || type === 'LETTER') ? subject.trim() : null,
         body: body.trim(),
@@ -329,18 +326,14 @@ export function CommunicationComposer() {
         followUpDate: followUpDate ? followUpDate.toISOString() : null,
       };
 
-      const response = await fetch(`${API_URL}/communications`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
+      const response = await api.post('/communications', payload);
+      const responseBody = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to save communication');
+        throw new Error(responseBody.message || 'Failed to save communication');
+      }
+      const communicationId = responseBody.id || responseBody.data?.id;
+      if (!communicationId) {
+        throw new Error('Failed to save communication: missing response id');
       }
 
       notifications.show({
@@ -350,8 +343,7 @@ export function CommunicationComposer() {
       });
 
       // Store communication ID for attachments
-      const data = await response.json();
-      setCommunicationId(data.id);
+      setCommunicationId(communicationId);
 
       navigate('/communications');
     } catch (error: any) {
@@ -381,7 +373,7 @@ export function CommunicationComposer() {
     try {
       // First create as draft
       const payload = {
-        clientId: selectedClient,
+        clientId: resolveClientId(),
         type,
         subject: (type === 'EMAIL' || type === 'LETTER') ? subject.trim() : null,
         body: body.trim(),
@@ -390,31 +382,18 @@ export function CommunicationComposer() {
         followUpDate: followUpDate ? followUpDate.toISOString() : null,
       };
 
-      const response = await fetch(`${API_URL}/communications`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
+      const response = await api.post('/communications', payload);
+      const responseBody = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to create communication');
+        throw new Error(responseBody.message || 'Failed to create communication');
+      }
+      const communicationId = responseBody.id || responseBody.data?.id;
+      if (!communicationId) {
+        throw new Error('Failed to create communication: missing response id');
       }
 
-      const data = await response.json();
-
       // Then update status to READY
-      const updateResponse = await fetch(`${API_URL}/communications/${data.id}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ status: 'READY' }),
-      });
+      const updateResponse = await api.patch(`/communications/${communicationId}/status`, { status: 'READY' });
 
       if (!updateResponse.ok) {
         throw new Error('Failed to mark communication as ready');
@@ -454,7 +433,7 @@ export function CommunicationComposer() {
     try {
       // First create as draft
       const payload = {
-        clientId: selectedClient,
+        clientId: resolveClientId(),
         type,
         subject: (type === 'EMAIL' || type === 'LETTER') ? subject.trim() : null,
         body: body.trim(),
@@ -463,38 +442,32 @@ export function CommunicationComposer() {
         followUpDate: followUpDate ? followUpDate.toISOString() : null,
       };
 
-      const response = await fetch(`${API_URL}/communications`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
+      const response = await api.post('/communications', payload);
+      const responseBody = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to create communication');
+        throw new Error(responseBody.message || 'Failed to create communication');
+      }
+      const communicationId = responseBody.id || responseBody.data?.id;
+      if (!communicationId) {
+        throw new Error('Failed to create communication: missing response id');
       }
 
-      const data = await response.json();
-
       // Then mark as sent
-      await fetch(`${API_URL}/communications/${data.id}/send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+      const sendResponse = await api.post(`/communications/${communicationId}/send`);
+      if (!sendResponse.ok) {
+        const sendError = await sendResponse.json().catch(() => ({}));
+        throw new Error(sendError.message || 'Failed to send communication');
+      }
+
+      navigate('/communications', {
+        state: {
+          toast: {
+            title: 'Success',
+            message: 'Communication sent successfully',
+            color: 'green',
+          },
         },
       });
-
-      notifications.show({
-        title: 'Success',
-        message: 'Communication sent successfully',
-        color: 'green',
-      });
-
-      navigate('/communications');
     } catch (error: any) {
       console.error('Error sending communication:', error);
       notifications.show({
@@ -585,7 +558,7 @@ export function CommunicationComposer() {
                 required
                 data={clients.map(client => ({
                   value: client.id,
-                  label: decryptName(client.nameEncrypted),
+                  label: decryptName(client.name ?? client.nameEncrypted),
                 }))}
                 value={selectedClient}
                 onChange={setSelectedClient}

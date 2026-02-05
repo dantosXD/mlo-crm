@@ -34,8 +34,32 @@ export async function apiRequest(
 
   // Add CSRF token for state-changing methods
   const method = (options.method || 'GET').toUpperCase();
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && csrfToken) {
-    headers['X-CSRF-Token'] = csrfToken;
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+    let csrf = csrfToken;
+
+    // If CSRF token is missing but we have an access token, fetch a fresh token
+    if (!csrf && accessToken) {
+      try {
+        const csrfResponse = await fetch(`${API_URL}/auth/me`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+
+        const newCsrfToken = csrfResponse.headers.get('X-CSRF-Token');
+        if (newCsrfToken) {
+          csrf = newCsrfToken;
+          updateCsrfToken(newCsrfToken);
+        }
+      } catch (error) {
+        console.warn('Failed to refresh CSRF token:', error);
+      }
+    }
+
+    if (csrf) {
+      headers['X-CSRF-Token'] = csrf;
+    }
   }
 
   // Make the request

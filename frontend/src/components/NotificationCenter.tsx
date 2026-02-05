@@ -16,6 +16,7 @@ import {
 import { IconBell, IconBellRinging, IconCheck, IconTrash } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../utils/apiBase';
+import { useAuthStore } from '../stores/authStore';
 
 interface Notification {
   id: string;
@@ -34,15 +35,19 @@ export function NotificationCenter() {
   const [loading, setLoading] = useState(false);
   const [opened, setOpened] = useState(false);
   const navigate = useNavigate();
+  const { accessToken } = useAuthStore();
 
   // Fetch notifications
   const fetchNotifications = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
+      if (!accessToken) {
+        setLoading(false);
+        return;
+      }
       const response = await fetch(`${API_URL}/notifications?limit=20`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${accessToken}`,
         },
       });
 
@@ -60,10 +65,13 @@ export function NotificationCenter() {
   // Fetch unread count
   const fetchUnreadCount = async () => {
     try {
-      const token = localStorage.getItem('token');
+      if (!accessToken) {
+        setUnreadCount(0);
+        return;
+      }
       const response = await fetch(`${API_URL}/notifications/unread-count`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${accessToken}`,
         },
       });
 
@@ -79,11 +87,11 @@ export function NotificationCenter() {
   // Mark notification as read
   const markAsRead = async (notificationId: string) => {
     try {
-      const token = localStorage.getItem('token');
+      if (!accessToken) return;
       const response = await fetch(`${API_URL}/notifications/${notificationId}/read`, {
         method: 'PATCH',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${accessToken}`,
         },
       });
 
@@ -101,11 +109,11 @@ export function NotificationCenter() {
   // Mark all as read
   const markAllAsRead = async () => {
     try {
-      const token = localStorage.getItem('token');
+      if (!accessToken) return;
       const response = await fetch(`${API_URL}/notifications/read-all`, {
         method: 'PATCH',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${accessToken}`,
         },
       });
 
@@ -121,11 +129,11 @@ export function NotificationCenter() {
   // Delete notification
   const deleteNotification = async (notificationId: string) => {
     try {
-      const token = localStorage.getItem('token');
+      if (!accessToken) return;
       const response = await fetch(`${API_URL}/notifications/${notificationId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${accessToken}`,
         },
       });
 
@@ -159,14 +167,18 @@ export function NotificationCenter() {
     if (opened) {
       fetchNotifications();
     }
-  }, [opened]);
+  }, [opened, accessToken]);
 
   // Poll for unread count every 30 seconds
   useEffect(() => {
+    if (!accessToken) {
+      setUnreadCount(0);
+      return undefined;
+    }
     fetchUnreadCount();
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [accessToken]);
 
   return (
     <Menu
@@ -185,7 +197,7 @@ export function NotificationCenter() {
             position: 'relative',
           }}
         >
-          <ActionIcon variant="subtle" color="gray" size="lg" pos="relative">
+          <ActionIcon component="span" variant="subtle" color="gray" size="lg" pos="relative">
             {unreadCount > 0 ? (
               <IconBellRinging size={20} stroke={1.5} />
             ) : (

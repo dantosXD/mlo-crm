@@ -36,6 +36,7 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
 
 interface Workflow {
   id: string;
@@ -100,7 +101,7 @@ export function Workflows() {
   const [importing, setImporting] = useState(false);
   const [importAsTemplate, setImportAsTemplate] = useState(false);
 
-  const canManageWorkflows = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const canManageWorkflows = user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'MLO';
 
   useEffect(() => {
     fetchWorkflows();
@@ -173,13 +174,7 @@ export function Workflows() {
 
     setToggling(id);
     try {
-      const response = await fetch(`${API_URL}/workflows/${id}/toggle`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await api.patch(`/workflows/${id}/toggle`);
 
       if (!response.ok) {
         throw new Error('Failed to toggle workflow');
@@ -220,12 +215,7 @@ export function Workflows() {
 
     setDeleting(id);
     try {
-      const response = await fetch(`${API_URL}/workflows/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.delete(`/workflows/${id}`);
 
       if (!response.ok) {
         throw new Error('Failed to delete workflow');
@@ -262,13 +252,7 @@ export function Workflows() {
 
     setCloning(id);
     try {
-      const response = await fetch(`${API_URL}/workflows/${id}/clone`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await api.post(`/workflows/${id}/clone`);
 
       if (!response.ok) {
         throw new Error('Failed to clone workflow');
@@ -299,11 +283,36 @@ export function Workflows() {
   };
 
   const handleRun = async (id: string) => {
-    notifications.show({
-      title: 'Coming Soon',
-      message: 'Manual workflow execution will be implemented soon',
-      color: 'blue',
-    });
+    if (!canManageWorkflows) {
+      notifications.show({
+        title: 'Access Denied',
+        message: 'You do not have permission to run workflows',
+        color: 'red',
+      });
+      return;
+    }
+
+    try {
+      const response = await api.post(`/workflows/${id}/execute`);
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to execute workflow');
+      }
+
+      notifications.show({
+        title: 'Workflow Executed',
+        message: data.message || 'Workflow execution started',
+        color: 'green',
+      });
+    } catch (error: any) {
+      console.error('Error executing workflow:', error);
+      notifications.show({
+        title: 'Error',
+        message: error.message || 'Failed to execute workflow',
+        color: 'red',
+      });
+    }
   };
 
   const handleViewExecutions = (id: string) => {
@@ -370,16 +379,9 @@ export function Workflows() {
       const workflowData = JSON.parse(text);
 
       // Send to API
-      const response = await fetch(`${API_URL}/workflows/import`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          workflowData,
-          asTemplate: importAsTemplate,
-        }),
+      const response = await api.post('/workflows/import', {
+        workflowData,
+        asTemplate: importAsTemplate,
       });
 
       if (!response.ok) {
@@ -481,6 +483,7 @@ export function Workflows() {
             color="green"
             onClick={() => handleRun(workflow.id)}
             title="Run Now"
+            disabled={!canManageWorkflows}
           >
             <IconPlayerPlay size={16} />
           </ActionIcon>

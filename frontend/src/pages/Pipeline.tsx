@@ -20,6 +20,8 @@ import { IconUser, IconMail, IconPhone, IconLayoutKanban, IconTable } from '@tab
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
 import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
+import { decryptData } from '../utils/encryption';
 import {
   DndContext,
   DragEndEvent,
@@ -234,7 +236,15 @@ export default function Pipeline() {
       ]);
 
       if (!clientsResponse.ok) throw new Error('Failed to fetch clients');
-      setClients(await clientsResponse.json());
+      const clientsPayload = await clientsResponse.json();
+      const normalized = Array.isArray(clientsPayload) ? clientsPayload : clientsPayload.data || [];
+      const decrypted = normalized.map((client: Client) => ({
+        ...client,
+        name: decryptData(client.name),
+        email: decryptData(client.email),
+        phone: decryptData(client.phone),
+      }));
+      setClients(decrypted);
 
       if (scenariosResponse.ok) {
         setLoanScenarios(await scenariosResponse.json());
@@ -303,14 +313,7 @@ export default function Pipeline() {
   // Helper function to update client status
   const updateClientStatus = async (clientId: string, newStatus: string) => {
     try {
-      const response = await fetch(`${API_URL}/clients/${clientId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      const response = await api.put(`/clients/${clientId}`, { status: newStatus });
 
       if (!response.ok) throw new Error('Failed to update client status');
 

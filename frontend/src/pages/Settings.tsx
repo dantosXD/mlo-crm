@@ -29,6 +29,7 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
 
 export default function Settings() {
   const { user, accessToken, updateUser } = useAuthStore();
@@ -69,16 +70,9 @@ export default function Settings() {
   const handleProfileSave = async () => {
     try {
       setSaving(true);
-      const response = await fetch(`${API_URL}/auth/profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          name: profileForm.name,
-          email: profileForm.email,
-        }),
+      const response = await api.put('/auth/profile', {
+        name: profileForm.name,
+        email: profileForm.email,
       });
 
       const data = await response.json();
@@ -136,16 +130,9 @@ export default function Settings() {
 
     try {
       setSavingPassword(true);
-      const response = await fetch(`${API_URL}/auth/password`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          currentPassword: passwordForm.currentPassword,
-          newPassword: passwordForm.newPassword,
-        }),
+      const response = await api.put('/auth/password', {
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
       });
 
       const data = await response.json();

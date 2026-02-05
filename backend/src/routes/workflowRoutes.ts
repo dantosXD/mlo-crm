@@ -193,7 +193,7 @@ router.get('/templates', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/workflows/templates/:id/use - Use a template to create a new workflow
-router.post('/templates/:id/use', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+router.post('/templates/:id/use', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { name, customize } = req.body;
@@ -1033,7 +1033,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/workflows - Create new workflow (ADMIN, MANAGER only)
-router.post('/', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+router.post('/', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const { name, description, isActive, isTemplate, triggerType, triggerConfig, conditions, actions } =
       req.body;
@@ -1139,7 +1139,7 @@ router.post('/', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, re
 });
 
 // PUT /api/workflows/:id - Update workflow (ADMIN, MANAGER only)
-router.put('/:id', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+router.put('/:id', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { name, description, isActive, isTemplate, triggerType, triggerConfig, conditions, actions } =
@@ -1295,7 +1295,7 @@ router.delete('/:id', authorizeRoles('ADMIN'), async (req: AuthRequest, res: Res
 });
 
 // PATCH /api/workflows/:id/toggle - Toggle workflow active status (ADMIN, MANAGER only)
-router.patch('/:id/toggle', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+router.patch('/:id/toggle', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const userId = req.user?.userId;
@@ -1363,7 +1363,7 @@ router.patch('/:id/toggle', authorizeRoles('ADMIN', 'MANAGER'), async (req: Auth
 });
 
 // POST /api/workflows/:id/clone - Clone workflow (ADMIN, MANAGER only)
-router.post('/:id/clone', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+router.post('/:id/clone', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const userId = req.user?.userId;
@@ -1771,7 +1771,7 @@ router.get('/:id/versions', async (req: AuthRequest, res: Response) => {
 // POST /api/workflows/:id/rollback/:version - Rollback workflow to specific version
 router.post(
   '/:id/rollback/:version',
-  authorizeRoles('ADMIN', 'MANAGER'),
+  authorizeRoles('ADMIN', 'MANAGER', 'MLO'),
   async (req: AuthRequest, res: Response) => {
     try {
       const { id, version } = req.params;
@@ -1961,7 +1961,7 @@ router.get('/executions', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/workflows/executions/:id/pause - Pause a running workflow execution
-router.post('/executions/:id/pause', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+router.post('/executions/:id/pause', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -2019,7 +2019,7 @@ router.post('/executions/:id/pause', authorizeRoles('ADMIN', 'MANAGER'), async (
 });
 
 // POST /api/workflows/executions/:id/resume - Resume a paused workflow execution
-router.post('/executions/:id/resume', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+router.post('/executions/:id/resume', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const userId = req.user?.userId;
@@ -2156,7 +2156,7 @@ router.get('/:id/export', async (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/workflows/import - Import workflow from JSON
-router.post('/import', authorizeRoles('ADMIN', 'MANAGER'), async (req: AuthRequest, res: Response) => {
+router.post('/import', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
   try {
     const { workflowData, asTemplate = false } = req.body;
     const userId = req.user?.userId;

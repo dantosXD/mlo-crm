@@ -33,6 +33,7 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { DateInput } from '@mantine/dates';
 import { API_URL } from '../utils/apiBase';
+import { decryptData } from '../utils/encryption';
 
 interface Client {
   id: string;
@@ -132,15 +133,7 @@ export function BulkCommunicationComposer({
   const [showSuccess, setShowSuccess] = useState(false);
 
   // Helper to decrypt client data
-  const decryptField = (encrypted: string | null): string => {
-    if (!encrypted) return '';
-    try {
-      const parsed = JSON.parse(encrypted);
-      return parsed.data || '';
-    } catch {
-      return encrypted;
-    }
-  };
+  const decryptField = (value: string | null): string => decryptData(value);
 
   // Fetch clients data
   useEffect(() => {

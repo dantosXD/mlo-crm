@@ -30,6 +30,8 @@ import { EmptyState } from '../components/EmptyState';
 import { canWriteClients } from '../utils/roleUtils';
 import { handleFetchError, fetchWithErrorHandling } from '../utils/errorHandler';
 import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
+import { decryptData } from '../utils/encryption';
 import { BulkCommunicationComposer } from './BulkCommunicationComposer';
 
 interface Client {
@@ -225,7 +227,14 @@ export default function Clients() {
       ]);
 
       const data = await response.json();
-      setClients(data);
+      const normalized = Array.isArray(data) ? data : data.data || [];
+      const decrypted = normalized.map((client: Client) => ({
+        ...client,
+        name: decryptData(client.name),
+        email: decryptData(client.email),
+        phone: decryptData(client.phone),
+      }));
+      setClients(decrypted);
     } catch (error) {
       console.error('Error fetching clients:', error);
       handleFetchError(error, 'loading clients');
@@ -260,14 +269,7 @@ export default function Clients() {
 
     setCreating(true);
     try {
-      const response = await fetchWithErrorHandling(`${API_URL}/clients`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(newClient),
-      }, 'creating client');
+      const response = await api.post('/clients', newClient);
 
       const createdClient = await response.json();
       setClients([createdClient, ...clients]);
@@ -294,12 +296,7 @@ export default function Clients() {
     }
 
     try {
-      const response = await fetchWithErrorHandling(`${API_URL}/clients/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }, 'deleting client');
+      const response = await api.delete(`/clients/${id}`);
 
       setClients(clients.filter(c => c.id !== id));
       notifications.show({
@@ -320,17 +317,10 @@ export default function Clients() {
 
     setBulkUpdating(true);
     try {
-      const response = await fetchWithErrorHandling(`${API_URL}/clients/bulk`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          clientIds: selectedClientIds,
-          status: bulkStatus,
-        }),
-      }, 'updating clients');
+      const response = await api.patch('/clients/bulk', {
+        clientIds: selectedClientIds,
+        status: bulkStatus,
+      });
 
       const result = await response.json();
 

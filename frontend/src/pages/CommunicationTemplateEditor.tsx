@@ -28,7 +28,7 @@ import {
   IconInfoCircle,
   IconTag,
 } from '@tabler/icons-react';
-import { useAuthStore } from '../stores/authStore';
+import { api } from '../utils/api';
 
 interface CommunicationTemplate {
   id: string;
@@ -52,8 +52,6 @@ interface MetaOption {
 interface MetaResponse {
   data: MetaOption[];
 }
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 // Available placeholder descriptions
 const PLACEHOLDER_INFO: Record<string, { description: string; example: string }> = {
@@ -110,7 +108,6 @@ const PLACEHOLDER_INFO: Record<string, { description: string; example: string }>
 const PLACEHOLDER_KEYS = Object.keys(PLACEHOLDER_INFO);
 
 export function CommunicationTemplateEditor() {
-  const { accessToken } = useAuthStore();
   const navigate = useNavigate();
   const { id } = useParams();
 
@@ -147,12 +144,8 @@ export function CommunicationTemplateEditor() {
   const fetchMetaOptions = async () => {
     try {
       const [typesRes, categoriesRes] = await Promise.all([
-        fetch(`${API_URL}/communication-templates/meta/types`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
-        fetch(`${API_URL}/communication-templates/meta/categories`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
+        api.get('/communication-templates/meta/types'),
+        api.get('/communication-templates/meta/categories'),
       ]);
 
       if (typesRes.ok && categoriesRes.ok) {
@@ -168,9 +161,7 @@ export function CommunicationTemplateEditor() {
 
   const fetchTemplate = async () => {
     try {
-      const response = await fetch(`${API_URL}/communication-templates/${id}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const response = await api.get(`/communication-templates/${id}`);
 
       if (!response.ok) {
         throw new Error('Failed to fetch template');
@@ -298,22 +289,13 @@ export function CommunicationTemplateEditor() {
         isActive,
       };
 
-      const url = isEditing
-        ? `${API_URL}/communication-templates/${id}`
-        : `${API_URL}/communication-templates`;
+      const response = isEditing
+        ? await api.put(`/communication-templates/${id}`, payload)
+        : await api.post('/communication-templates', payload);
 
-      const response = await fetch(url, {
-        method: isEditing ? 'PUT' : 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
+      const responseBody = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to save template');
+        throw new Error(responseBody.message || 'Failed to save template');
       }
 
       notifications.show({

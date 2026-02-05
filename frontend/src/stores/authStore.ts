@@ -19,6 +19,7 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   lastActivity: number | null; // Timestamp of last user activity
+  hasHydrated: boolean;
 
   // Actions
   login: (email: string, password: string) => Promise<boolean>;
@@ -30,6 +31,7 @@ interface AuthState {
   updateLastActivity: () => void;
   checkSessionTimeout: (timeoutMinutes: number) => boolean;
   updateCsrfToken: (token: string) => void;
+  setHasHydrated: (value: boolean) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -43,6 +45,7 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       error: null,
       lastActivity: null,
+      hasHydrated: false,
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -227,6 +230,10 @@ export const useAuthStore = create<AuthState>()(
       updateCsrfToken: (token: string) => {
         set({ csrfToken: token });
       },
+
+      setHasHydrated: (value: boolean) => {
+        set({ hasHydrated: value });
+      },
     }),
     {
       name: 'mlo-auth-storage',
@@ -237,7 +244,15 @@ export const useAuthStore = create<AuthState>()(
         csrfToken: state.csrfToken,
         isAuthenticated: state.isAuthenticated,
         lastActivity: state.lastActivity,
+        hasHydrated: state.hasHydrated,
       }),
+      onRehydrateStorage: () => {
+        return (state) => {
+          if (state) {
+            state.setHasHydrated(true);
+          }
+        };
+      },
     }
   )
 );
