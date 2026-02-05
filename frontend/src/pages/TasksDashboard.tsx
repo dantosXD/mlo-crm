@@ -410,55 +410,72 @@ export default function TasksDashboard() {
   });
 
   // Statistics cards
-  const StatCard = ({ label, value, icon: Icon, color }: any) => (
-    <Paper p="md" radius="md" withBorder style={{ height: '100%' }}>
-      <Group justify="space-between" align="flex-start">
-        <div>
-          <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
-            {label}
-          </Text>
-          <Text size="xl" fw={700} mt="xs">
-            {value}
-          </Text>
-        </div>
-        <Box
-          p="xs"
-          style={{
-            backgroundColor: `${color}15`,
-            borderRadius: '8px',
-          }}
-        >
-          <Icon size={24} color={color} />
-        </Box>
-      </Group>
-    </Paper>
-  );
+  function StatCard({ label, value, icon: Icon, color }: any) {
+    return (
+      <Paper p="md" radius="md" withBorder style={{ height: '100%' }}>
+        <Group justify="space-between" align="flex-start">
+          <div>
+            <Text c="dimmed" size="xs" tt="uppercase" fw={700}>
+              {label}
+            </Text>
+            <Text size="xl" fw={700} mt="xs">
+              {value}
+            </Text>
+          </div>
+          <Box
+            p="xs"
+            style={{
+              backgroundColor: `${color}15`,
+              borderRadius: '8px',
+            }}
+          >
+            <Icon size={24} color={color} />
+          </Box>
+        </Group>
+      </Paper>
+    );
+  }
 
   return (
-    <Container size="xl" py="md">
-      <Stack gap="md">
-        {/* Header */}
-        <Group justify="space-between">
-          <Title order={2}>Tasks Dashboard</Title>
-          <Group gap="xs">
-            <Button
-              leftSection={<IconPlus size={16} />}
-              onClick={() => {
-                setEditingTask(undefined);
-                setTaskFormOpened(true);
-              }}
-            >
-              New Task
-            </Button>
-            <Button
-              variant="light"
-              leftSection={<IconRefresh size={16} />}
-              onClick={() => { fetchTasks(); fetchStatistics(); }}
-            >
-              Refresh
-            </Button>
+    <PullToRefresh onRefresh={handleRefresh}>
+      <Container size={isMobile ? 'sm' : 'xl'} py={isMobile ? 'xs' : 'md'}>
+        <Stack gap="md">
+          {/* Header */}
+          <Group justify="space-between">
+            <Title order={isMobile ? 3 : 2}>Tasks Dashboard</Title>
+            <Group gap="xs">
+              {!isMobile && (
+                <>
+                  <Button
+                    leftSection={<IconPlus size={16} />}
+                    onClick={() => {
+                      setEditingTask(undefined);
+                      setTaskFormOpened(true);
+                    }}
+                  >
+                    New Task
+                  </Button>
+                  <Button
+                    variant="light"
+                    leftSection={<IconRefresh size={16} />}
+                    onClick={() => { fetchTasks(); fetchStatistics(); }}
+                  >
+                    Refresh
+                  </Button>
+                </>
+              )}
+              {isMobile && (
+                <ActionIcon
+                  size="lg"
+                  variant="light"
+                  onClick={() => { fetchTasks(); fetchStatistics(); }}
+                  style={{ minHeight: '44px', minWidth: '44px' }}
+                >
+                  <IconRefresh size={20} />
+                </ActionIcon>
+              )}
+            </Group>
           </Group>
-        </Group>
 
         {/* Statistics Cards */}
         {statistics && (
@@ -826,12 +843,6 @@ export default function TasksDashboard() {
         />
       </Stack>
     </Container>
+    </PullToRefresh>
   );
 }
-
-// Helper Center component
-const Center = ({ children, py }: { children: React.ReactNode; py?: string }) => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: py }}>
-    {children}
-  </div>
-);

@@ -21,7 +21,10 @@ import {
   Checkbox,
   ScrollArea,
   LoadingOverlay,
+  Paper,
+  Center,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   IconBell,
   IconBellRinging,
@@ -43,6 +46,8 @@ import { notifications } from '@mantine/notifications';
 import api from '../utils/apiBase';
 import ReminderForm from '../components/reminders/ReminderForm';
 import ReminderWidget from '../components/reminders/ReminderWidget';
+import { MobileReminderCard } from '../components/reminders/MobileReminderCard';
+import { SimpleFab } from '../components/common/MobileFloatingActionButton';
 
 interface Reminder {
   id: string;
@@ -75,6 +80,7 @@ interface ReminderStats {
 
 const RemindersDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const isMobile = useMediaQuery('(max-width: 768px)');
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [stats, setStats] = useState<ReminderStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -249,43 +255,61 @@ const RemindersDashboard: React.FC = () => {
   const filteredReminders = reminders;
 
   return (
-    <Container size="xl" py="md">
+    <Container size={isMobile ? 'sm' : 'xl'} py={isMobile ? 'xs' : 'md'}>
       <Stack gap="md">
         {/* Header */}
         <Group justify="space-between" align="center">
           <Group>
-            <ThemeIcon size="lg" radius="md" variant="light" color="blue">
-              <IconBell size={24} />
+            <ThemeIcon size={isMobile ? 'md' : 'lg'} radius="md" variant="light" color="blue">
+              <IconBell size={isMobile ? 20 : 24} />
             </ThemeIcon>
             <div>
-              <Title order={2}>Reminders</Title>
-              <Text size="sm" c="dimmed">
-                Time-sensitive notifications and follow-ups
-              </Text>
+              <Title order={isMobile ? 4 : 2}>Reminders</Title>
+              {!isMobile && (
+                <Text size="sm" c="dimmed">
+                  Time-sensitive notifications and follow-ups
+                </Text>
+              )}
             </div>
           </Group>
           <Group>
-            <Button
-              variant="light"
-              leftSection={<IconRefresh size={16} />}
-              onClick={() => {
-                fetchReminders();
-                fetchStats();
-              }}
-            >
-              Refresh
-            </Button>
-            <Button
-              leftSection={<IconPlus size={16} />}
-              onClick={() => setShowCreateModal(true)}
-            >
-              New Reminder
-            </Button>
+            {!isMobile && (
+              <Button
+                variant="light"
+                leftSection={<IconRefresh size={16} />}
+                onClick={() => {
+                  fetchReminders();
+                  fetchStats();
+                }}
+              >
+                Refresh
+              </Button>
+            )}
+            {!isMobile && (
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setShowCreateModal(true)}
+              >
+                New Reminder
+              </Button>
+            )}
+            {isMobile && (
+              <ActionIcon
+                variant="light"
+                onClick={() => {
+                  fetchReminders();
+                  fetchStats();
+                }}
+                style={{ minHeight: '44px', minWidth: '44px' }}
+              >
+                <IconRefresh size={20} />
+              </ActionIcon>
+            )}
           </Group>
         </Group>
 
         {/* Statistics Cards */}
-        {stats && (
+        {stats && !isMobile && (
           <Grid>
             <Grid.Col span={{ base: 12, md: 3 }}>
               <Card padding="md" radius="md" withBorder>
