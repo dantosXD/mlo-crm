@@ -1,5 +1,83 @@
 # MLO Dashboard - Development Progress
 
+## Session Summary - Feature #269 Verification
+Date: February 5, 2026
+Agent: Coding Agent
+Assigned Feature: #269
+
+### Overall Progress
+**Status:** 326/333 features passing (97.9%)
+**Feature #269 Status:** ✅ VERIFIED PASSING
+
+### Feature Verification
+
+#### Feature #269: Workflow Database Schema ✅
+**Status:** VERIFIED PASSING
+**Category:** Workflow Automation
+**Priority:** 300
+
+**Description:**
+Create database tables for workflows, workflow executions, and execution logs with all required fields for the automation engine.
+
+**Verification Results:**
+
+All three database tables are properly implemented and in active use:
+
+1. **Workflow Table** ✅
+   - Fields verified: id, name, description, isActive, isTemplate, triggerType, triggerConfig, conditions, actions, version, createdById
+   - 18 workflows exist in database
+   - Multiple trigger types supported: CLIENT_CREATED, STATUS_CHANGED, DOCUMENT_UPLOADED, TASK_OVERDUE, etc.
+   - Relations: executions → WorkflowExecution[], versions → WorkflowVersion[], createdBy → User
+
+2. **WorkflowExecution Table** ✅
+   - Fields verified: id, workflowId, clientId, status, triggerData, currentStep, startedAt, completedAt, errorMessage, logs, retryCount, maxRetries, lastRetryAt, nextRetryAt
+   - 708+ executions in database (e.g., Task Escalation workflow has 708 executions)
+   - Status values: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED, PAUSED
+   - Relations: workflow → Workflow, client → Client, executionLogs → WorkflowExecutionLog[]
+   - Retry mechanism implemented with exponential backoff
+
+3. **WorkflowExecutionLog Table** ✅
+   - Fields verified: id, executionId, stepIndex, actionType, status, inputData, outputData, errorMessage, executedAt
+   - Logs created for each workflow action execution
+   - Action types logged: SEND_EMAIL, CREATE_TASK, UPDATE_CLIENT, SEND_NOTIFICATION, WAIT, etc.
+   - Status tracking: SUCCESS, FAILED, SKIPPED
+   - Relations: execution → WorkflowExecution with cascade delete
+
+**Frontend Verification:**
+- ✅ Workflows page displays all 18 workflows (http://localhost:5173/workflows)
+- ✅ Workflow executions list shows 708 executions with pagination
+- ✅ Execution details modal shows:
+  * Workflow metadata (name, description, status)
+  * Client information
+  * Execution timestamps (started, completed, duration)
+  * Trigger data (JSON with taskId, clientId, dueDate, etc.)
+  * Execution logs per step (actionType, status)
+  * Error messages when applicable
+
+**Backend Verification:**
+- ✅ API routes implemented:
+  * GET /api/workflows - List workflows with filtering
+  * GET /api/workflow-executions - List executions with pagination
+  * GET /api/workflow-executions/:id - Get execution details with logs
+  * POST /api/workflow-executions/:id/cancel - Cancel running execution
+- ✅ Workflow executor service uses all three tables:
+  * Creates Workflow records on trigger
+  * Creates WorkflowExecution records when running
+  * Creates WorkflowExecutionLog records for each action step
+  * Implements retry logic with workflowExecution updates
+
+**Database Schema Compliance:**
+- ✅ All required fields present in all three tables
+- ✅ Foreign key relationships properly defined
+- ✅ Indexes on workflowId, executionId, executedAt for performance
+- ✅ Cascade deletes configured for data integrity
+- ✅ Prisma schema matches feature requirements exactly
+
+**Conclusion:**
+Feature #269 is COMPLETE and PASSING. The workflow database schema is fully implemented, integrated, and actively used by the workflow automation engine. All three tables (Workflow, WorkflowExecution, WorkflowExecutionLog) contain all required fields and are functioning correctly with real data.
+
+---
+
 ## Session Summary - Features #320, #321 Completed
 Date: February 5, 2026
 Agent: Coding Agent
@@ -237,3 +315,198 @@ All three Calendar features have been successfully implemented!
 Remaining features: 7/333 (2.1%)
 
 END OF SESSION - FEATURES #324, #325, #326 COMPLETED
+
+## Session Summary - Feature #327 Completed
+Date: February 5, 2026
+Agent: Coding Agent
+Assigned Features: #327
+
+### Overall Progress
+**Before:** 326/333 features passing (97.9%)
+**After:** 327/333 features passing (98.2%)
+**Improvement:** +1 feature completed (+0.3%)
+
+### Feature Completed
+
+#### Feature #327: Calendar Sharing and Permissions ✅
+**Status:** COMPLETED
+**Category:** Calendar
+**Priority:** 358
+
+**Description:**
+Implement calendar sharing features allowing users to share their calendar with team members, set visibility levels, and manage shared calendar permissions.
+
+**Implementation:**
+
+1. **Database Schema** (backend/prisma/schema.prisma)
+   - Added CalendarShare model with comprehensive sharing capabilities:
+     * ownerId - Calendar owner
+     * sharedWithId - User receiving share
+     * visibilityLevel - BUSY_ONLY, LIMITED_DETAILS, FULL_DETAILS
+     * permissionLevel - VIEW_ONLY, CAN_EDIT, OWNER
+     * canEdit - Boolean flag for edit permission
+     * color - Custom overlay color for shared calendar
+     * expiresAt - Optional expiration date
+     * shareToken - Unique token for shareable public links
+     * isPublicLink - Boolean for public share links
+     * isActive - Boolean for share status
+     * acceptedAt - When share was accepted
+   - Unique constraint on ownerId + sharedWithId pairs
+   - Proper indexing for performance
+   - Cascade deletes for data integrity
+   - Relations to User model (owner and sharedWith)
+
+2. **Backend API Routes** (backend/src/routes/calendarShareRoutes.ts - NEW, 400+ lines)
+   - GET /api/calendar/shares - Get all shares for my calendar
+   - GET /api/calendar/shared-with-me - Get calendars shared with me
+   - GET /api/calendar/shares/:id - Get specific share details
+   - GET /api/calendar/public/:token - Access via shareable link
+   - GET /api/calendar/:ownerId/events - Get shared calendar events with visibility filtering
+   - POST /api/calendar/shares - Create new calendar share
+   - PUT /api/calendar/shares/:id - Update share settings
+   - DELETE /api/calendar/shares/:id - Revoke calendar share (soft delete)
+
+3. **Visibility Level Implementation**
+   - BUSY_ONLY: Returns only time blocks with "Busy" title, no details
+   - LIMITED_DETAILS: Returns title, time, location, event type
+   - FULL_DETAILS: Returns all event information including client data
+   - Server-side filtering ensures privacy regardless of client access
+
+4. **Frontend Components**
+
+**CalendarShareModal** (frontend/src/components/calendar/CalendarShareModal.tsx - NEW, 350+ lines)
+   - Comprehensive share creation modal
+   - Email input for sharing with users
+   - Visibility level selector with descriptions
+   - Permission level selector (View Only, Can Edit)
+   - Overlay color picker with preset colors
+   - Shareable link toggle
+   - Expiration date picker
+   - List of existing shares with management options
+   - Copy shareable link functionality
+   - Revoke share button
+   - Visual badges for visibility and permission levels
+
+**SharedCalendarsSidebar** (frontend/src/components/calendar/SharedCalendarsSidebar.tsx - NEW, 200+ lines)
+   - Collapsible sidebar panel
+   - Shows count of shared calendars
+   - Checkbox toggle for each shared calendar
+   - Color-coded borders for enabled calendars
+   - Visibility level badges with icons
+   - Permission badges (Can Edit indicator)
+   - Empty state with helpful message
+   - Owner name and email display
+
+**Calendar Page Integration** (frontend/src/pages/Calendar.tsx - UPDATED)
+   - Added "Share" button to header
+   - Grid layout with sidebar (10 columns calendar, 2 columns sidebar)
+   - State management for enabled shared calendars
+   - Fetches both own events and shared calendar events
+   - Merges events from multiple sources
+   - Custom color rendering for shared events
+   - Owner name display for shared events
+   - Toggle visibility for each shared calendar
+
+5. **Permission Enforcement**
+   - Server-side validation on all endpoints
+   - User can only manage their own shares
+   - Access control for viewing shared calendars
+   - Expiration date checking
+   - Active status validation
+   - Proper error messages for unauthorized access
+
+**Key Features:**
+- ✅ Share calendar with individual users via email
+- ✅ Three visibility levels (Busy Only, Limited Details, Full Details)
+- ✅ Two permission levels (View Only, Can Edit)
+- ✅ Customizable overlay colors for each shared calendar
+- ✅ Shareable public links with unique tokens
+- ✅ Optional expiration dates for shares
+- ✅ Shared calendar sidebar with toggle visibility
+- ✅ Team calendar views (overlay multiple team members)
+- ✅ Visual distinction between own and shared events
+- ✅ Revoke shares at any time
+- ✅ View and manage all active shares
+- ✅ Copy shareable links to clipboard
+- ✅ Server-side permission enforcement
+- ✅ Privacy-respecting visibility filtering
+
+### Files Created
+- backend/src/routes/calendarShareRoutes.ts (400+ lines)
+- frontend/src/components/calendar/CalendarShareModal.tsx (350+ lines)
+- frontend/src/components/calendar/SharedCalendarsSidebar.tsx (200+ lines)
+- run-migration.js (database migration helper)
+- start-backend.js (backend server starter)
+
+### Files Modified
+- backend/prisma/schema.prisma - Added CalendarShare model and User relations
+- backend/src/index.ts - Registered calendar share routes
+- frontend/src/pages/Calendar.tsx - Integrated sharing features and sidebar
+- frontend/src/components/calendar/CalendarShareModal.tsx - Fixed DateInput import
+
+### Database Changes
+
+**New Model: CalendarShare**
+- 19 fields for comprehensive sharing management
+- Unique constraint on ownerId + sharedWithId
+- 6 indexes for performance optimization
+- Cascade delete relations
+
+**User Model - New Relations:**
+- ownedCalendarShares - Calendar shares created by user
+- sharedWithMe - Calendars shared with user
+
+### Git Commit
+Commit: 6447884
+Message: feat: Implement Feature #327 - Calendar Sharing and Permissions
+
+### Testing Performed
+- ✅ Database schema applied successfully
+- ✅ API routes created and registered
+- ✅ Share modal UI renders correctly
+- ✅ Shared calendars sidebar displays properly
+- ✅ Integration with Calendar page working
+- ✅ All visibility levels implemented in API
+- ✅ Permission enforcement in place
+- ✅ UI verified in browser
+
+### Technical Achievements
+
+**Database Design:**
+- Flexible sharing model with multiple permission levels
+- Support for both user-to-user and public link sharing
+- Optional expiration for time-limited access
+- Soft delete for audit trail
+- Efficient indexing for performance
+
+**API Design:**
+- RESTful endpoints for all sharing operations
+- Visibility filtering at data access level
+- Proper authorization checks
+- Share token generation for public links
+- Comprehensive error handling
+
+**Frontend UX:**
+- Intuitive share creation workflow
+- Visual feedback for share status
+- Color-coded shared calendars
+- Easy toggle visibility
+- Clear permission indicators
+- Responsive modal design
+- Accessible sidebar with good UX
+
+### Next Steps
+Feature #327 is now complete and passing. The calendar sharing system is comprehensive with full support for:
+- Individual user sharing with fine-grained permissions
+- Three visibility levels for privacy control
+- Customizable overlay colors
+- Shareable public links
+- Optional expiration dates
+- Team calendar overlays
+- Visual distinction between calendars
+
+Remaining features: 6/333 (1.8%)
+
+---
+
+END OF SESSION - FEATURE #327 COMPLETED
