@@ -31,7 +31,7 @@ import {
   IconCalendar,
   IconChevronLeft,
   IconChevronRight,
-  IconToday,
+  IconCalendarTime,
   IconPlus,
   IconDots,
   IconEdit,
@@ -42,6 +42,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import dayjs from 'dayjs';
+import { EventFormModal } from '../components/calendar/EventFormModal';
 
 // Types
 interface Event {
@@ -169,7 +170,7 @@ const Calendar: React.FC = () => {
                 style={{ width: 120 }}
               />
 
-              <Button variant="default" onClick={goToToday} leftSection={<IconToday size={16} />}>
+              <Button variant="default" onClick={goToToday} leftSection={<IconCalendarTime size={16} />}>
                 Today
               </Button>
 
@@ -231,7 +232,7 @@ const Calendar: React.FC = () => {
       </Stack>
 
       {/* Event Modal */}
-      <EventModal
+      <EventFormModal
         opened={eventModalOpen}
         onClose={() => {
           setEventModalOpen(false);
@@ -668,150 +669,6 @@ const getEventColor = (eventType: string): string => {
     REMINDER: 'red',
   };
   return colors[eventType] || 'gray';
-};
-
-// Event Modal Component
-const EventModal: React.FC<{
-  opened: boolean;
-  onClose: () => void;
-  event?: Event | null;
-  selectedDate?: Date | null;
-  onSuccess: () => void;
-}> = ({ opened, onClose, event, selectedDate, onSuccess }) => {
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-
-    const formData = new FormData(e.currentTarget);
-    const eventData = {
-      title: formData.get('title'),
-      description: formData.get('description'),
-      eventType: formData.get('eventType'),
-      startTime: formData.get('startTime'),
-      endTime: formData.get('endTime'),
-      allDay: formData.get('allDay') === 'on',
-      location: formData.get('location'),
-      status: 'CONFIRMED',
-    };
-
-    try {
-      const url = event ? `/api/events/${event.id}` : '/api/events';
-      const method = event ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(eventData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save event');
-      }
-
-      notifications.show({
-        title: 'Success',
-        message: event ? 'Event updated successfully' : 'Event created successfully',
-        color: 'green',
-      });
-
-      onSuccess();
-    } catch (error) {
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to save event',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Modal opened={opened} onClose={onClose} title={event ? 'Edit Event' : 'New Event'} size="md">
-      <form onSubmit={handleSubmit}>
-        <Stack gap="md">
-          <TextInput
-            label="Title"
-            name="title"
-            required
-            defaultValue={event?.title}
-            placeholder="Meeting with client"
-          />
-
-          <Select
-            label="Event Type"
-            name="eventType"
-            required
-            defaultValue={event?.eventType || 'MEETING'}
-            data={[
-              { value: 'MEETING', label: 'Meeting' },
-              { value: 'APPOINTMENT', label: 'Appointment' },
-              { value: 'CLOSING', label: 'Closing' },
-              { value: 'FOLLOW_UP', label: 'Follow-up' },
-              { value: 'CUSTOM', label: 'Custom' },
-            ]}
-          />
-
-          <Group grow>
-            <TextInput
-              label="Start Time"
-              name="startTime"
-              type="datetime-local"
-              required
-              defaultValue={
-                event?.startTime
-                  ? dayjs(event.startTime).format('YYYY-MM-DDTHH:mm')
-                  : selectedDate
-                  ? dayjs(selectedDate).format('YYYY-MM-DDTHH:mm')
-                  : dayjs().format('YYYY-MM-DDTHH:mm')
-              }
-            />
-            <TextInput
-              label="End Time"
-              name="endTime"
-              type="datetime-local"
-              defaultValue={event?.endTime ? dayjs(event.endTime).format('YYYY-MM-DDTHH:mm') : ''}
-            />
-          </Group>
-
-          <Checkbox
-            label="All Day Event"
-            name="allDay"
-            defaultChecked={event?.allDay}
-          />
-
-          <TextInput
-            label="Location"
-            name="location"
-            defaultValue={event?.location || ''}
-            placeholder="123 Main St, Conference Room A"
-          />
-
-          <Textarea
-            label="Description"
-            name="description"
-            defaultValue={event?.description || ''}
-            placeholder="Add event details..."
-            minRows={3}
-          />
-
-          <Group justify="flex-end" mt="md">
-            <Button type="button" variant="default" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={loading}>
-              {event ? 'Update' : 'Create'} Event
-            </Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
-  );
 };
 
 export default Calendar;
