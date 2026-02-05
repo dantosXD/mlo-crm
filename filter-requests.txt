@@ -1,0 +1,6 @@
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[GET] http://localhost:3000/api/workflows?page=1&limit=20 => [304] Not Modified
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[GET] http://localhost:3000/api/workflows?page=1&limit=20 => [304] Not Modified
+[GET] http://localhost:3000/api/workflows?page=1&limit=20&is_active=true => [200] OK
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified

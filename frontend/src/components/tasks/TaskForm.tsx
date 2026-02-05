@@ -5,7 +5,6 @@ import {
   TextInput,
   Textarea,
   Select,
-  DatePicker,
   Button,
   Group,
   MultiSelect,
@@ -15,6 +14,7 @@ import {
   Title,
   Text,
 } from '@mantine/core';
+import { DatePicker } from '@mantine/dates';
 import { IconCalendar, IconTag, IconRepeat } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../../stores/authStore';

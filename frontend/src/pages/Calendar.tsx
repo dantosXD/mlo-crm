@@ -20,13 +20,12 @@ import {
   Modal,
   TextInput,
   Textarea,
-  DatePicker,
-  TimeInput,
   Checkbox,
   MultiSelect,
   ColorInput,
   Alert,
 } from '@mantine/core';
+import { DatePicker, TimeInput } from '@mantine/dates';
 import {
   IconCalendar,
   IconChevronLeft,

@@ -1,0 +1,27 @@
+[POST] http://localhost:3000/api/auth/login => [200] OK
+[GET] http://localhost:3000/api/auth/me => [200] OK
+[GET] http://localhost:3000/api/notifications/unread-count => [200] OK
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[GET] http://localhost:3000/api/communications?page=1&limit=20 => [304] Not Modified
+[GET] http://localhost:3000/api/communications?page=1&limit=20 => [304] Not Modified
+[GET] http://localhost:3000/api/clients => [304] Not Modified
+[GET] http://localhost:3000/api/communication-templates?is_active=true => [304] Not Modified
+[GET] http://localhost:3000/api/clients => [304] Not Modified
+[GET] http://localhost:3000/api/communication-templates?is_active=true => [304] Not Modified
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[POST] http://localhost:3000/api/communications => [201] Created
+[GET] http://localhost:3000/api/communications?page=1&limit=20 => [200] OK
+[GET] http://localhost:3000/api/communications?page=1&limit=20 => [304] Not Modified
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[GET] http://localhost:3000/api/workflows?page=1&limit=20 => [200] OK
+[GET] http://localhost:3000/api/workflows?page=1&limit=20 => [304] Not Modified
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[GET] http://localhost:3000/api/workflows?page=1&limit=20 => [304] Not Modified
+[GET] http://localhost:3000/api/workflows?page=1&limit=20 => [304] Not Modified
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[POST] http://localhost:3000/api/workflows/daa03ccc-4977-49b0-a973-dbebc6eb6847/clone => [201] Created
+[GET] http://localhost:3000/api/workflows?page=1&limit=20 => [200] OK
+[GET] http://localhost:3000/api/workflows/d2296c94-f083-41a1-9230-e638072de740 => [200] OK
+[GET] http://localhost:3000/api/workflows/d2296c94-f083-41a1-9230-e638072de740 => [304] Not Modified
