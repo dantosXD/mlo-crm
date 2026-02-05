@@ -7,6 +7,7 @@ import {
   getSyncStatus,
 } from '../services/calendarSyncService';
 import { authenticateToken } from '../middleware/auth';
+import { calendarSyncLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -122,7 +123,7 @@ router.delete('/disconnect/:provider', authenticateToken, async (req: Request, r
 });
 
 // POST /api/calendar-sync/sync - Trigger sync for connected calendars
-router.post('/sync', authenticateToken, async (req: Request, res: Response) => {
+router.post('/sync', authenticateToken, calendarSyncLimiter, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
     const { providers, forceSync } = req.body;

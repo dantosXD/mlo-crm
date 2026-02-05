@@ -22,6 +22,7 @@ import {
   ScrollArea,
   Box,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   IconSearch,
   IconFilter,
@@ -42,6 +43,9 @@ import { useAuthStore } from '../stores/authStore';
 import { notifications } from '@mantine/notifications';
 import { TaskSnoozeButton } from '../components/tasks/TaskSnoozeButton';
 import TaskForm from '../components/tasks/TaskForm';
+import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
+import { PullToRefresh } from '../components/common/PullToRefresh';
+import { SimpleFab } from '../components/common/MobileFloatingActionButton';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -134,11 +138,13 @@ const sortDirectionOptions = [
 export default function TasksDashboard() {
   const navigate = useNavigate();
   const { user, accessToken } = useAuthStore();
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   // State
   const [tasks, setTasks] = useState<Task[]>([]);
   const [statistics, setStatistics] = useState<TaskStatistics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [selectedPriority, setSelectedPriority] = useState('');
@@ -234,6 +240,16 @@ export default function TasksDashboard() {
     fetchTasks();
     fetchStatistics();
   }, [selectedFilter, selectedPriority, selectedStatus, sortBy, sortDirection, page]);
+
+  // Pull to refresh handler
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([fetchTasks(), fetchStatistics()]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Handle task status toggle
   const handleToggleTaskStatus = async (task: Task) => {
