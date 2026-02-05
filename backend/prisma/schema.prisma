@@ -36,6 +36,13 @@ model User {
   createdTasks Task[] @relation("TaskCreator")
   createdTaskTemplates TaskTemplate[] @relation("TaskTemplateCreator")
 
+  // Calendar sharing relations
+  ownedCalendarShares CalendarShare[] @relation("CalendarOwner")
+  sharedWithMe CalendarShare[] @relation("SharedWithUser")
+
+  // Reminder relations
+  reminders Reminder[] @relation("ReminderUser")
+
   @@map("users")
 }
 
@@ -65,6 +72,7 @@ model Client {
   communications  Communication[]
   workflowExecutions WorkflowExecution[]
   events          Event[]
+  reminders       Reminder[]
 
   @@index([nameHash])
   @@index([emailHash])
@@ -580,4 +588,91 @@ model EventAttendee {
   @@index([eventId])
   @@index([email])
   @@map("event_attendees")
+}
+
+// Reminders for time-sensitive notifications separate from tasks
+model Reminder {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  user        User      @relation("ReminderUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Optional client association
+  clientId    String?   @map("client_id")
+  client      Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  // Reminder details
+  title       String
+  description String?
+  category    String    @default("GENERAL") // GENERAL, CLIENT, COMPLIANCE, CLOSING, FOLLOW_UP
+  priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+
+  // Timing
+  remindAt    DateTime  @map("remind_at") // When to show the reminder
+  dueDate     DateTime? @map("due_date") // Optional due date for the reminder
+
+  // Recurring reminders
+  isRecurring          Boolean   @default(false) @map("is_recurring")
+  recurringPattern     String?   @map("recurring_pattern") // DAILY, WEEKLY, MONTHLY, CUSTOM
+  recurringInterval    Int?      @map("recurring_interval") // e.g., every 2 weeks
+  recurringEndDate     DateTime? @map("recurring_end_date") // Optional end date
+  recurringReminderId  String?   @map("recurring_reminder_id") // Parent recurring reminder
+
+  // Status
+  status      String    @default("PENDING") // PENDING, SNOOZED, COMPLETED, DISMISSED
+  completedAt DateTime? @map("completed_at")
+  dismissedAt DateTime? @map("dismissed_at")
+
+  // Snooze functionality
+  snoozedUntil DateTime? @map("snoozed_until")
+  snoozeCount  Int       @default(0) @map("snooze_count")
+
+  // Tags and metadata
+  tags        String?   // JSON array of tags
+  metadata    String?   // JSON string for additional data
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([remindAt])
+  @@index([status])
+  @@index([category])
+  @@map("reminders")
+}
+
+// Calendar sharing for team collaboration
+model CalendarShare {
+  id              String   @id @default(uuid())
+  ownerId         String   @map("owner_id")
+  owner           User     @relation("CalendarOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  sharedWithId    String   @map("shared_with_id")
+  sharedWith      User     @relation("SharedWithUser", fields: [sharedWithId], references: [id], onDelete: Cascade)
+
+  // Visibility levels
+  visibilityLevel String   @default("FULL_DETAILS") @map("visibility_level") // BUSY_ONLY, LIMITED_DETAILS, FULL_DETAILS
+  permissionLevel String   @default("VIEW_ONLY") @map("permission_level") // VIEW_ONLY, CAN_EDIT, OWNER
+
+  // Share settings
+  canEdit         Boolean  @default(false) @map("can_edit")
+  color           String?  // Hex color for overlay
+  expiresAt       DateTime? @map("expires_at") // Optional expiration for share
+
+  // Shareable link (for public/read-only sharing)
+  shareToken      String?  @unique @map("share_token") // For shareable links
+  isPublicLink    Boolean  @default(false) @map("is_public_link")
+
+  // Status
+  isActive        Boolean  @default(true) @map("is_active")
+  acceptedAt      DateTime? @map("accepted_at")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([ownerId, sharedWithId])
+  @@index([ownerId])
+  @@index([sharedWithId])
+  @@index([shareToken])
+  @@index([isActive])
+  @@map("calendar_shares")
 }

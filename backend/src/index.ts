@@ -22,6 +22,8 @@ import communicationTemplateRoutes from './routes/communicationTemplateRoutes.js
 import attachmentRoutes from './routes/attachmentRoutes.js';
 import eventRoutes from './routes/eventRoutes.js';
 import calendarSyncRoutes from './routes/calendarSyncRoutes.js';
+import calendarShareRoutes from './routes/calendarShareRoutes.js';
+import reminderRoutes from './routes/reminderRoutes.js';
 import { generateCsrfToken, validateCsrfToken } from './middleware/csrf.js';
 import {
   checkOverdueTasks,
@@ -135,6 +137,12 @@ app.use('/api/events', validateCsrfToken, eventRoutes);
 
 // Calendar sync routes
 app.use('/api/calendar-sync', validateCsrfToken, calendarSyncRoutes);
+
+// Calendar sharing routes
+app.use('/api/calendar', validateCsrfToken, calendarShareRoutes);
+
+// Reminder routes
+app.use('/api/reminders', validateCsrfToken, reminderRoutes);
 
 // Analytics routes
 app.use('/api/analytics', validateCsrfToken, workflowAnalyticsRoutes);

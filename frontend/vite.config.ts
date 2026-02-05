@@ -17,4 +17,7 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
   },
+  optimizeDeps: {
+    include: ['@mantine/core', '@mantine/dates', '@mantine/dropzone', '@mantine/hooks', '@mantine/notifications', '@mantine/modals', '@mantine/form'],
+  },
 });

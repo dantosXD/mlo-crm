@@ -37,11 +37,14 @@ import {
   IconTrash,
   IconRefresh,
   IconFilter,
+  IconShare,
 } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import dayjs from 'dayjs';
 import { EventFormModal } from '../components/calendar/EventFormModal';
+import { CalendarShareModal } from '../components/calendar/CalendarShareModal';
+import { SharedCalendarsSidebar } from '../components/calendar/SharedCalendarsSidebar';
 
 // Types
 interface Event {
@@ -84,14 +87,17 @@ const Calendar: React.FC = () => {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [enabledSharedCalendars, setEnabledSharedCalendars] = useState<Set<string>>(new Set());
 
   // Fetch events
   const { data: events = [], isLoading, refetch } = useQuery({
-    queryKey: ['events', currentDate.format('YYYY-MM')],
+    queryKey: ['events', currentDate.format('YYYY-MM'), Array.from(enabledSharedCalendars)],
     queryFn: async () => {
       const startDate = currentDate.startOf(view === 'month' ? 'month' : view === 'week' ? 'week' : 'day').toISOString();
       const endDate = currentDate.endOf(view === 'month' ? 'month' : view === 'week' ? 'week' : 'day').toISOString();
 
+      // Fetch own events
       const response = await fetch(
         `/api/events?startDate=${startDate}&endDate=${endDate}`,
         {
@@ -103,7 +109,53 @@ const Calendar: React.FC = () => {
         throw new Error('Failed to fetch events');
       }
 
-      return response.json();
+      const ownEvents = await response.json();
+
+      // Fetch shared calendar events
+      const sharedEventsPromises = Array.from(enabledSharedCalendars).map(async (shareId) => {
+        try {
+          // Get share details to find ownerId
+          const shareResponse = await fetch(`/api/calendar/shares/${shareId}`, {
+            credentials: 'include',
+          });
+
+          if (!shareResponse.ok) {
+            return [];
+          }
+
+          const share = await shareResponse.json();
+
+          const eventsResponse = await fetch(
+            `/api/calendar/${share.ownerId}/events?startDate=${startDate}&endDate=${endDate}`,
+            {
+              credentials: 'include',
+            }
+          );
+
+          if (!eventsResponse.ok) {
+            return [];
+          }
+
+          const data = await eventsResponse.json();
+
+          // Add metadata to each event for display
+          return data.events.map((event: any) => ({
+            ...event,
+            isShared: true,
+            shareId,
+            ownerName: share.share?.owner?.name || 'Unknown',
+            shareColor: share.share?.color,
+          }));
+        } catch (error) {
+          console.error('Error fetching shared calendar events:', error);
+          return [];
+        }
+      });
+
+      const sharedEventsArrays = await Promise.all(sharedEventsPromises);
+      const sharedEvents = sharedEventsArrays.flat();
+
+      return [...ownEvents, ...sharedEvents];
     },
   });
 
@@ -132,7 +184,13 @@ const Calendar: React.FC = () => {
   };
 
   // Color coding for event types
-  const getEventColor = (eventType: string): string => {
+  const getEventColor = (event: any): string => {
+    // If it's a shared event, use the share color
+    if (event.isShared && event.shareColor) {
+      return event.shareColor;
+    }
+
+    // Otherwise use event type color
     const colors: Record<string, string> = {
       MEETING: '#228be6',
       APPOINTMENT: '#40c057',
@@ -142,7 +200,17 @@ const Calendar: React.FC = () => {
       TASK: '#7950f2',
       REMINDER: '#fa5252',
     };
-    return colors[eventType] || colors.CUSTOM;
+    return colors[event.eventType] || colors.CUSTOM;
+  };
+
+  const handleToggleSharedCalendar = (shareId: string) => {
+    const newEnabled = new Set(enabledSharedCalendars);
+    if (newEnabled.has(shareId)) {
+      newEnabled.delete(shareId);
+    } else {
+      newEnabled.add(shareId);
+    }
+    setEnabledSharedCalendars(newEnabled);
   };
 
   return (
@@ -188,6 +256,13 @@ const Calendar: React.FC = () => {
             </Group>
 
             <Group>
+              <Button
+                variant="light"
+                leftSection={<IconShare size={16} />}
+                onClick={() => setShareModalOpen(true)}
+              >
+                Share
+              </Button>
               <Button leftSection={<IconPlus size={16} />} onClick={() => setEventModalOpen(true)}>
                 New Event
               </Button>
@@ -212,22 +287,35 @@ const Calendar: React.FC = () => {
           </Group>
         </Paper>
 
-        {/* Calendar View */}
-        <Paper p="md" withBorder h="calc(100vh - 250px)">
-          {isLoading ? (
-            <Flex justify="center" align="center" h="100%">
-              <Text>Loading events...</Text>
-            </Flex>
-          ) : (
-            <CalendarView
-              view={view}
-              currentDate={currentDate}
-              events={events}
-              onDateClick={handleDateClick}
-              onEventClick={handleEventClick}
+        {/* Main Content Area with Sidebar */}
+        <Grid gutter="md">
+          <Grid.Col span={10}>
+            {/* Calendar View */}
+            <Paper p="md" withBorder h="calc(100vh - 250px)">
+              {isLoading ? (
+                <Flex justify="center" align="center" h="100%">
+                  <Text>Loading events...</Text>
+                </Flex>
+              ) : (
+                <CalendarView
+                  view={view}
+                  currentDate={currentDate}
+                  events={events}
+                  onDateClick={handleDateClick}
+                  onEventClick={handleEventClick}
+                />
+              )}
+            </Paper>
+          </Grid.Col>
+
+          <Grid.Col span={2}>
+            {/* Shared Calendars Sidebar */}
+            <SharedCalendarsSidebar
+              enabledSharedCalendars={enabledSharedCalendars}
+              onToggleCalendar={handleToggleSharedCalendar}
             />
-          )}
-        </Paper>
+          </Grid.Col>
+        </Grid>
       </Stack>
 
       {/* Event Modal */}
@@ -246,6 +334,12 @@ const Calendar: React.FC = () => {
           setSelectedEvent(null);
           setSelectedDate(null);
         }}
+      />
+
+      {/* Share Modal */}
+      <CalendarShareModal
+        opened={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
       />
     </Container>
   );
