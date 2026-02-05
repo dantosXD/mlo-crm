@@ -1324,7 +1324,7 @@ router.patch('/:id/toggle', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (re
     // Log activity when workflow is enabled/disabled
     await prisma.activity.create({
       data: {
-        userId,
+        userId: req.user?.userId || '',
         type: newStatus ? 'WORKFLOW_ENABLED' : 'WORKFLOW_DISABLED',
         description: `Workflow "${workflow.name}" was ${newStatus ? 'enabled' : 'disabled'}`,
         metadata: JSON.stringify({

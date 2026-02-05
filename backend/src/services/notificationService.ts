@@ -148,3 +148,141 @@ export async function deleteNotification(notificationId: string, userId: string)
     where: { id: notificationId },
   });
 }
+
+/**
+ * Create a task reminder notification
+ */
+export async function createTaskReminderNotification(
+  userId: string,
+  taskId: string,
+  taskText: string,
+  clientName: string | null,
+  dueDate: Date,
+  reminderType: string,
+  customMessage?: string
+) {
+  const isOverdue = new Date() > dueDate;
+  const timeUntilDue = dueDate.getTime() - Date.now();
+  const minutesUntilDue = Math.ceil(timeUntilDue / (1000 * 60));
+  const hoursUntilDue = Math.ceil(timeUntilDue / (1000 * 60 * 60));
+  const daysUntilDue = Math.ceil(timeUntilDue / (1000 * 60 * 60 * 24));
+
+  let title: string;
+  let message: string;
+  let type = 'TASK_REMINDER';
+
+  if (customMessage) {
+    title = `Task Reminder: ${taskText}`;
+    message = customMessage;
+  } else if (isOverdue) {
+    title = `Task Overdue: ${taskText}`;
+    const daysOverdue = Math.abs(daysUntilDue);
+    if (daysOverdue === 0) {
+      message = `The task "${taskText}" is overdue${clientName ? ` for client ${clientName}` : ''}. It was due today.`;
+    } else {
+      message = `The task "${taskText}" is overdue${clientName ? ` for client ${clientName}` : ''}. It was due ${daysOverdue} day(s) ago.`;
+    }
+    type = 'TASK_OVERDUE';
+  } else if (reminderType === 'AT_TIME') {
+    title = `Task Due Now: ${taskText}`;
+    message = `The task "${taskText}" is due now${clientName ? ` for client ${clientName}` : ''}.`;
+  } else if (reminderType === '15MIN') {
+    title = `Task Due Soon: ${taskText}`;
+    message = `The task "${taskText}" is due in 15 minutes${clientName ? ` for client ${clientName}` : ''}.`;
+  } else if (reminderType === '1HR') {
+    title = `Task Due in 1 Hour: ${taskText}`;
+    message = `The task "${taskText}" is due in 1 hour${clientName ? ` for client ${clientName}` : ''}.`;
+  } else if (reminderType === '1DAY') {
+    title = `Task Due Tomorrow: ${taskText}`;
+    message = `The task "${taskText}" is due tomorrow (${dueDate.toLocaleDateString()})${clientName ? ` for client ${clientName}` : ''}.`;
+  } else if (reminderType === '1WEEK') {
+    title = `Task Due in 1 Week: ${taskText}`;
+    message = `The task "${taskText}" is due in 1 week (${dueDate.toLocaleDateString()})${clientName ? ` for client ${clientName}` : ''}.`;
+  } else {
+    title = `Task Reminder: ${taskText}`;
+    message = `The task "${taskText}" is due soon${clientName ? ` for client ${clientName}` : ''}.`;
+  }
+
+  // Create notification
+  const notification = await createNotification({
+    userId,
+    type,
+    title,
+    message,
+    link: `/tasks?filter=task_id:${taskId}`,
+    metadata: {
+      taskId,
+      clientId: null,
+      dueDate: dueDate.toISOString(),
+      reminderType,
+    },
+  });
+
+  // Log reminder history
+  await prisma.taskReminderHistory.create({
+    data: {
+      taskId,
+      userId,
+      reminderType,
+      method: 'IN_APP',
+      delivered: true,
+    },
+  });
+
+  return notification;
+}
+
+/**
+ * Check if a reminder was already sent for a specific reminder type today
+ */
+export async function wasReminderSentToday(taskId: string, userId: string, reminderType: string): Promise<boolean> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const existingReminder = await prisma.taskReminderHistory.findFirst({
+    where: {
+      taskId,
+      userId,
+      reminderType,
+      remindedAt: {
+        gte: today,
+      },
+    },
+  });
+
+  return !!existingReminder;
+}
+
+/**
+ * Log reminder history
+ */
+export async function logReminderHistory(
+  taskId: string,
+  userId: string,
+  reminderType: string,
+  method: 'IN_APP' | 'EMAIL' | 'PUSH',
+  delivered: boolean = true,
+  metadata?: Record<string, any>
+) {
+  return prisma.taskReminderHistory.create({
+    data: {
+      taskId,
+      userId,
+      reminderType,
+      method,
+      delivered,
+      metadata: metadata ? JSON.stringify(metadata) : null,
+    },
+  });
+}
+
+/**
+ * Get reminder history for a task
+ */
+export async function getTaskReminderHistory(taskId: string) {
+  return prisma.taskReminderHistory.findMany({
+    where: { taskId },
+    orderBy: { remindedAt: 'desc' },
+    take: 50,
+  });
+}

@@ -1,0 +1,8 @@
+[POST] http://localhost:3000/api/auth/login => [200] OK
+[GET] http://localhost:3000/api/auth/me => [200] OK
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[GET] http://localhost:3000/api/tasks?page=1&limit=50&sort_by=createdAt&sort_order=desc => [403] Forbidden
+[GET] http://localhost:3000/api/tasks/statistics => [403] Forbidden
+[GET] http://localhost:3000/api/tasks?page=1&limit=50&sort_by=createdAt&sort_order=desc => [403] Forbidden
+[GET] http://localhost:3000/api/tasks/statistics => [403] Forbidden

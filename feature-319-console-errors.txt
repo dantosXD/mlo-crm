@@ -1,0 +1,7 @@
+Total messages: 9 (Errors: 4, Warnings: 2)
+Returning 4 messages for level "error"
+
+[ERROR] Error fetching tasks: Error @ http://localhost:5173/node_modules/.vite/deps/chunk-2VLHVNIJ.js?v=67cfd146:2612
+[ERROR] Error fetching statistics: Error @ http://localhost:5173/node_modules/.vite/deps/chunk-2VLHVNIJ.js?v=67cfd146:2612
+[ERROR] Error fetching tasks: Error @ http://localhost:5173/node_modules/.vite/deps/chunk-2VLHVNIJ.js?v=67cfd146:2612
+[ERROR] Error fetching statistics: Error @ http://localhost:5173/node_modules/.vite/deps/chunk-2VLHVNIJ.js?v=67cfd146:2612

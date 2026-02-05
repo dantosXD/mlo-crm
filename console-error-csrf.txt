@@ -1,0 +1,4 @@
+Total messages: 9 (Errors: 1, Warnings: 3)
+Returning 1 messages for level "error"
+
+[ERROR] Error saving communication: Error @ http://localhost:5173/node_modules/.vite/deps/chunk-2VLHVNIJ.js?v=67cfd146:2612

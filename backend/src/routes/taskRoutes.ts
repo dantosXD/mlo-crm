@@ -107,14 +107,34 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     }
 
     // Get total count for pagination
-    const where = {
+    const where: any = {
       ...(client_id && { clientId: client_id as string }),
       ...(finalStatusFilter && { status: finalStatusFilter }),
       ...(Object.keys(dateFilter).length > 0 && { dueDate: dateFilter }),
       ...(priority && { priority: priority as string }),
       ...(assigned_to && { assignedToId: assigned_to as string }),
-      ...(userId && { client: { createdById: userId } }),
     };
+
+    // Filter by user's clients if userId provided and not filtering by specific client
+    if (userId && !client_id) {
+      // Get all client IDs belonging to this user
+      const userClients = await prisma.client.findMany({
+        where: { createdById: userId },
+        select: { id: true },
+      });
+      const clientIds = userClients.map(c => c.id);
+
+      // Allow tasks that belong to user's clients OR tasks without a client (created by user)
+      if (clientIds.length > 0) {
+        where.OR = [
+          { clientId: { in: clientIds } },
+          { clientId: null },
+        ];
+      } else {
+        // If no clients, only show tasks without a client
+        where.clientId = null;
+      }
+    }
 
     const [tasks, total] = await Promise.all([
       prisma.task.findMany({
@@ -174,6 +194,18 @@ router.get('/statistics', async (req: AuthRequest, res: Response) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // Get all client IDs belonging to this user
+    const userClients = await prisma.client.findMany({
+      where: { createdById: userId },
+      select: { id: true },
+    });
+    const clientIds = userClients.map(c => c.id);
+
+    // Build where clause for tasks - include user's client tasks and standalone tasks
+    const taskWhere = clientIds.length > 0
+      ? { OR: [{ clientId: { in: clientIds } }, { clientId: null }] }
+      : { clientId: null };
+
     const [
       totalTasks,
       dueTodayTasks,
@@ -184,45 +216,45 @@ router.get('/statistics', async (req: AuthRequest, res: Response) => {
       // Total tasks (excluding completed)
       prisma.task.count({
         where: {
+          ...taskWhere,
           status: { not: 'COMPLETE' },
-          client: { createdById: userId },
         },
       }),
       // Due today
       prisma.task.count({
         where: {
+          ...taskWhere,
           status: { not: 'COMPLETE' },
           dueDate: {
             gte: today,
             lt: tomorrow,
           },
-          client: { createdById: userId },
         },
       }),
       // Overdue
       prisma.task.count({
         where: {
+          ...taskWhere,
           status: { not: 'COMPLETE' },
           dueDate: { lt: new Date() },
-          client: { createdById: userId },
         },
       }),
       // Completed
       prisma.task.count({
         where: {
+          ...taskWhere,
           status: 'COMPLETE',
-          client: { createdById: userId },
         },
       }),
       // Upcoming (next 7 days)
       prisma.task.count({
         where: {
+          ...taskWhere,
           status: { not: 'COMPLETE' },
           dueDate: {
             gte: tomorrow,
             lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           },
-          client: { createdById: userId },
         },
       }),
     ]);
@@ -263,11 +295,18 @@ router.patch('/bulk', async (req: AuthRequest, res: Response) => {
       });
     }
 
+    // Get user's client IDs
+    const userClients = await prisma.client.findMany({
+      where: { createdById: userId },
+      select: { id: true },
+    });
+    const clientIds = userClients.map(c => c.id);
+
     // Verify access to all tasks
     const tasks = await prisma.task.findMany({
       where: {
         id: { in: taskIds },
-        client: { createdById: userId },
+        clientId: { in: clientIds },
       },
       include: {
         client: {
@@ -736,7 +775,6 @@ router.post('/:taskId/subtasks', async (req: AuthRequest, res: Response) => {
       data: {
         taskId,
         text,
-        dueDate: dueDate ? new Date(dueDate) : null,
         order: (maxOrder?.order ?? -1) + 1,
       },
     });
@@ -958,6 +996,238 @@ router.post('/:taskId/subtasks/reorder', async (req: AuthRequest, res: Response)
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to reorder subtasks',
+    });
+  }
+});
+
+// Update task reminder settings
+router.patch('/:taskId/reminders', async (req: AuthRequest, res: Response) => {
+  try {
+    const { taskId } = req.params;
+    const { reminderEnabled, reminderTimes, reminderMessage } = req.body;
+    const userId = req.user?.userId;
+
+    // Verify task ownership
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        client: {
+          select: { id: true, createdById: true },
+        },
+      },
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Task not found',
+      });
+    }
+
+    if (!userId || task.client?.createdById !== userId) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You do not have permission to update reminder settings for this task',
+      });
+    }
+
+    // Validate reminder times
+    if (reminderTimes !== undefined) {
+      const validReminderTypes = ['AT_TIME', '15MIN', '1HR', '1DAY', '1WEEK'];
+      if (!Array.isArray(reminderTimes)) {
+        return res.status(400).json({
+          error: 'Validation Error',
+          message: 'reminderTimes must be an array',
+        });
+      }
+      for (const rt of reminderTimes) {
+        if (!validReminderTypes.includes(rt)) {
+          return res.status(400).json({
+            error: 'Validation Error',
+            message: `Invalid reminder type: ${rt}. Must be one of: ${validReminderTypes.join(', ')}`,
+          });
+        }
+      }
+    }
+
+    // Update reminder settings
+    const updatedTask = await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        reminderEnabled: reminderEnabled !== undefined ? reminderEnabled : task.reminderEnabled,
+        reminderTimes: reminderTimes !== undefined ? JSON.stringify(reminderTimes) : task.reminderTimes,
+        reminderMessage: reminderMessage !== undefined ? reminderMessage : task.reminderMessage,
+      },
+    });
+
+    res.json({
+      message: 'Reminder settings updated successfully',
+      task: {
+        id: updatedTask.id,
+        reminderEnabled: updatedTask.reminderEnabled,
+        reminderTimes: JSON.parse(updatedTask.reminderTimes || '[]'),
+        reminderMessage: updatedTask.reminderMessage,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating reminder settings:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to update reminder settings',
+    });
+  }
+});
+
+// Snooze a task reminder
+router.post('/:taskId/snooze', async (req: AuthRequest, res: Response) => {
+  try {
+    const { taskId } = req.params;
+    const { duration } = req.body; // '15MIN', '1HR', 'TOMORROW', 'NEXT_WEEK'
+    const userId = req.user?.userId;
+
+    if (!duration) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'duration is required (e.g., "15MIN", "1HR", "TOMORROW", "NEXT_WEEK")',
+      });
+    }
+
+    // Verify task ownership or assignment
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        client: {
+          select: { id: true, createdById: true },
+        },
+      },
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Task not found',
+      });
+    }
+
+    if (!userId || (task.client?.createdById !== userId && task.assignedToId !== userId)) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You do not have permission to snooze this task',
+      });
+    }
+
+    // Calculate snooze until time
+    const now = new Date();
+    let snoozedUntil: Date;
+
+    switch (duration) {
+      case '15MIN':
+        snoozedUntil = new Date(now.getTime() + 15 * 60 * 1000);
+        break;
+      case '1HR':
+        snoozedUntil = new Date(now.getTime() + 60 * 60 * 1000);
+        break;
+      case 'TOMORROW':
+        snoozedUntil = new Date(now);
+        snoozedUntil.setDate(snoozedUntil.getDate() + 1);
+        snoozedUntil.setHours(9, 0, 0, 0); // 9 AM tomorrow
+        break;
+      case 'NEXT_WEEK':
+        snoozedUntil = new Date(now);
+        snoozedUntil.setDate(snoozedUntil.getDate() + 7);
+        snoozedUntil.setHours(9, 0, 0, 0); // 9 AM next week
+        break;
+      default:
+        return res.status(400).json({
+          error: 'Validation Error',
+          message: 'Invalid duration. Must be one of: 15MIN, 1HR, TOMORROW, NEXT_WEEK',
+        });
+    }
+
+    // Update task with snooze time
+    await prisma.task.update({
+      where: { id: taskId },
+      data: { snoozedUntil },
+    });
+
+    // Log snooze action
+    await prisma.taskReminderHistory.create({
+      data: {
+        taskId,
+        userId,
+        reminderType: 'SNOOZE',
+        method: 'IN_APP',
+        delivered: true,
+        metadata: JSON.stringify({ duration, snoozedUntil: snoozedUntil.toISOString() }),
+      },
+    });
+
+    res.json({
+      message: 'Task snoozed successfully',
+      snoozedUntil: snoozedUntil.toISOString(),
+    });
+  } catch (error) {
+    console.error('Error snoozing task:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to snooze task',
+    });
+  }
+});
+
+// Get reminder history for a task
+router.get('/:taskId/reminder-history', async (req: AuthRequest, res: Response) => {
+  try {
+    const { taskId } = req.params;
+    const userId = req.user?.userId;
+
+    // Verify task ownership or assignment
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        client: {
+          select: { id: true, createdById: true },
+        },
+      },
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Task not found',
+      });
+    }
+
+    if (!userId || (task.client?.createdById !== userId && task.assignedToId !== userId)) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You do not have permission to view reminder history for this task',
+      });
+    }
+
+    // Get reminder history
+    const history = await prisma.taskReminderHistory.findMany({
+      where: { taskId },
+      orderBy: { remindedAt: 'desc' },
+      take: 50,
+    });
+
+    res.json({
+      taskId,
+      history: history.map((h) => ({
+        id: h.id,
+        reminderType: h.reminderType,
+        method: h.method,
+        delivered: h.delivered,
+        remindedAt: h.remindedAt,
+        metadata: h.metadata ? JSON.parse(h.metadata) : null,
+      })),
+    });
+  } catch (error) {
+    console.error('Error fetching reminder history:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch reminder history',
     });
   }
 });

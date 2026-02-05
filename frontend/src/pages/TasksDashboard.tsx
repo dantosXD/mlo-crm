@@ -34,10 +34,12 @@ import {
   IconSquareCheck,
   IconCalendarTime,
   IconTrash,
+  IconBell,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { notifications } from '@mantine/notifications';
+import { TaskSnoozeButton } from '../components/tasks/TaskSnoozeButton';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -52,6 +54,10 @@ interface Task {
   assignedTo?: { id: string; name: string } | null;
   client?: { id: string; name: string } | null;
   subtasks?: Array<{ id: string; text: string; isCompleted: boolean }>;
+  reminderEnabled?: boolean;
+  reminderTimes?: string[];
+  reminderMessage?: string;
+  snoozedUntil?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -117,7 +123,7 @@ const sortDirectionOptions = [
 
 export default function TasksDashboard() {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, accessToken } = useAuthStore();
 
   // State
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -163,7 +169,7 @@ export default function TasksDashboard() {
 
       const response = await fetch(`${API_URL}/api/tasks?${params}`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${accessToken}`,
         },
       });
 
@@ -192,7 +198,7 @@ export default function TasksDashboard() {
     try {
       const response = await fetch(`${API_URL}/api/tasks/statistics`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${accessToken}`,
         },
       });
 
@@ -222,7 +228,7 @@ export default function TasksDashboard() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ status: newStatus }),
       });
@@ -266,7 +272,7 @@ export default function TasksDashboard() {
       const response = await fetch(`${API_URL}/api/tasks/${taskId}`, {
         method: 'DELETE',
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${accessToken}`,
         },
       });
 
@@ -309,7 +315,7 @@ export default function TasksDashboard() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           taskIds: Array.from(selectedTasks),
@@ -578,6 +584,7 @@ export default function TasksDashboard() {
                   <Table.Th>Priority</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>Due Date</Table.Th>
+                  <Table.Th>Reminders</Table.Th>
                   <Table.Th>Assigned To</Table.Th>
                   <Table.Th w={80}>Actions</Table.Th>
                 </Table.Tr>
@@ -684,6 +691,22 @@ export default function TasksDashboard() {
                         </Group>
                       </Table.Td>
                       <Table.Td>
+                        {task.reminderEnabled ? (
+                          <Tooltip label={`Reminders enabled (${task.reminderTimes?.length || 0} reminder(s))`}>
+                            <Group gap={4}>
+                              <IconBell size={16} color="blue" style={{ display: 'block' }} />
+                              <Text size="xs" c="blue">
+                                {task.reminderTimes?.length || 0}
+                              </Text>
+                            </Group>
+                          </Tooltip>
+                        ) : (
+                          <Text c="dimmed" size="sm">
+                            -
+                          </Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
                         <Text size="sm">
                           {task.assignedTo?.name || '-'}
                         </Text>
@@ -700,6 +723,12 @@ export default function TasksDashboard() {
                               <IconCheck size={16} />
                             </ActionIcon>
                           </Tooltip>
+                          {task.dueDate && task.status !== 'COMPLETE' && (
+                            <TaskSnoozeButton
+                              taskId={task.id}
+                              onSnooze={fetchTasks}
+                            />
+                          )}
                           <Menu shadow="md" width={200} position="bottom-end">
                             <Menu.Target>
                               <ActionIcon size="sm" variant="subtle">

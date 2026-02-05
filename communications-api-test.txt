@@ -1,0 +1,23 @@
+[POST] http://localhost:3000/api/auth/login => [401] Unauthorized
+[POST] http://localhost:3000/api/auth/login => [200] OK
+[GET] http://localhost:3000/api/auth/me => [200] OK
+[GET] http://localhost:3000/api/notifications/unread-count => [200] OK
+[GET] http://localhost:3000/api/notifications/unread-count => [304] Not Modified
+[GET] http://localhost:3000/api/clients => [200] OK
+[GET] http://localhost:3000/api/clients => [304] Not Modified
+[GET] http://localhost:3000/api/users/preferences => [200] OK
+[GET] http://localhost:3000/api/users/preferences => [304] Not Modified
+[GET] http://localhost:3000/api/documents => [200] OK
+[GET] http://localhost:3000/api/documents => [304] Not Modified
+[GET] http://localhost:3000/api/tasks => [200] OK
+[GET] http://localhost:3000/api/tasks => [304] Not Modified
+[GET] http://localhost:3000/api/loan-scenarios => [200] OK
+[GET] http://localhost:3000/api/loan-scenarios => [304] Not Modified
+[GET] http://localhost:3000/api/workflow-executions?status=RUNNING&limit=5 => [200] OK
+[GET] http://localhost:3000/api/workflow-executions?status=RUNNING&limit=5 => [304] Not Modified
+[GET] http://localhost:3000/api/workflow-executions?status=COMPLETED&limit=100 => [200] OK
+[GET] http://localhost:3000/api/workflow-executions?status=COMPLETED&limit=100 => [304] Not Modified
+[PUT] http://localhost:3000/api/users/preferences => [200] OK
+[PUT] http://localhost:3000/api/users/preferences => [200] OK
+[GET] http://localhost:3000/api/communications?page=1&limit=20 => [200] OK
+[GET] http://localhost:3000/api/communications?page=1&limit=20 => [304] Not Modified

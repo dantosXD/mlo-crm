@@ -26,13 +26,32 @@ function createCsrfToken(): string {
 
 // Get session ID from request
 function getSessionId(req: Request): string {
-  // Try to get session ID from cookie or create one based on user agent + IP
-  const sessionId = req.cookies?.sessionId ||
-    req.headers['x-session-id'] as string ||
-    crypto.createHash('sha256')
-      .update(`${req.ip}-${req.headers['user-agent'] || 'unknown'}`)
+  // Try to get session ID from cookie first
+  if (req.cookies?.sessionId) {
+    return req.cookies.sessionId;
+  }
+
+  // Try to get session ID from header
+  const headerSessionId = req.headers['x-session-id'] as string;
+  if (headerSessionId) {
+    return headerSessionId;
+  }
+
+  // For authenticated requests with JWT, use the user ID from the token
+  // This is decoded by the authenticateToken middleware and attached to req
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    // Use a consistent hash based on the Bearer token itself
+    // This ensures the same token always gets the same session ID
+    return crypto.createHash('sha256')
+      .update(authHeader)
       .digest('hex');
-  return sessionId;
+  }
+
+  // Fallback to IP + User-Agent (for non-authenticated requests)
+  return crypto.createHash('sha256')
+    .update(`${req.ip}-${req.headers['user-agent'] || 'unknown'}`)
+    .digest('hex');
 }
 
 // Middleware to generate CSRF token for authenticated requests

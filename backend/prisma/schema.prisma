@@ -121,12 +121,20 @@ model Task {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
+  // Reminder settings
+  reminderEnabled Boolean   @default(false) @map("reminder_enabled")
+  reminderTimes   String?   @default("[]") @map("reminder_times") // JSON array: ["AT_TIME", "15MIN", "1HR", "1DAY", "1WEEK"]
+  reminderMessage String?   @map("reminder_message") // Custom reminder message
+  snoozedUntil    DateTime? @map("snoozed_until") // Snooze deadline
+
   // Relations
   subtasks    TaskSubtask[]
+  reminderHistory TaskReminderHistory[]
 
   @@index([clientId])
   @@index([status])
   @@index([dueDate])
+  @@index([assignedToId])
   @@map("tasks")
 }
 
@@ -142,6 +150,24 @@ model TaskSubtask {
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@map("task_subtasks")
+}
+
+// Task reminder history
+model TaskReminderHistory {
+  id          String    @id @default(uuid())
+  taskId      String    @map("task_id")
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId      String    @map("user_id")
+  remindedAt  DateTime  @default(now()) @map("reminded_at")
+  reminderType String   @map("reminder_type") // AT_TIME, 15MIN, 1HR, 1DAY, 1WEEK, OVERDUE_ESCALATION
+  method      String    // IN_APP, EMAIL, PUSH
+  delivered   Boolean   @default(true) // Whether delivery was successful
+  metadata    String?   // JSON string for additional data
+
+  @@index([taskId])
+  @@index([userId])
+  @@index([remindedAt])
+  @@map("task_reminder_history")
 }
 
 // Documents table
