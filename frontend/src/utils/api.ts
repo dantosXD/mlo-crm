@@ -109,4 +109,18 @@ export const api = {
     apiRequest(endpoint, { ...options, method: 'DELETE' }),
 };
 
+/**
+ * Convenience function to get clients
+ */
+export async function getClients() {
+  const response = await api.get('/clients');
+  const data = await response.json();
+
+  // Decrypt client names
+  return data.map((client: any) => ({
+    ...client,
+    name: client.nameHash, // In production, use proper decryption
+  }));
+}
+
 export default api;

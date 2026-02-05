@@ -22,6 +22,7 @@ import {
   IconMail,
   IconCheck,
   IconCalendar,
+  IconBell,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import { QuickCapture } from './components/QuickCapture';
@@ -48,6 +49,7 @@ import { Communications } from './pages/Communications';
 import { CommunicationComposer } from './pages/CommunicationComposer';
 import TasksDashboard from './pages/TasksDashboard';
 import Calendar from './pages/Calendar';
+import RemindersDashboard from './pages/RemindersDashboard';
 
 const ForgotPassword = () => (
   <Center h="100vh">
@@ -84,6 +86,7 @@ const navItems = [
   { icon: IconDashboard, label: 'Dashboard', href: '/', adminOnly: false },
   { icon: IconUsers, label: 'Clients', href: '/clients', adminOnly: false },
   { icon: IconCalendar, label: 'Calendar', href: '/calendar', adminOnly: false },
+  { icon: IconBell, label: 'Reminders', href: '/reminders', adminOnly: false },
   { icon: IconLayoutKanban, label: 'Pipeline', href: '/pipeline', adminOnly: false },
   { icon: IconCheck, label: 'Tasks', href: '/tasks', adminOnly: false },
   { icon: IconNotes, label: 'Notes', href: '/notes', adminOnly: false },
@@ -401,6 +404,7 @@ function ProtectedLayout() {
           <Route path="/clients" element={<Clients />} />
           <Route path="/clients/:id" element={<ClientDetails />} />
           <Route path="/calendar" element={<Calendar />} />
+          <Route path="/reminders" element={<RemindersDashboard />} />
           <Route path="/pipeline" element={<Pipeline />} />
           <Route path="/tasks" element={<TasksDashboard />} />
           <Route path="/notes" element={<Notes />} />
