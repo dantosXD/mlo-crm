@@ -13,13 +13,14 @@ import {
   Paper,
   Title,
   Text,
+  Divider,
+  Alert,
 } from '@mantine/core';
 import { DatePicker } from '@mantine/dates';
-import { IconCalendar, IconTag, IconRepeat } from '@tabler/icons-react';
+import { IconCalendar, IconTag, IconRepeat, IconBell, IconClock, IconCalendarEvent } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../../stores/authStore';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import api from '../../utils/apiBase';
 
 interface TaskFormProps {
   opened: boolean;
@@ -55,6 +56,7 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
   const { accessToken } = useAuthStore();
 
   const [loading, setLoading] = useState(false);
+  const [createdTaskId, setCreatedTaskId] = useState<string | null>(null);
   const [text, setText] = useState(editTask?.text || '');
   const [description, setDescription] = useState(editTask?.description || '');
   const [type, setType] = useState(editTask?.type || 'GENERAL');
@@ -116,14 +118,21 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
         throw new Error('Failed to save task');
       }
 
+      const savedTask = await response.json();
+
       notifications.show({
         title: 'Success',
         message: editTask ? 'Task updated successfully' : 'Task created successfully',
         color: 'green',
       });
 
-      onSuccess();
-      handleClose();
+      // For new tasks, show integration options
+      if (!editTask) {
+        setCreatedTaskId(savedTask.id);
+      } else {
+        onSuccess();
+        handleClose();
+      }
     } catch (error) {
       console.error('Error saving task:', error);
       notifications.show({
@@ -147,7 +156,66 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
     setRecurringPattern('WEEKLY');
     setRecurringInterval(1);
     setRecurringEndDate(null);
+    setCreatedTaskId(null);
     onClose();
+  };
+
+  const handleConvertToEvent = async () => {
+    if (!createdTaskId) return;
+
+    try {
+      await api.post('/integration/task-to-event', {
+        taskId: createdTaskId,
+        eventData: {
+          allDay: true,
+        },
+      });
+
+      notifications.show({
+        title: 'Success',
+        message: 'Task converted to calendar event',
+        color: 'green',
+      });
+
+      onSuccess();
+      handleClose();
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to convert task to event',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleCreateReminder = async () => {
+    if (!createdTaskId) return;
+
+    try {
+      await api.post('/integration/task-to-reminder', {
+        taskId: createdTaskId,
+      });
+
+      notifications.show({
+        title: 'Success',
+        message: 'Reminder created from task',
+        color: 'green',
+      });
+
+      onSuccess();
+      handleClose();
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to create reminder',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleSkipIntegration = () => {
+    onSuccess();
+    handleClose();
   };
 
   return (
@@ -265,6 +333,39 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
             {editTask ? 'Update Task' : 'Create Task'}
           </Button>
         </Group>
+
+        {/* Integration Options (shown after creating a new task) */}
+        {createdTaskId && !editTask && (
+          <>
+            <Divider label="Quick Actions" labelPosition="center" my="md" />
+            <Alert color="blue" title="Task Created!" mb="md">
+              Would you like to create a calendar event or reminder for this task?
+            </Alert>
+
+            <Group justify="center">
+              <Button
+                variant="light"
+                leftSection={<IconCalendarEvent size={16} />}
+                onClick={handleConvertToEvent}
+              >
+                Add to Calendar
+              </Button>
+              <Button
+                variant="light"
+                leftSection={<IconBell size={16} />}
+                onClick={handleCreateReminder}
+              >
+                Set Reminder
+              </Button>
+              <Button
+                variant="subtle"
+                onClick={handleSkipIntegration}
+              >
+                Skip
+              </Button>
+            </Group>
+          </>
+        )}
       </Stack>
     </Modal>
   );

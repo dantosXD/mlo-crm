@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import { createServer } from 'http';
 import { config } from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import clientRoutes from './routes/clientRoutes.js';
@@ -22,21 +23,30 @@ import communicationTemplateRoutes from './routes/communicationTemplateRoutes.js
 import attachmentRoutes from './routes/attachmentRoutes.js';
 import eventRoutes from './routes/eventRoutes.js';
 import unifiedSearchRoutes from './routes/unifiedSearchRoutes.js';
+import todayRoutes from './routes/todayRoutes.js';
 import calendarSyncRoutes from './routes/calendarSyncRoutes.js';
 import calendarShareRoutes from './routes/calendarShareRoutes.js';
 import reminderRoutes from './routes/reminderRoutes.js';
+import integrationRoutes from './routes/integrationRoutes.js';
 import { generateCsrfToken, validateCsrfToken } from './middleware/csrf.js';
 import {
   checkOverdueTasks,
   checkTaskDueDates,
 } from './services/triggerHandler.js';
 import { seedWorkflowTemplates } from './scripts/seedWorkflowTemplates.js';
+import { initializeWebSocket } from './services/websocketService.js';
 
 // Load environment variables
 config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Create HTTP server for Socket.IO
+const httpServer = createServer(app);
+
+// Initialize WebSocket
+const io = initializeWebSocket(httpServer);
 
 // Middleware
 app.use(helmet({
@@ -145,8 +155,14 @@ app.use('/api/calendar', validateCsrfToken, calendarShareRoutes);
 // Reminder routes
 app.use('/api/reminders', validateCsrfToken, reminderRoutes);
 
+// Integration routes
+app.use('/api/integration', validateCsrfToken, integrationRoutes);
+
 // Unified search routes
 app.use('/api/unified-search', validateCsrfToken, unifiedSearchRoutes);
+
+// Today view routes
+app.use('/api/today', validateCsrfToken, todayRoutes);
 
 // Analytics routes
 app.use('/api/analytics', validateCsrfToken, workflowAnalyticsRoutes);
@@ -172,7 +188,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 // Start server
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`
   ╔════════════════════════════════════════════╗
   ║     MLO Dashboard API Server               ║
@@ -180,6 +196,7 @@ app.listen(PORT, () => {
   ║  Status: Running                           ║
   ║  Port:   ${PORT}                              ║
   ║  Mode:   ${process.env.NODE_ENV || 'development'}                     ║
+  ║  WebSocket: Enabled                         ║
   ╠════════════════════════════════════════════╣
   ║  Health: http://localhost:${PORT}/health       ║
   ║  API:    http://localhost:${PORT}/api          ║

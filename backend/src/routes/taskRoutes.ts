@@ -7,6 +7,7 @@ import {
   fireTaskCompletedTrigger,
   fireTaskAssignedTrigger,
 } from '../services/triggerHandler.js';
+import { bulkOperationLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -277,7 +278,7 @@ router.get('/statistics', async (req: AuthRequest, res: Response) => {
 });
 
 // PATCH /api/tasks/bulk - Bulk update tasks (mark complete, reassign, etc.)
-router.patch('/bulk', async (req: AuthRequest, res: Response) => {
+router.patch('/bulk', bulkOperationLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const { taskIds, action, data } = req.body;
     const userId = req.user?.userId;

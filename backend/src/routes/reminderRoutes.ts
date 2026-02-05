@@ -2,6 +2,7 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken } from '../middleware/auth.js';
 import reminderSuggestionService from '../services/reminderSuggestionService.js';
+import { reminderDeliveryLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -240,7 +241,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 });
 
 // POST /api/reminders/:id/complete - Mark reminder as completed
-router.post('/:id/complete', authenticateToken, async (req, res) => {
+router.post('/:id/complete', authenticateToken, reminderDeliveryLimiter, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -309,7 +310,7 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
 });
 
 // POST /api/reminders/:id/dismiss - Dismiss a reminder
-router.post('/:id/dismiss', authenticateToken, async (req, res) => {
+router.post('/:id/dismiss', authenticateToken, reminderDeliveryLimiter, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -338,7 +339,7 @@ router.post('/:id/dismiss', authenticateToken, async (req, res) => {
 });
 
 // POST /api/reminders/:id/snooze - Snooze a reminder
-router.post('/:id/snooze', authenticateToken, async (req, res) => {
+router.post('/:id/snooze', authenticateToken, reminderDeliveryLimiter, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -400,7 +401,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 });
 
 // POST /api/reminders/bulk - Bulk operations on reminders
-router.post('/bulk', authenticateToken, async (req, res) => {
+router.post('/bulk', authenticateToken, reminderDeliveryLimiter, async (req, res) => {
   try {
     const userId = req.user.id;
     const { action, reminderIds } = req.body;

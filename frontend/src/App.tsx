@@ -50,6 +50,7 @@ import { CommunicationComposer } from './pages/CommunicationComposer';
 import TasksDashboard from './pages/TasksDashboard';
 import Calendar from './pages/Calendar';
 import RemindersDashboard from './pages/RemindersDashboard';
+import Today from './pages/Today';
 
 const ForgotPassword = () => (
   <Center h="100vh">
@@ -84,6 +85,7 @@ function WriteRoute({ children }: { children: React.ReactNode }) {
 // Navigation items
 const navItems = [
   { icon: IconDashboard, label: 'Dashboard', href: '/', adminOnly: false },
+  { icon: IconCalendar, label: 'Today', href: '/today', adminOnly: false },
   { icon: IconUsers, label: 'Clients', href: '/clients', adminOnly: false },
   { icon: IconCalendar, label: 'Calendar', href: '/calendar', adminOnly: false },
   { icon: IconBell, label: 'Reminders', href: '/reminders', adminOnly: false },
@@ -401,6 +403,7 @@ function ProtectedLayout() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/today" element={<Today />} />
           <Route path="/clients" element={<Clients />} />
           <Route path="/clients/:id" element={<ClientDetails />} />
           <Route path="/calendar" element={<Calendar />} />

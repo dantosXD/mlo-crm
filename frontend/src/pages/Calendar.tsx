@@ -90,7 +90,7 @@ const Calendar: React.FC = () => {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [enabledSharedCalendars, setEnabledSharedCalendars] = useState<Set<string>>(new Set());
 
-  // Fetch events
+  // Fetch events and tasks
   const { data: events = [], isLoading, refetch } = useQuery({
     queryKey: ['events', currentDate.format('YYYY-MM'), Array.from(enabledSharedCalendars)],
     queryFn: async () => {
@@ -159,6 +159,52 @@ const Calendar: React.FC = () => {
     },
   });
 
+  // Fetch tasks with due dates
+  const { data: tasks = [] } = useQuery({
+    queryKey: ['tasks-calendar', currentDate.format('YYYY-MM')],
+    queryFn: async () => {
+      const startDate = currentDate.startOf('month').toISOString();
+      const endDate = currentDate.endOf('month').toISOString();
+
+      const response = await fetch(
+        `/api/tasks?due_date=upcoming&page=1&limit=100`,
+        {
+          credentials: 'include',
+        }
+      );
+
+      if (!response.ok) {
+        return [];
+      }
+
+      const data = await response.json();
+      // Filter tasks to only include those due in the current month view
+      return data.tasks.filter((task: any) => {
+        if (!task.dueDate) return false;
+        const dueDate = dayjs(task.dueDate);
+        return dueDate.isAfter(dayjs(startDate).subtract(1, 'day')) &&
+               dueDate.isBefore(dayjs(endDate).add(1, 'day'));
+      });
+    },
+  });
+
+  // Convert tasks to event-like objects for display
+  const taskEvents = tasks.map((task: any) => ({
+    id: `task-${task.id}`,
+    title: `📋 ${task.text}`,
+    description: task.description,
+    eventType: 'TASK',
+    startTime: task.dueDate,
+    endTime: task.dueDate,
+    allDay: true,
+    taskId: task.id,
+    isTask: true,
+    status: task.status,
+  }));
+
+  // Merge events and task events
+  const allEvents = [...events, ...taskEvents];
+
   // Navigation
   const goToToday = () => setCurrentDate(dayjs());
   const goPrev = () => {
@@ -179,6 +225,11 @@ const Calendar: React.FC = () => {
   };
 
   const handleEventClick = (event: Event) => {
+    // If it's a task event, navigate to tasks
+    if ((event as any).isTask) {
+      window.location.href = `/tasks?highlight=${(event as any).taskId}`;
+      return;
+    }
     setSelectedEvent(event);
     setEventModalOpen(true);
   };
@@ -300,7 +351,7 @@ const Calendar: React.FC = () => {
                 <CalendarView
                   view={view}
                   currentDate={currentDate}
-                  events={events}
+                  events={allEvents}
                   onDateClick={handleDateClick}
                   onEventClick={handleEventClick}
                 />

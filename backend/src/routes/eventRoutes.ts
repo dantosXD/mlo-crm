@@ -468,4 +468,152 @@ router.post('/:id/create-reminder', authenticateToken, async (req: Request, res:
   }
 });
 
+// ============================================================================
+// CONFLICT DETECTION
+// ============================================================================
+
+// GET /api/events/check-conflicts - Check for scheduling conflicts
+router.get('/check-conflicts', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { startTime, endTime, excludeEventId } = req.query;
+
+    if (!startTime || !endTime) {
+      return res.status(400).json({ error: 'Start time and end time are required' });
+    }
+
+    const start = new Date(startTime as string);
+    const end = new Date(endTime as string);
+
+    // Build where clause for conflict detection
+    const where: any = {
+      createdById: userId,
+      status: { not: 'CANCELLED' },
+      OR: [
+        // Event starts during the proposed time
+        {
+          startTime: { gte: start, lt: end }
+        },
+        // Event ends during the proposed time
+        {
+          endTime: { gt: start, lte: end }
+        },
+        // Event completely encompasses the proposed time
+        {
+          startTime: { lt: start },
+          endTime: { gt: end }
+        },
+        // Proposed time completely encompasses the event
+        {
+          startTime: { gt: start },
+          endTime: { lt: end }
+        }
+      ]
+    };
+
+    // Exclude current event when updating
+    if (excludeEventId) {
+      where.id = { not: excludeEventId as string };
+    }
+
+    const conflicts = await prisma.event.findMany({
+      where,
+      include: {
+        client: {
+          select: { id: true, nameEncrypted: true }
+        }
+      },
+      orderBy: {
+        startTime: 'asc'
+      }
+    });
+
+    res.json({
+      hasConflicts: conflicts.length > 0,
+      conflicts: conflicts.map(conflict => ({
+        id: conflict.id,
+        title: conflict.title,
+        startTime: conflict.startTime,
+        endTime: conflict.endTime,
+        allDay: conflict.allDay,
+        location: conflict.location,
+        eventType: conflict.eventType,
+        client: conflict.client
+      }))
+    });
+  } catch (error) {
+    console.error('Error checking conflicts:', error);
+    res.status(500).json({ error: 'Failed to check for conflicts' });
+  }
+});
+
+// GET /api/events/availability - Get available time slots
+router.get('/availability', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { date, duration = 60 } = req.query; // duration in minutes
+
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+
+    const targetDate = new Date(date as string);
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Get all events for the day
+    const events = await prisma.event.findMany({
+      where: {
+        createdById: userId,
+        status: { not: 'CANCELLED' },
+        startTime: { gte: startOfDay, lte: endOfDay }
+      },
+      orderBy: {
+        startTime: 'asc'
+      }
+    });
+
+    // Find available slots
+    const slotDuration = parseInt(duration as string);
+    const availableSlots: Array<{ start: Date; end: Date }> = [];
+    let currentTime = new Date(startOfDay);
+    currentTime.setHours(9, 0, 0, 0); // Start at 9 AM
+    const endTime = new Date(startOfDay);
+    endTime.setHours(17, 0, 0, 0); // End at 5 PM
+
+    for (const event of events) {
+      // Check if there's a gap before this event
+      const timeDiff = event.startTime.getTime() - currentTime.getTime();
+      if (timeDiff >= slotDuration * 60 * 1000) {
+        availableSlots.push({
+          start: new Date(currentTime),
+          end: new Date(currentTime.getTime() + slotDuration * 60 * 1000)
+        });
+      }
+      // Move current time past this event
+      currentTime = new Date(event.endTime || event.startTime);
+    }
+
+    // Check for slot after last event
+    const timeDiff = endTime.getTime() - currentTime.getTime();
+    if (timeDiff >= slotDuration * 60 * 1000) {
+      availableSlots.push({
+        start: new Date(currentTime),
+        end: new Date(currentTime.getTime() + slotDuration * 60 * 1000)
+      });
+    }
+
+    res.json({
+      date: targetDate,
+      duration: slotDuration,
+      availableSlots
+    });
+  } catch (error) {
+    console.error('Error checking availability:', error);
+    res.status(500).json({ error: 'Failed to check availability' });
+  }
+});
+
 export default router;
