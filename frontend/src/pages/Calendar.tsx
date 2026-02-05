@@ -25,6 +25,7 @@ import {
   ColorInput,
   Alert,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { DatePicker, TimeInput } from '@mantine/dates';
 import {
   IconCalendar,
@@ -82,6 +83,7 @@ interface CalendarViewProps {
 
 const Calendar: React.FC = () => {
   const queryClient = useQueryClient();
+  const isMobile = useMediaQuery('(max-width: 768px)');
   const [view, setView] = useState<'month' | 'week' | 'day' | 'agenda'>('month');
   const [currentDate, setCurrentDate] = useState(dayjs());
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -265,84 +267,113 @@ const Calendar: React.FC = () => {
   };
 
   return (
-    <Container size="xl" py="md">
+    <Container size={isMobile ? 'sm' : 'xl'} py={isMobile ? 'xs' : 'md'}>
       <Stack gap="md">
         {/* Header */}
-        <Paper p="md" withBorder>
-          <Flex justify="space-between" align="center" gap="md">
-            <Group>
-              <IconCalendar size={32} />
-              <Title order={2}>Calendar</Title>
+        <Paper p={isMobile ? 'sm' : 'md'} withBorder>
+          <Stack gap={isMobile ? 'sm' : 'md'}>
+            {/* Title row */}
+            <Group justify="space-between">
+              <Group>
+                <IconCalendar size={isMobile ? 24 : 32} />
+                <Title order={isMobile ? 4 : 2}>Calendar</Title>
+              </Group>
+              {!isMobile && (
+                <Group>
+                  <Button
+                    variant="light"
+                    leftSection={<IconShare size={16} />}
+                    onClick={() => setShareModalOpen(true)}
+                  >
+                    Share
+                  </Button>
+                  <Button leftSection={<IconPlus size={16} />} onClick={() => setEventModalOpen(true)}>
+                    New Event
+                  </Button>
+                  <ActionIcon variant="default" onClick={() => refetch()} style={{ minHeight: '44px', minWidth: '44px' }}>
+                    <IconRefresh size={16} />
+                  </ActionIcon>
+                </Group>
+              )}
+              {isMobile && (
+                <Group gap="xs">
+                  <ActionIcon variant="default" onClick={() => refetch()} style={{ minHeight: '44px', minWidth: '44px' }}>
+                    <IconRefresh size={20} />
+                  </ActionIcon>
+                  <ActionIcon
+                    variant="light"
+                    onClick={() => setEventModalOpen(true)}
+                    style={{ minHeight: '44px', minWidth: '44px' }}
+                  >
+                    <IconPlus size={20} />
+                  </ActionIcon>
+                </Group>
+              )}
             </Group>
 
-            <Group>
-              <Select
-                value={view}
-                onChange={(v) => setView(v as 'month' | 'week' | 'day' | 'agenda')}
-                data={[
-                  { value: 'month', label: 'Month' },
-                  { value: 'week', label: 'Week' },
-                  { value: 'day', label: 'Day' },
-                  { value: 'agenda', label: 'Agenda' },
-                ]}
-                style={{ width: 120 }}
-              />
+            {/* Navigation row */}
+            <Flex justify="space-between" align="center" gap="md" wrap="wrap">
+              <Group>
+                <Select
+                  value={view}
+                  onChange={(v) => setView(v as 'month' | 'week' | 'day' | 'agenda')}
+                  data={[
+                    { value: 'month', label: 'Month' },
+                    { value: 'week', label: 'Week' },
+                    { value: 'day', label: 'Day' },
+                    { value: 'agenda', label: 'Agenda' },
+                  ]}
+                  style={{ width: isMobile ? 100 : 120 }}
+                  size={isMobile ? 'sm' : 'sm'}
+                />
 
-              <Button variant="default" onClick={goToToday} leftSection={<IconCalendarTime size={16} />}>
-                Today
-              </Button>
+                <Button
+                  variant="default"
+                  onClick={goToToday}
+                  leftSection={<IconCalendarTime size={isMobile ? 14 : 16} />}
+                  size={isMobile ? 'xs' : 'sm'}
+                >
+                  Today
+                </Button>
 
-              <Group gap="xs">
-                <ActionIcon onClick={goPrev} variant="default">
-                  <IconChevronLeft size={16} />
-                </ActionIcon>
-                <ActionIcon onClick={goNext} variant="default">
-                  <IconChevronRight size={16} />
-                </ActionIcon>
+                <Group gap="xs">
+                  <ActionIcon onClick={goPrev} variant="default" style={{ minHeight: '44px', minWidth: '44px' }}>
+                    <IconChevronLeft size={isMobile ? 18 : 16} />
+                  </ActionIcon>
+                  <ActionIcon onClick={goNext} variant="default" style={{ minHeight: '44px', minWidth: '44px' }}>
+                    <IconChevronRight size={isMobile ? 18 : 16} />
+                  </ActionIcon>
+                </Group>
               </Group>
 
-              <Text fw={500} size="lg" miw={150} ta="center">
-                {currentDate.format('MMMM YYYY')}
+              <Text fw={500} size={isMobile ? 'md' : 'lg'} miw={isMobile ? 100 : 150} ta="center">
+                {currentDate.format(isMobile ? 'MMM YYYY' : 'MMMM YYYY')}
               </Text>
-            </Group>
-
-            <Group>
-              <Button
-                variant="light"
-                leftSection={<IconShare size={16} />}
-                onClick={() => setShareModalOpen(true)}
-              >
-                Share
-              </Button>
-              <Button leftSection={<IconPlus size={16} />} onClick={() => setEventModalOpen(true)}>
-                New Event
-              </Button>
-              <ActionIcon variant="default" onClick={() => refetch()}>
-                <IconRefresh size={16} />
-              </ActionIcon>
-            </Group>
-          </Flex>
+            </Flex>
+          </Stack>
         </Paper>
 
-        {/* Calendar Legend */}
-        <Paper p="xs" withBorder>
-          <Group gap="sm">
-            <Text size="sm" fw={500}>Event Types:</Text>
-            <Badge color="blue" variant="light">Meeting</Badge>
-            <Badge color="green" variant="light">Appointment</Badge>
-            <Badge color="orange" variant="light">Closing</Badge>
-            <Badge color="yellow" variant="light">Follow-up</Badge>
-            <Badge color="grape" variant="light">Task</Badge>
-            <Badge color="red" variant="light">Reminder</Badge>
-            <Badge color="gray" variant="light">Custom</Badge>
-          </Group>
-        </Paper>
+        {/* Calendar Legend - Hide on mobile */}
+        {!isMobile && (
+          <Paper p="xs" withBorder>
+            <Group gap="sm">
+              <Text size="sm" fw={500}>Event Types:</Text>
+              <Badge color="blue" variant="light">Meeting</Badge>
+              <Badge color="green" variant="light">Appointment</Badge>
+              <Badge color="orange" variant="light">Closing</Badge>
+              <Badge color="yellow" variant="light">Follow-up</Badge>
+              <Badge color="grape" variant="light">Task</Badge>
+              <Badge color="red" variant="light">Reminder</Badge>
+              <Badge color="gray" variant="light">Custom</Badge>
+            </Group>
+          </Paper>
+        )}
 
         {/* Main Content Area with Sidebar */}
         <Grid gutter="md">
-          <Grid.Col span={10}>
+          <Grid.Col span={isMobile ? 12 : 10}>
             {/* Calendar View */}
-            <Paper p="md" withBorder h="calc(100vh - 250px)">
+            <Paper p={isMobile ? 'xs' : 'md'} withBorder h={isMobile ? 'calc(100vh - 280px)' : 'calc(100vh - 250px)'}>
               {isLoading ? (
                 <Flex justify="center" align="center" h="100%">
                   <Text>Loading events...</Text>
@@ -359,14 +390,26 @@ const Calendar: React.FC = () => {
             </Paper>
           </Grid.Col>
 
-          <Grid.Col span={2}>
-            {/* Shared Calendars Sidebar */}
+          {!isMobile && (
+            <Grid.Col span={2}>
+              {/* Shared Calendars Sidebar */}
+              <SharedCalendarsSidebar
+                enabledSharedCalendars={enabledSharedCalendars}
+                onToggleCalendar={handleToggleSharedCalendar}
+              />
+            </Grid.Col>
+          )}
+        </Grid>
+
+        {/* Mobile Shared Calendars */}
+        {isMobile && (
+          <Paper p="sm" withBorder>
             <SharedCalendarsSidebar
               enabledSharedCalendars={enabledSharedCalendars}
               onToggleCalendar={handleToggleSharedCalendar}
             />
-          </Grid.Col>
-        </Grid>
+          </Paper>
+        )}
       </Stack>
 
       {/* Event Modal */}
