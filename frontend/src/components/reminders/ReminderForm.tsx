@@ -5,14 +5,14 @@ import {
   TextInput,
   Textarea,
   Select,
-  DatePicker,
-  TimeInput,
   Button,
   Group,
   Switch,
   TagsInput,
   NumberInput,
+  Input,
 } from '@mantine/core';
+import { DatePicker } from '@mantine/dates';
 import { IconCalendar, IconClock } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import api from '../../utils/apiBase';
@@ -251,13 +251,14 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
             required
           />
 
-          <TimeInput
-            label="At time"
-            placeholder="Pick time"
-            value={remindAtTime}
-            onChange={setRemindAtTime}
-            leftSection={<IconClock size={16} />}
-          />
+          <Input.Wrapper label="At time">
+            <Input
+              type="time"
+              value={remindAtTime || ''}
+              onChange={(e) => setRemindAtTime(e.currentTarget.value)}
+              leftSection={<IconClock size={16} />}
+            />
+          </Input.Wrapper>
 
           <DatePicker
             label="Due date (optional)"
