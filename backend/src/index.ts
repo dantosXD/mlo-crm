@@ -21,6 +21,7 @@ import communicationRoutes from './routes/communicationRoutes.js';
 import communicationTemplateRoutes from './routes/communicationTemplateRoutes.js';
 import attachmentRoutes from './routes/attachmentRoutes.js';
 import eventRoutes from './routes/eventRoutes.js';
+import unifiedSearchRoutes from './routes/unifiedSearchRoutes.js';
 import calendarSyncRoutes from './routes/calendarSyncRoutes.js';
 import calendarShareRoutes from './routes/calendarShareRoutes.js';
 import reminderRoutes from './routes/reminderRoutes.js';
@@ -143,6 +144,9 @@ app.use('/api/calendar', validateCsrfToken, calendarShareRoutes);
 
 // Reminder routes
 app.use('/api/reminders', validateCsrfToken, reminderRoutes);
+
+// Unified search routes
+app.use('/api/unified-search', validateCsrfToken, unifiedSearchRoutes);
 
 // Analytics routes
 app.use('/api/analytics', validateCsrfToken, workflowAnalyticsRoutes);

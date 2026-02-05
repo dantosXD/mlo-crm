@@ -1662,4 +1662,122 @@ router.post('/:id/clone', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ============================================================================
+// TASKS-CALENDAR-REMINDERS INTEGRATION ENDPOINTS
+// ============================================================================
+
+// POST /api/tasks/:id/create-event - Create a calendar event from a task
+router.post('/:id/create-event', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { startTime, duration = 60, allDay = false } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Fetch the task
+    const task = await prisma.task.findUnique({
+      where: { id },
+      include: { client: true },
+    });
+
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    // Check access
+    if (task.client && task.client.createdById !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Calculate end time
+    let endTime: Date | undefined;
+    if (!allDay && startTime) {
+      const start = new Date(startTime);
+      endTime = new Date(start.getTime() + duration * 60000);
+    }
+
+    // Create the event
+    const event = await prisma.event.create({
+      data: {
+        title: task.text,
+        description: task.description,
+        eventType: 'TASK',
+        startTime: startTime ? new Date(startTime) : task.dueDate || new Date(),
+        endTime,
+        allDay,
+        clientId: task.clientId,
+        taskId: task.id,
+        createdById: userId,
+        status: 'CONFIRMED',
+      },
+      include: {
+        client: {
+          select: { id: true, nameEncrypted: true },
+        },
+      },
+    });
+
+    res.status(201).json(event);
+  } catch (error) {
+    console.error('Error creating event from task:', error);
+    res.status(500).json({ error: 'Failed to create event from task' });
+  }
+});
+
+// POST /api/tasks/:id/create-reminder - Create a reminder from a task
+router.post('/:id/create-reminder', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { remindAt, dueDate } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Fetch the task
+    const task = await prisma.task.findUnique({
+      where: { id },
+      include: { client: true },
+    });
+
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    // Check access
+    if (task.client && task.client.createdById !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Create the reminder
+    const reminder = await prisma.reminder.create({
+      data: {
+        userId,
+        clientId: task.clientId,
+        title: `Task: ${task.text}`,
+        description: task.description,
+        category: 'FOLLOW_UP',
+        priority: task.priority === 'URGENT' ? 'HIGH' : task.priority === 'HIGH' ? 'MEDIUM' : 'LOW',
+        remindAt: remindAt ? new Date(remindAt) : task.dueDate || new Date(),
+        dueDate: dueDate ? new Date(dueDate) : task.dueDate,
+        status: 'PENDING',
+      },
+      include: {
+        client: {
+          select: { id: true, nameEncrypted: true },
+        },
+      },
+    });
+
+    res.status(201).json(reminder);
+  } catch (error) {
+    console.error('Error creating reminder from task:', error);
+    res.status(500).json({ error: 'Failed to create reminder from task' });
+  }
+});
+
 export default router;

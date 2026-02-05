@@ -1,6 +1,7 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken } from '../middleware/auth.js';
+import reminderSuggestionService from '../services/reminderSuggestionService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -549,5 +550,238 @@ function calculateNextReminderDate(
 
   return next;
 }
+
+// ============================================================================
+// TASKS-CALENDAR-REMINDERS INTEGRATION ENDPOINTS
+// ============================================================================
+
+// POST /api/reminders/:id/create-task - Create a task from a reminder
+router.post('/:id/create-task', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { dueDate } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Fetch the reminder
+    const reminder = await prisma.reminder.findUnique({
+      where: { id },
+      include: { client: true },
+    });
+
+    if (!reminder) {
+      return res.status(404).json({ error: 'Reminder not found' });
+    }
+
+    // Check access
+    if (reminder.userId !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Create the task
+    const task = await prisma.task.create({
+      data: {
+        text: reminder.title.replace(/^(Reminder:|Event:)\s*/, ''),
+        description: reminder.description,
+        type: reminder.clientId ? 'CLIENT_SPECIFIC' : 'GENERAL',
+        priority: reminder.priority === 'URGENT' ? 'HIGH' : reminder.priority,
+        clientId: reminder.clientId,
+        dueDate: dueDate ? new Date(dueDate) : reminder.dueDate || reminder.remindAt,
+        createdById: userId,
+        status: 'TODO',
+      },
+      include: {
+        client: {
+          select: { id: true, nameEncrypted: true },
+        },
+        assignedTo: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    res.status(201).json(task);
+  } catch (error) {
+    console.error('Error creating task from reminder:', error);
+    res.status(500).json({ error: 'Failed to create task from reminder' });
+  }
+});
+
+// POST /api/reminders/:id/create-event - Create a calendar event from a reminder
+router.post('/:id/create-event', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { startTime, duration = 60, allDay = false } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Fetch the reminder
+    const reminder = await prisma.reminder.findUnique({
+      where: { id },
+      include: { client: true },
+    });
+
+    if (!reminder) {
+      return res.status(404).json({ error: 'Reminder not found' });
+    }
+
+    // Check access
+    if (reminder.userId !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Calculate end time
+    let endTime: Date | undefined;
+    if (!allDay && startTime) {
+      const start = new Date(startTime);
+      endTime = new Date(start.getTime() + duration * 60000);
+    }
+
+    // Create the event
+    const event = await prisma.event.create({
+      data: {
+        title: reminder.title.replace(/^(Reminder:|Event:)\s*/, ''),
+        description: reminder.description,
+        eventType: reminder.category === 'CLOSING' ? 'CLOSING' :
+                    reminder.category === 'CLIENT' ? 'APPOINTMENT' : 'CUSTOM',
+        startTime: startTime ? new Date(startTime) : reminder.remindAt,
+        endTime,
+        allDay,
+        clientId: reminder.clientId,
+        createdById: userId,
+        status: 'CONFIRMED',
+      },
+      include: {
+        client: {
+          select: { id: true, nameEncrypted: true },
+        },
+      },
+    });
+
+    res.status(201).json(event);
+  } catch (error) {
+    console.error('Error creating event from reminder:', error);
+    res.status(500).json({ error: 'Failed to create event from reminder' });
+  }
+});
+
+// GET /api/reminders/suggestions - Get smart reminder suggestions
+router.get('/suggestions', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const config = req.query; // Pass config options as query params
+
+    const suggestions = await reminderSuggestionService.generateSuggestions(userId, config);
+
+    res.json(suggestions);
+  } catch (error) {
+    console.error('Error generating suggestions:', error);
+    res.status(500).json({ error: 'Failed to generate suggestions' });
+  }
+});
+
+// POST /api/reminders/suggestions/accept - Accept a suggestion and create a reminder
+router.post('/suggestions/accept', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { suggestion } = req.body;
+
+    if (!suggestion) {
+      return res.status(400).json({ error: 'Suggestion data is required' });
+    }
+
+    const reminder = await reminderSuggestionService.acceptSuggestion(userId, suggestion);
+
+    // Create notification
+    await prisma.notification.create({
+      data: {
+        userId,
+        type: 'REMINDER_CREATED',
+        title: 'Reminder Created from Suggestion',
+        message: `Reminder "${suggestion.title}" created successfully`,
+        link: `/reminders`,
+        metadata: JSON.stringify({ reminderId: reminder.id }),
+      },
+    });
+
+    res.status(201).json(reminder);
+  } catch (error) {
+    console.error('Error accepting suggestion:', error);
+    res.status(500).json({ error: 'Failed to create reminder from suggestion' });
+  }
+});
+
+// POST /api/reminders/suggestions/dismiss - Dismiss a suggestion
+router.post('/suggestions/dismiss', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { suggestionType, metadata } = req.body;
+
+    if (!suggestionType) {
+      return res.status(400).json({ error: 'Suggestion type is required' });
+    }
+
+    await reminderSuggestionService.trackSuggestionDismissal(userId, suggestionType, metadata || {});
+
+    res.json({ message: 'Suggestion dismissal recorded' });
+  } catch (error) {
+    console.error('Error dismissing suggestion:', error);
+    res.status(500).json({ error: 'Failed to dismiss suggestion' });
+  }
+});
+
+// GET /api/reminders/suggestions/analytics - Get suggestion analytics
+router.get('/suggestions/analytics', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const analytics = await reminderSuggestionService.getSuggestionAnalytics(userId);
+
+    res.json(analytics);
+  } catch (error) {
+    console.error('Error fetching suggestion analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch suggestion analytics' });
+  }
+});
+
+// PUT /api/reminders/suggestions/config - Update suggestion settings
+router.put('/suggestions/config', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { enabled, minConfidence, frequency, inactiveDaysThreshold, dueDateWarningDays } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { preferences: true },
+    });
+
+    const prefs = user?.preferences ? JSON.parse(user.preferences) : {};
+
+    prefs.reminderSuggestions = {
+      ...prefs.reminderSuggestions,
+      ...(enabled !== undefined && { enabled }),
+      ...(minConfidence !== undefined && { minConfidence }),
+      ...(frequency !== undefined && { frequency }),
+      ...(inactiveDaysThreshold !== undefined && { inactiveDaysThreshold }),
+      ...(dueDateWarningDays !== undefined && { dueDateWarningDays }),
+    };
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { preferences: JSON.stringify(prefs) },
+    });
+
+    res.json({ message: 'Suggestion settings updated', config: prefs.reminderSuggestions });
+  } catch (error) {
+    console.error('Error updating suggestion config:', error);
+    res.status(500).json({ error: 'Failed to update suggestion settings' });
+  }
+});
 
 export default router;
