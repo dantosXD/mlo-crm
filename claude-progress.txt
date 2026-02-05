@@ -501,3 +501,107 @@ Message: feat: Implement Feature #300 - Visual Workflow Builder Save and Validat
 ### Next Steps
 All features are now complete and passing. The MLO Dashboard application is fully implemented with all 318 test features verified.
 
+## Session Summary - Feature #323 Completed
+Date: February 5, 2026
+Agent: Coding Agent
+Assigned Feature: #323
+
+### Feature Completed
+**Feature #323: Task Reminders and Notifications** ✅
+**Category:** Tasks
+**Priority:** 354
+
+### Overall Progress
+**Before:** 319/333 features passing (95.8%)
+**After:** 320/333 features passing (96.1%)
+**Improvement:** +1 feature completed (+0.3%)
+
+### Implementation Details
+
+**1. Database Schema Updates (backend/prisma/schema.prisma)**
+- Added reminder fields to Task model:
+  * reminderEnabled (Boolean)
+  * reminderTimes (JSON array of reminder types)
+  * reminderMessage (String - optional custom message)
+  * snoozedUntil (DateTime - for snooze functionality)
+- Created TaskReminderHistory model for tracking reminder delivery
+
+**2. Backend Services (backend/src/services/notificationService.ts)**
+- createTaskReminderNotification(): Create in-app notifications for task reminders
+- wasReminderSentToday(): Check if reminder already sent today
+- logReminderHistory(): Log reminder delivery to history
+- getTaskReminderHistory(): Get reminder history for a task
+
+**3. Task Reminder Job (backend/src/jobs/taskReminderJob.ts)**
+- checkTaskReminders(): Main job to check for tasks needing reminders
+- Supports 5 reminder types: AT_TIME, 15MIN, 1HR, 1DAY, 1WEEK
+- Overdue escalation reminders at 1hr, 1day, and 3days overdue
+- Prevents duplicate reminders on the same day
+- Auto-runnable as standalone script or scheduled job
+
+**4. API Routes (backend/src/routes/taskRoutes.ts)**
+- PATCH /api/tasks/:taskId/reminders - Update reminder settings
+- POST /api/tasks/:taskId/snooze - Snooze a task (15min, 1hr, tomorrow, next week)
+- GET /api/tasks/:taskId/reminder-history - Get reminder history
+
+**5. Frontend Components**
+
+**TaskReminderConfig (frontend/src/components/tasks/TaskReminderConfig.tsx)**
+- Enable/disable reminders toggle
+- Checkbox selection for reminder times
+- Custom reminder message input
+- Auto-saves on change
+- Integration with task creation/edit
+
+**TaskSnoozeButton (frontend/src/components/tasks/TaskSnoozeButton.tsx)**
+- Dropdown menu with snooze options
+- Visual feedback during snooze
+- Success notifications
+
+**TasksDashboard Updates (frontend/src/pages/TasksDashboard.tsx)**
+- Added reminder fields to Task interface
+- New "Reminders" column showing bell icon with count
+- Snooze button in actions for incomplete tasks with due dates
+
+### Features Implemented
+✅ Add reminder settings to task model (remind at time, 15min, 1hr, 1day, 1week before)
+✅ Create reminder configuration component
+✅ Implement reminder scheduling with job system
+✅ Add in-app reminder notifications
+✅ Add snooze functionality (15min, 1hr, tomorrow, next week)
+✅ Add reminder history log
+✅ Implement overdue task escalation reminders
+✅ Support custom reminder messages
+✅ Timezone handling (uses system time)
+
+### Technical Achievements
+- Comprehensive reminder system matching document reminders pattern
+- Multiple reminder types per task
+- Intelligent escalation for overdue tasks
+- Full audit trail of reminder delivery
+- User-friendly UI components
+- RESTful API design
+
+### Files Created
+- backend/src/jobs/taskReminderJob.ts (220 lines)
+- frontend/src/components/tasks/TaskReminderConfig.tsx (185 lines)
+- frontend/src/components/tasks/TaskSnoozeButton.tsx (110 lines)
+- test-feature-323.js (test script)
+
+### Files Modified
+- backend/prisma/schema.prisma - Added reminder fields and TaskReminderHistory model
+- backend/src/services/notificationService.ts - Added task reminder functions (+140 lines)
+- backend/src/routes/taskRoutes.ts - Added reminder routes (+230 lines)
+- frontend/src/pages/TasksDashboard.tsx - Updated Task interface, added reminder column and snooze button
+
+### Git Commit
+Commit: d284b67
+Message: feat: Implement Feature #323 - Task Reminders and Notifications
+
+### Next Steps
+The task reminder system is fully implemented and follows the same pattern as document reminders. In production, the taskReminderJob should be scheduled to run periodically (every 5-10 minutes) using a process manager like PM2 or cron.
+
+Remaining features: 13/333 (3.9%)
+
+---
+END OF SESSION - FEATURE #323 COMPLETED
