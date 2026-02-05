@@ -21,6 +21,7 @@ import {
   IconTemplate,
   IconMail,
   IconCheck,
+  IconCalendar,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import { QuickCapture } from './components/QuickCapture';
@@ -46,6 +47,7 @@ import { CommunicationTemplateEditor } from './pages/CommunicationTemplateEditor
 import { Communications } from './pages/Communications';
 import { CommunicationComposer } from './pages/CommunicationComposer';
 import TasksDashboard from './pages/TasksDashboard';
+import Calendar from './pages/Calendar';
 
 const ForgotPassword = () => (
   <Center h="100vh">
@@ -81,6 +83,7 @@ function WriteRoute({ children }: { children: React.ReactNode }) {
 const navItems = [
   { icon: IconDashboard, label: 'Dashboard', href: '/', adminOnly: false },
   { icon: IconUsers, label: 'Clients', href: '/clients', adminOnly: false },
+  { icon: IconCalendar, label: 'Calendar', href: '/calendar', adminOnly: false },
   { icon: IconLayoutKanban, label: 'Pipeline', href: '/pipeline', adminOnly: false },
   { icon: IconCheck, label: 'Tasks', href: '/tasks', adminOnly: false },
   { icon: IconNotes, label: 'Notes', href: '/notes', adminOnly: false },
@@ -397,6 +400,7 @@ function ProtectedLayout() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/clients" element={<Clients />} />
           <Route path="/clients/:id" element={<ClientDetails />} />
+          <Route path="/calendar" element={<Calendar />} />
           <Route path="/pipeline" element={<Pipeline />} />
           <Route path="/tasks" element={<TasksDashboard />} />
           <Route path="/notes" element={<Notes />} />

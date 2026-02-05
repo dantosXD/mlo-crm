@@ -26,12 +26,15 @@ model User {
   // Relations
   clients       Client[]
   notes         Note[]
-  tasks         Task[]
   activities    Activity[]
   notifications Notification[]
   communications Communication[]
   workflows     Workflow[]
   workflowVersions WorkflowVersion[]
+  createdEvents Event[] @relation("EventCreator")
+  assignedTasks Task[] @relation("TaskAssignee")
+  createdTasks Task[] @relation("TaskCreator")
+  createdTaskTemplates TaskTemplate[] @relation("TaskTemplateCreator")
 
   @@map("users")
 }
@@ -61,6 +64,7 @@ model Client {
   financialProfile ClientFinancialProfile?
   communications  Communication[]
   workflowExecutions WorkflowExecution[]
+  events          Event[]
 
   @@index([nameHash])
   @@index([emailHash])
@@ -113,11 +117,16 @@ model Task {
   text        String
   description String?
   status      String    @default("TODO") // TODO, IN_PROGRESS, COMPLETE
-  priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH
+  priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  type        String    @default("GENERAL") // GENERAL, CLIENT_SPECIFIC, WORKFLOW_RELATED, FOLLOW_UP, COMPLIANCE
   dueDate     DateTime? @map("due_date")
   completedAt DateTime? @map("completed_at")
   assignedToId String?  @map("assigned_to_id")
-  assignedTo  User?     @relation(fields: [assignedToId], references: [id])
+  assignedTo  User?     @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdById String?   @map("created_by_id")
+  createdBy   User?     @relation("TaskCreator", fields: [createdById], references: [id])
+  tags        String    @default("[]") // JSON array string
+  deletedAt   DateTime? @map("deleted_at") // Soft delete support
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
@@ -127,14 +136,26 @@ model Task {
   reminderMessage String?   @map("reminder_message") // Custom reminder message
   snoozedUntil    DateTime? @map("snoozed_until") // Snooze deadline
 
+  // Recurring task settings
+  isRecurring           Boolean   @default(false) @map("is_recurring")
+  recurringPattern      String?   @map("recurring_pattern") // DAILY, WEEKLY, MONTHLY, CUSTOM
+  recurringInterval     Int?      @map("recurring_interval") // e.g., every 2 weeks
+  recurringEndDate       DateTime? @map("recurring_end_date") // Optional end date for recurrence
+  recurringTaskId       String?   @map("recurring_task_id") // Parent recurring task ID
+
   // Relations
-  subtasks    TaskSubtask[]
-  reminderHistory TaskReminderHistory[]
+  subtasks         TaskSubtask[]
+  reminderHistory  TaskReminderHistory[]
+  attachments      TaskAttachment[]
+  parentRecurring  Task?       @relation("RecurringTasks", fields: [recurringTaskId], references: [id], onDelete: SetNull)
+  recurringTasks   Task[]      @relation("RecurringTasks")
 
   @@index([clientId])
   @@index([status])
   @@index([dueDate])
   @@index([assignedToId])
+  @@index([deletedAt])
+  @@index([type])
   @@map("tasks")
 }
 
@@ -168,6 +189,25 @@ model TaskReminderHistory {
   @@index([userId])
   @@index([remindedAt])
   @@map("task_reminder_history")
+}
+
+// Task attachments (documents, links, notes)
+model TaskAttachment {
+  id          String    @id @default(uuid())
+  taskId      String    @map("task_id")
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  type        String    // DOCUMENT, LINK, NOTE
+  name        String
+  url         String?   // For links and documents
+  filePath    String?   @map("file_path") // For documents
+  content     String?   // For notes
+  metadata    String?   // JSON string for additional data
+  createdAt   DateTime  @default(now()) @map("created_at")
+  createdBy   String    @map("created_by_id")
+
+  @@index([taskId])
+  @@index([type])
+  @@map("task_attachments")
 }
 
 // Documents table
@@ -274,12 +314,19 @@ model TaskTemplate {
   id          String    @id @default(uuid())
   name        String
   description String?
-  priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH
+  text        String    // Default task text/title
+  type        String    @default("GENERAL") // GENERAL, CLIENT_SPECIFIC, WORKFLOW_RELATED, FOLLOW_UP, COMPLIANCE
+  priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  tags        String    @default("[]") // JSON array string
   dueDays     Int?      @map("due_days")
   steps       String?   // JSON array of subtask steps
+  createdById String?   @map("created_by_id")
+  createdBy   User?     @relation("TaskTemplateCreator", fields: [createdById], references: [id])
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
+  @@index([type])
+  @@index([createdById])
   @@map("task_templates")
 }
 
@@ -462,4 +509,75 @@ model WorkflowExecutionLog {
   @@index([executionId])
   @@index([executedAt])
   @@map("workflow_execution_logs")
+}
+
+// Events for calendar
+model Event {
+  id              String    @id @default(uuid())
+  title           String
+  description     String?
+  eventType       String    @map("event_type") // MEETING, APPOINTMENT, CLOSING, FOLLOW_UP, CUSTOM, TASK, REMINDER
+  startTime       DateTime  @map("start_time")
+  endTime         DateTime? @map("end_time")
+  allDay          Boolean   @default(false) @map("all_day")
+  location        String?
+  clientId        String?   @map("client_id")
+  client          Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  taskId          String?   @map("task_id")
+  createdById     String    @map("created_by_id")
+  createdBy       User      @relation("EventCreator", fields: [createdById], references: [id])
+
+  // Recurrence settings
+  isRecurring     Boolean   @default(false) @map("is_recurring")
+  recurringRule   String?   @map("recurring_rule") // RRULE format or custom pattern: DAILY, WEEKLY, MONTHLY, YEARLY, CUSTOM
+  recurringEndDate DateTime? @map("recurring_end_date") // Optional end date for recurrence
+  recurringEventId String?  @map("recurring_event_id") // Parent recurring event ID
+  parentRecurring Event?    @relation("RecurringEvents", fields: [recurringEventId], references: [id], onDelete: SetNull)
+  recurringEvents Event[]   @relation("RecurringEvents")
+
+  // Attendees
+  eventAttendees  EventAttendee[]
+
+  // Reminders
+  reminders       String    @default("[]") // JSON array of reminder minutes before event [15, 60, 1440]
+
+  // Status
+  status          String    @default("CONFIRMED") // CONFIRMED, TENTATIVE, CANCELLED, COMPLETED
+  color           String?   // Hex color code for display
+
+  // External sync
+  externalId      String?   @map("external_id") // ID from external calendar (Google, Outlook, etc.)
+  externalCalendar String? @map("external_calendar") // Source calendar name
+  lastSyncedAt    DateTime? @map("last_synced_at")
+
+  // Metadata
+  metadata        String?   // JSON string for additional data
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([startTime])
+  @@index([endTime])
+  @@index([eventType])
+  @@index([clientId])
+  @@index([taskId])
+  @@index([createdById])
+  @@index([status])
+  @@map("events")
+}
+
+// Event attendees for tracking RSVPs
+model EventAttendee {
+  id          String   @id @default(uuid())
+  eventId     String   @map("event_id")
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId      String?  @map("user_id")
+  email       String
+  name        String?
+  rsvpStatus  String   @default("NEEDS_ACTION") @map("rsvp_status") // NEEDS_ACTION, ACCEPTED, DECLINED, TENTATIVE
+  respondedAt DateTime? @map("responded_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([eventId])
+  @@index([email])
+  @@map("event_attendees")
 }

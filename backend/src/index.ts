@@ -20,6 +20,7 @@ import webhookRoutes from './routes/webhookRoutes.js';
 import communicationRoutes from './routes/communicationRoutes.js';
 import communicationTemplateRoutes from './routes/communicationTemplateRoutes.js';
 import attachmentRoutes from './routes/attachmentRoutes.js';
+import eventRoutes from './routes/eventRoutes.js';
 import { generateCsrfToken, validateCsrfToken } from './middleware/csrf.js';
 import {
   checkOverdueTasks,
@@ -89,6 +90,7 @@ app.get('/api', (_req, res) => {
       workflows: '/api/workflows/*',
       communications: '/api/communications/*',
       communicationTemplates: '/api/communication-templates/*',
+      events: '/api/events/*',
     },
   });
 });
@@ -125,6 +127,9 @@ app.use('/api/communication-templates', validateCsrfToken, communicationTemplate
 
 // Attachment routes
 app.use('/api/attachments', validateCsrfToken, attachmentRoutes);
+
+// Event routes
+app.use('/api/events', validateCsrfToken, eventRoutes);
 
 // Analytics routes
 app.use('/api/analytics', validateCsrfToken, workflowAnalyticsRoutes);
