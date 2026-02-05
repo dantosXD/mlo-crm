@@ -21,6 +21,7 @@ import communicationRoutes from './routes/communicationRoutes.js';
 import communicationTemplateRoutes from './routes/communicationTemplateRoutes.js';
 import attachmentRoutes from './routes/attachmentRoutes.js';
 import eventRoutes from './routes/eventRoutes.js';
+import calendarSyncRoutes from './routes/calendarSyncRoutes.js';
 import { generateCsrfToken, validateCsrfToken } from './middleware/csrf.js';
 import {
   checkOverdueTasks,
@@ -91,6 +92,7 @@ app.get('/api', (_req, res) => {
       communications: '/api/communications/*',
       communicationTemplates: '/api/communication-templates/*',
       events: '/api/events/*',
+      calendarSync: '/api/calendar-sync/*',
     },
   });
 });
@@ -130,6 +132,9 @@ app.use('/api/attachments', validateCsrfToken, attachmentRoutes);
 
 // Event routes
 app.use('/api/events', validateCsrfToken, eventRoutes);
+
+// Calendar sync routes
+app.use('/api/calendar-sync', validateCsrfToken, calendarSyncRoutes);
 
 // Analytics routes
 app.use('/api/analytics', validateCsrfToken, workflowAnalyticsRoutes);
