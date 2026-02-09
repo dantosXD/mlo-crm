@@ -32,25 +32,15 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { DateInput } from '@mantine/dates';
-import { API_URL } from '../utils/apiBase';
-import { decryptData } from '../utils/encryption';
+import { api } from '../utils/api';
+import { PLACEHOLDER_INFO, PLACEHOLDER_KEYS } from '../utils/constants';
+import type { CommunicationTemplate } from '../types';
 
-interface Client {
+interface BulkClient {
   id: string;
   nameEncrypted: string;
   emailEncrypted: string;
   phoneEncrypted: string;
-}
-
-interface CommunicationTemplate {
-  id: string;
-  name: string;
-  type: string;
-  category: string;
-  subject: string | null;
-  body: string;
-  placeholders: string[];
-  isActive: boolean;
 }
 
 interface BulkCommunicationComposerProps {
@@ -58,60 +48,6 @@ interface BulkCommunicationComposerProps {
   onClose: () => void;
   clientIds: string[];
 }
-
-// Placeholder descriptions for preview
-const PLACEHOLDER_INFO: Record<string, { description: string; example: string }> = {
-  '{{client_name}}': {
-    description: 'Full name of the client',
-    example: 'John Smith',
-  },
-  '{{client_email}}': {
-    description: 'Email address of the client',
-    example: 'john@example.com',
-  },
-  '{{client_phone}}': {
-    description: 'Phone number of the client',
-    example: '(555) 123-4567',
-  },
-  '{{client_status}}': {
-    description: 'Current status of the client',
-    example: 'Active',
-  },
-  '{{loan_amount}}': {
-    description: 'Loan amount',
-    example: '$350,000',
-  },
-  '{{loan_officer_name}}': {
-    description: 'Name of the loan officer',
-    example: 'Jane Doe',
-  },
-  '{{company_name}}': {
-    description: 'Name of your company',
-    example: 'ABC Mortgage',
-  },
-  '{{due_date}}': {
-    description: 'Due date for documents/tasks',
-    example: 'January 15, 2026',
-  },
-  '{{date}}': {
-    description: 'Current date',
-    example: 'February 2, 2026',
-  },
-  '{{time}}': {
-    description: 'Current time',
-    example: '2:30 PM',
-  },
-  '{{property_address}}': {
-    description: 'Property address',
-    example: '123 Main St, City, State 12345',
-  },
-  '{{trigger_type}}': {
-    description: 'Type of trigger that initiated the communication',
-    example: 'Document Uploaded',
-  },
-};
-
-const PLACEHOLDER_KEYS = Object.keys(PLACEHOLDER_INFO);
 
 export function BulkCommunicationComposer({
   opened,
@@ -122,7 +58,7 @@ export function BulkCommunicationComposer({
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<BulkClient[]>([]);
   const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
@@ -132,8 +68,6 @@ export function BulkCommunicationComposer({
   const [successCount, setSuccessCount] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Helper to decrypt client data
-  const decryptField = (value: string | null): string => decryptData(value);
 
   // Fetch clients data
   useEffect(() => {
@@ -144,9 +78,7 @@ export function BulkCommunicationComposer({
         // Fetch clients by IDs
         const responses = await Promise.all(
           clientIds.map(id =>
-            fetch(`${API_URL}/clients/${id}`, {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            })
+            api.get(`/clients/${id}`)
           )
         );
 
@@ -177,9 +109,7 @@ export function BulkCommunicationComposer({
 
     const fetchTemplates = async () => {
       try {
-        const response = await fetch(`${API_URL}/communications/templates?type=EMAIL&status=APPROVED`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const response = await api.get('/communications/templates?type=EMAIL&status=APPROVED');
 
         if (!response.ok) throw new Error('Failed to fetch templates');
 
@@ -209,11 +139,11 @@ export function BulkCommunicationComposer({
   }, [selectedTemplate, templates]);
 
   // Replace placeholders for a specific client
-  const replacePlaceholders = (text: string, client: Client): string => {
+  const replacePlaceholders = (text: string, client: BulkClient): string => {
     let result = text;
-    const clientName = decryptField(client.nameEncrypted);
-    const clientEmail = decryptField(client.emailEncrypted);
-    const clientPhone = decryptField(client.phoneEncrypted);
+    const clientName = client.nameEncrypted ?? '';
+    const clientEmail = client.emailEncrypted ?? '';
+    const clientPhone = client.phoneEncrypted ?? '';
     const loanOfficerName = user?.name || 'Loan Officer';
     const companyName = 'ABC Mortgage'; // Could be from user settings
 
@@ -279,13 +209,7 @@ export function BulkCommunicationComposer({
     try {
       for (const client of clients) {
         try {
-          const response = await fetch(`${API_URL}/communications`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({
+          const response = await api.post('/communications', {
               clientId: client.id,
               type: 'EMAIL',
               subject: replacePlaceholders(subject, client),
@@ -293,8 +217,7 @@ export function BulkCommunicationComposer({
               status: 'DRAFT',
               scheduledAt: scheduledAt?.toISOString() || null,
               followUpDate: followUpDate?.toISOString() || null,
-            }),
-          });
+            });
 
           if (!response.ok) {
             const error = await response.json();
@@ -303,7 +226,7 @@ export function BulkCommunicationComposer({
 
           success++;
         } catch (error: any) {
-          const clientName = decryptField(client.nameEncrypted);
+          const clientName = client.nameEncrypted ?? '';
           errors.push(`${clientName}: ${error.message}`);
         }
       }
@@ -453,7 +376,7 @@ export function BulkCommunicationComposer({
               <ScrollArea style={{ flex: 1 }}>
                 <Accordion variant="contained">
                   {previews.map((preview, index) => {
-                    const clientName = decryptField(preview.client.nameEncrypted);
+                    const clientName = preview.client.nameEncrypted ?? '';
                     return (
                       <Accordion.Item key={preview.client.id} value={preview.client.id}>
                         <Accordion.Control>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Container,
   Title,
@@ -17,27 +18,13 @@ import {
   Alert,
   Breadcrumbs,
   Anchor,
-  Modal,
-  TextInput,
   Select,
-  TagsInput,
-  Textarea,
-  ActionIcon,
-  Checkbox,
-  NumberInput,
   Grid,
-  Divider,
   ThemeIcon,
-  Table,
-  FileInput,
-  Progress,
-  Box,
+  TagsInput,
 } from '@mantine/core';
-import { DateInput } from '@mantine/dates';
-import { Dropzone, FileWithPath } from '@mantine/dropzone';
 import { notifications } from '@mantine/notifications';
 import {
-  IconArrowLeft,
   IconUser,
   IconNotes,
   IconFiles,
@@ -45,251 +32,26 @@ import {
   IconCalculator,
   IconTimeline,
   IconAlertCircle,
-  IconAlertTriangle,
   IconLock,
-  IconHome,
   IconChevronRight,
   IconEdit,
   IconTrash,
   IconTag,
-  IconPlus,
-  IconPin,
-  IconPinnedOff,
-  IconStar,
-  IconCurrencyDollar,
-  IconPercentage,
-  IconCalendar,
-  IconScale,
   IconCheck,
-  IconDownload,
-  IconUpload,
-  IconPackage,
   IconMail,
-  IconSend,
-  IconCopy,
-  IconEye,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
-import { EmptyState } from '../components/EmptyState';
 import { canWriteClients } from '../utils/roleUtils';
 import { api } from '../utils/api';
-import { decryptData } from '../utils/encryption';
-import { SubtaskList } from '../components/tasks/SubtaskList';
+import {
+  CLIENT_STATUS_COLORS,
+} from '../utils/constants';
+import type { Client, Note, Task, LoanScenario, ClientDocument, Activity } from '../types';
+import { OverviewTab, NotesTab, DocumentsTab, TasksTab, LoansTab, CommunicationsTab, ActivityTab } from '../components/client';
+import { EditClientModal, DeleteClientModal, UnsavedChangesModal, AddNoteModal, EditNoteModal, AddTaskModal, AddScenarioModal, CompareModal, DeleteScenarioModal, AddDocumentModal, DeleteDocumentModal, AssignPackageModal, RequestDocumentModal, CommunicationPreviewModal } from '../components/client/modals';
+import { useClientStatuses, useClient, useClientNotes, useClientTasks, useClientLoanScenarios, useClientDocuments, useClientActivities } from '../hooks';
 
-// Helper function to format relative time (e.g., "just now", "5 minutes ago", "2 hours ago")
-const formatRelativeTime = (dateString: string): string => {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) {
-    return 'just now';
-  }
-
-  const diffInMinutes = Math.floor(diffInSeconds / 60);
-  if (diffInMinutes < 60) {
-    return diffInMinutes === 1 ? '1 minute ago' : `${diffInMinutes} minutes ago`;
-  }
-
-  const diffInHours = Math.floor(diffInMinutes / 60);
-  if (diffInHours < 24) {
-    return diffInHours === 1 ? '1 hour ago' : `${diffInHours} hours ago`;
-  }
-
-  const diffInDays = Math.floor(diffInHours / 24);
-  if (diffInDays < 7) {
-    return diffInDays === 1 ? '1 day ago' : `${diffInDays} days ago`;
-  }
-
-  // For older dates, show the full date
-  return date.toLocaleDateString();
-};
-
-interface Client {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  status: string;
-  tags: string[];
-  createdAt: string;
-  updatedAt: string;
-  notes: any[];
-  tasks: any[];
-  documents: any[];
-  loanScenarios: any[];
-}
-interface Note {
-  id: string;
-  clientId: string;
-  text: string;
-  tags: string[];
-  isPinned: boolean;
-  createdBy: { id: string; name: string };
-  createdAt: string;
-  updatedAt?: string;
-}
-
-interface Task {
-  id: string;
-  clientId: string;
-  text: string;
-  description?: string;
-  status: 'TODO' | 'IN_PROGRESS' | 'COMPLETE';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH';
-  dueDate?: string;
-  completedAt?: string;
-  assignedTo?: { id: string; name: string };
-  createdAt: string;
-  updatedAt?: string;
-  subtasks?: Array<{
-    id: string;
-    text: string;
-    isCompleted: boolean;
-    order: number;
-    dueDate?: string;
-  }>;
-}
-
-interface LoanScenario {
-  id: string;
-  clientId: string;
-  name: string;
-  loanType: 'PURCHASE' | 'REFINANCE';
-  amount: number;
-  interestRate: number;
-  termYears: number;
-  downPayment?: number;
-  propertyValue?: number;
-  propertyTaxes?: number;
-  homeInsurance?: number;
-  hoaFees?: number;
-  pmiRate?: number;
-  monthlyPayment?: number;
-  totalMonthlyPayment?: number;
-  totalInterest?: number;
-  loanToValue?: number;
-  debtToIncome?: number;
-  isPreferred: boolean;
-  createdAt: string;
-  updatedAt?: string;
-}
-
-interface Document {
-  id: string;
-  clientId: string;
-  name: string;
-  fileName: string;
-  fileSize?: number;
-  mimeType?: string;
-  status: 'REQUIRED' | 'REQUESTED' | 'UPLOADED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
-  category: 'INCOME' | 'EMPLOYMENT' | 'ASSETS' | 'PROPERTY' | 'INSURANCE' | 'CREDIT' | 'OTHER';
-  dueDate?: string;
-  expiresAt?: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt?: string;
-}
-
-interface Activity {
-  id: string;
-  clientId: string;
-  type: string;
-  description: string;
-  metadata?: Record<string, any>;
-  user: { id: string; name: string };
-  createdAt: string;
-}
-
-const activityTypeLabels: Record<string, string> = {
-  NOTE_ADDED: 'Note Added',
-  NOTE_UPDATED: 'Note Updated',
-  NOTE_DELETED: 'Note Deleted',
-  TASK_CREATED: 'Task Created',
-  TASK_COMPLETED: 'Task Completed',
-  TASK_DELETED: 'Task Deleted',
-  DOCUMENT_UPLOADED: 'Document Uploaded',
-  DOCUMENT_STATUS_CHANGED: 'Document Status Changed',
-  DOCUMENT_DELETED: 'Document Deleted',
-  STATUS_CHANGED: 'Status Changed',
-  CLIENT_CREATED: 'Client Created',
-  CLIENT_UPDATED: 'Client Updated',
-  LOAN_SCENARIO_CREATED: 'Loan Scenario Created',
-  LOAN_SCENARIO_DELETED: 'Loan Scenario Deleted',
-};
-
-const activityTypeColors: Record<string, string> = {
-  NOTE_ADDED: 'blue',
-  NOTE_UPDATED: 'cyan',
-  NOTE_DELETED: 'gray',
-  TASK_CREATED: 'green',
-  TASK_COMPLETED: 'teal',
-  TASK_DELETED: 'gray',
-  DOCUMENT_UPLOADED: 'violet',
-  DOCUMENT_STATUS_CHANGED: 'orange',
-  DOCUMENT_DELETED: 'gray',
-  STATUS_CHANGED: 'yellow',
-  CLIENT_CREATED: 'green',
-  CLIENT_UPDATED: 'blue',
-  LOAN_SCENARIO_CREATED: 'pink',
-  LOAN_SCENARIO_DELETED: 'gray',
-};
-
-const documentStatusColors: Record<string, string> = {
-  REQUIRED: 'gray',
-  REQUESTED: 'yellow',
-  UPLOADED: 'blue',
-  UNDER_REVIEW: 'orange',
-  APPROVED: 'green',
-  REJECTED: 'red',
-  EXPIRED: 'gray',
-};
-
-// Helper function to check if a document is expired or expiring soon
-const isDocumentExpired = (doc: Document): boolean => {
-  if (!doc.expiresAt) return false;
-  const expiresAt = new Date(doc.expiresAt);
-  const today = new Date();
-  expiresAt.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  return expiresAt < today;
-};
-
-const isDocumentExpiringSoon = (doc: Document): boolean => {
-  if (!doc.expiresAt) return false;
-  const expiresAt = new Date(doc.expiresAt);
-  const today = new Date();
-  const warningDate = new Date();
-  warningDate.setDate(warningDate.getDate() + 30); // 30 days warning
-  expiresAt.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  warningDate.setHours(0, 0, 0, 0);
-  return expiresAt >= today && expiresAt <= warningDate;
-};
-
-const documentCategoryLabels: Record<string, string> = {
-  INCOME: 'Income',
-  EMPLOYMENT: 'Employment',
-  ASSETS: 'Assets',
-  PROPERTY: 'Property',
-  INSURANCE: 'Insurance',
-  CREDIT: 'Credit',
-  OTHER: 'Other',
-};
-
-const statusColors: Record<string, string> = {
-  LEAD: 'gray',
-  PRE_QUALIFIED: 'blue',
-  ACTIVE: 'green',
-  PROCESSING: 'yellow',
-  UNDERWRITING: 'orange',
-  CLEAR_TO_CLOSE: 'lime',
-  CLOSED: 'green.9',
-  DENIED: 'red',
-  INACTIVE: 'gray',
-};
-
-const API_URL = 'http://localhost:3000/api';
+const statusColors = CLIENT_STATUS_COLORS;
 
 // Define valid tab values
 const validTabs = ['overview', 'notes', 'documents', 'tasks', 'loans', 'activity'];
@@ -299,8 +61,9 @@ export default function ClientDetails() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { accessToken, user, csrfToken, updateCsrfToken } = useAuthStore();
+  const { accessToken, user } = useAuthStore();
   const canWrite = canWriteClients(user?.role);
+  const queryClient = useQueryClient();
 
   // Store the referrer URL when coming from clients list with filters
   const clientsListUrl = useMemo(() => {
@@ -333,200 +96,130 @@ export default function ClientDetails() {
       setActiveTab(tabFromUrl);
     }
   }, [searchParams]);
-  const [client, setClient] = useState<Client | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [accessDenied, setAccessDenied] = useState(false);
+  // --- Shared hooks for data fetching ---
+  const { data: client = null, isLoading: loading, error: clientError } = useClient(id);
+  const accessDenied = (clientError as any)?.status === 403;
+  const error = clientError && !accessDenied ? (clientError as Error).message : null;
+
+  const statusOptions = useClientStatuses();
+  const { data: notes = [], isLoading: loadingNotes } = useClientNotes(id);
+  const existingNoteTags = useMemo(() => {
+    const allTags = notes.flatMap((n: Note) => n.tags || []);
+    return [...new Set(allTags)];
+  }, [notes]);
+  const { data: tasks = [], isLoading: loadingTasks } = useClientTasks(id);
+  const { data: loanScenarios = [], isLoading: loadingScenarios } = useClientLoanScenarios(id);
+  const { data: documents = [], isLoading: loadingDocuments } = useClientDocuments(id);
+  const { data: activities = [], isLoading: loadingActivities } = useClientActivities(id);
+
+  // Communications filter state (must be declared before communications query)
+  const [communicationsTypeFilter, setCommunicationsTypeFilter] = useState<string>('all');
+  const [communicationsStatusFilter, setCommunicationsStatusFilter] = useState<string>('all');
+
+  // --- React Query: communications ---
+  const { data: communications = [], isLoading: loadingCommunications } = useQuery({
+    queryKey: ['client-communications', id, communicationsTypeFilter, communicationsStatusFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({ client_id: id! });
+      if (communicationsTypeFilter !== 'all') params.append('type', communicationsTypeFilter);
+      if (communicationsStatusFilter !== 'all') params.append('status', communicationsStatusFilter);
+      const response = await api.get(`/communications?${params.toString()}`);
+      if (!response.ok) throw new Error('Failed to fetch communications');
+      const data = await response.json();
+      return (data.data || data.communications || []) as any[];
+    },
+    enabled: !!id,
+  });
+
+  // --- React Query: workflow executions ---
+  const { data: workflowExecutions = [], isLoading: loadingWorkflowExecutions } = useQuery({
+    queryKey: ['client-workflow-executions', id],
+    queryFn: async () => {
+      const response = await api.get(`/workflow-executions?client_id=${id}`);
+      if (!response.ok) throw new Error('Failed to fetch workflow executions');
+      const data = await response.json();
+      return (data.executions || data || []) as any[];
+    },
+    enabled: !!id,
+  });
+
+  // --- React Query: team members ---
+  const { data: teamMembers = [], isLoading: loadingTeamMembers } = useQuery({
+    queryKey: ['client-team-members'],
+    queryFn: async () => {
+      const response = await api.get('/users/team');
+      if (!response.ok) throw new Error('Failed to fetch team members');
+      return response.json() as Promise<{ id: string; name: string; role: string }[]>;
+    },
+  });
+
+  // --- React Query: document packages (on-demand) ---
+  const { data: availablePackages = [], refetch: refetchPackages } = useQuery({
+    queryKey: ['document-packages'],
+    queryFn: async () => {
+      const response = await api.get('/document-packages');
+      if (!response.ok) throw new Error('Failed to fetch packages');
+      return response.json() as Promise<any[]>;
+    },
+    enabled: false,
+  });
+
+  // --- React Query: note templates (on-demand) ---
+  const { data: noteTemplates = [], isLoading: loadingTemplates, refetch: refetchNoteTemplates } = useQuery({
+    queryKey: ['note-templates'],
+    queryFn: async () => {
+      const response = await api.get('/notes/templates/list');
+      if (!response.ok) throw new Error('Failed to fetch note templates');
+      return response.json() as Promise<{ id: string; name: string; content: string }[]>;
+    },
+    enabled: false,
+  });
+
+  // Helper to refresh activities after mutations
+  const refreshActivities = () => {
+    queryClient.invalidateQueries({ queryKey: ['client-activities', id] });
+  };
+
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    status: '',
-  });
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [editHasUnsavedChanges, setEditHasUnsavedChanges] = useState(false);
   const [unsavedChangesModalOpen, setUnsavedChangesModalOpen] = useState(false);
-  const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [statusUpdateSuccess, setStatusUpdateSuccess] = useState(false);
   const [updatingTags, setUpdatingTags] = useState(false);
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [loadingNotes, setLoadingNotes] = useState(false);
+  // Note UI state
   const [addNoteModalOpen, setAddNoteModalOpen] = useState(false);
-  const [newNoteText, setNewNoteText] = useState('');
-  const [newNoteTags, setNewNoteTags] = useState<string[]>([]);
-  const [savingNote, setSavingNote] = useState(false);
   const [editNoteModalOpen, setEditNoteModalOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
-  const [editNoteText, setEditNoteText] = useState('');
-  const [editNoteTags, setEditNoteTags] = useState<string[]>([]);
-  const [noteTemplates, setNoteTemplates] = useState<{ id: string; name: string; content: string }[]>([]);
-  const [loadingTemplates, setLoadingTemplates] = useState(false);
-  const [existingNoteTags, setExistingNoteTags] = useState<string[]>([]);
 
-  // Task state
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loadingTasks, setLoadingTasks] = useState(false);
+  // Task UI state
   const [addTaskModalOpen, setAddTaskModalOpen] = useState(false);
-  const [savingTask, setSavingTask] = useState(false);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
-  const [taskPriorityFilter, setTaskPriorityFilter] = useState<string | null>(null);
-  const [taskDateFilter, setTaskDateFilter] = useState<string | null>(null);
-  const [teamMembers, setTeamMembers] = useState<{ id: string; name: string; role: string }[]>([]);
-  const [loadingTeamMembers, setLoadingTeamMembers] = useState(false);
-  const [newTaskForm, setNewTaskForm] = useState({
-    text: '',
-    description: '',
-    priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH',
-    dueDate: null as Date | null,
-    assignedToId: '' as string | undefined,
-  });
 
-  // Loan scenario state
-  const [loanScenarios, setLoanScenarios] = useState<LoanScenario[]>([]);
-  const [loadingScenarios, setLoadingScenarios] = useState(false);
+  // Loan scenario UI state
   const [addScenarioModalOpen, setAddScenarioModalOpen] = useState(false);
-  const [savingScenario, setSavingScenario] = useState(false);
-  const [calculatedValues, setCalculatedValues] = useState<{
-    monthlyPayment?: number;
-    totalMonthlyPayment?: number;
-    totalInterest?: number;
-    loanToValue?: number;
-  } | null>(null);
-  const [newScenarioForm, setNewScenarioForm] = useState({
-    name: '',
-    loanType: 'PURCHASE' as 'PURCHASE' | 'REFINANCE',
-    amount: 400000,
-    interestRate: 6.5,
-    termYears: 30,
-    downPayment: 80000,
-    propertyValue: 500000,
-    propertyTaxes: 0,
-    homeInsurance: 0,
-    hoaFees: 0,
-  });
   const [selectedScenarios, setSelectedScenarios] = useState<string[]>([]);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
-  const [scenarioFormErrors, setScenarioFormErrors] = useState<{ name?: string; amount?: string; interestRate?: string; termYears?: string }>({});
   const [deleteScenarioModalOpen, setDeleteScenarioModalOpen] = useState(false);
   const [scenarioToDelete, setScenarioToDelete] = useState<LoanScenario | null>(null);
 
-  // Document state
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  // Document UI state
   const [addDocumentModalOpen, setAddDocumentModalOpen] = useState(false);
-  const [savingDocument, setSavingDocument] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [deleteDocumentModalOpen, setDeleteDocumentModalOpen] = useState(false);
-  const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
+  const [documentToDelete, setDocumentToDelete] = useState<ClientDocument | null>(null);
   const [assignPackageModalOpen, setAssignPackageModalOpen] = useState(false);
-  const [assigningPackage, setAssigningPackage] = useState(false);
-  const [availablePackages, setAvailablePackages] = useState<any[]>([]);
-  const [selectedPackageId, setSelectedPackageId] = useState<string>('');
   const [requestDocumentModalOpen, setRequestDocumentModalOpen] = useState(false);
-  const [requestingDocument, setRequestingDocument] = useState(false);
-  const [requestDocumentForm, setRequestDocumentForm] = useState({
-    documentName: '',
-    category: 'OTHER' as Document['category'],
-    dueDate: null as Date | null,
-    message: '',
-  });
-  const [newDocumentForm, setNewDocumentForm] = useState({
-    name: '',
-    fileName: '',
-    category: 'OTHER' as Document['category'],
-    status: 'UPLOADED' as Document['status'],
-    expiresAt: null as Date | null,
-    notes: '',
-  });
 
-  // Activity state
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [loadingActivities, setLoadingActivities] = useState(false);
-
-  // Communications state
-  const [communications, setCommunications] = useState<any[]>([]);
-  const [loadingCommunications, setLoadingCommunications] = useState(false);
-  const [communicationsTypeFilter, setCommunicationsTypeFilter] = useState<string>('all');
-  const [communicationsStatusFilter, setCommunicationsStatusFilter] = useState<string>('all');
+  // Communications UI state
   const [previewCommunicationOpened, setPreviewCommunicationOpened] = useState(false);
   const [previewCommunication, setPreviewCommunication] = useState<any | null>(null);
-
-  // Workflow executions state
-  const [workflowExecutions, setWorkflowExecutions] = useState<any[]>([]);
-  const [loadingWorkflowExecutions, setLoadingWorkflowExecutions] = useState(false);
-
-  // Status options fetched from backend
-  const [statusOptions, setStatusOptions] = useState<Array<{ value: string; label: string }>>([]);
-  const [loadingStatuses, setLoadingStatuses] = useState(false);
-
-  useEffect(() => {
-    if (id) {
-      // Reset state immediately when navigating to a new client to prevent stale data flash
-      setClient(null);
-      setNotes([]);
-      setTasks([]);
-      setLoanScenarios([]);
-      setDocuments([]);
-      setActivities([]);
-      setCommunications([]);
-      setWorkflowExecutions([]);
-      setLoading(true);
-      setError(null);
-      setAccessDenied(false);
-
-      fetchClient();
-      fetchStatuses();
-      fetchNotes();
-      fetchTasks();
-      fetchLoanScenarios();
-      fetchDocuments();
-      fetchActivities();
-      fetchCommunications();
-      fetchWorkflowExecutions();
-      fetchTeamMembers();
-    }
-  }, [id]);
 
   // Track pending navigation path when warning dialog is shown
   const pendingNavigation = useRef<(() => void) | null>(null);
 
-  // Check if edit form has unsaved changes
-  const hasUnsavedChanges = useMemo(() => {
-    if (!editModalOpen || !client) return false;
-    return (
-      editForm.name !== client.name ||
-      editForm.email !== client.email ||
-      editForm.phone !== (client.phone || '') ||
-      editForm.status !== client.status
-    );
-  }, [editModalOpen, client, editForm]);
-
-  // Handle browser back/forward and tab close with beforeunload
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges) {
-        e.preventDefault();
-        e.returnValue = '';
-        return '';
-      }
-    };
-
-    if (hasUnsavedChanges) {
-      window.addEventListener('beforeunload', handleBeforeUnload);
-    }
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [hasUnsavedChanges]);
-
-  // Custom navigation function that checks for unsaved changes
+  // Custom navigation function that checks for unsaved changes in edit modal
   const safeNavigate = useCallback((path: string | number) => {
-    if (hasUnsavedChanges) {
+    if (editHasUnsavedChanges) {
       pendingNavigation.current = () => {
         if (typeof path === 'number') {
           navigate(path);
@@ -542,7 +235,7 @@ export default function ClientDetails() {
         navigate(path);
       }
     }
-  }, [hasUnsavedChanges, navigate]);
+  }, [editHasUnsavedChanges, navigate]);
 
   // Handle "Stay" button in unsaved changes modal
   const handleStayOnPage = () => {
@@ -562,8 +255,7 @@ export default function ClientDetails() {
 
   // Handle closing the edit modal with unsaved changes check
   const handleCloseEditModal = useCallback(() => {
-    if (hasUnsavedChanges) {
-      // Set a flag to close modal after confirming
+    if (editHasUnsavedChanges) {
       pendingNavigation.current = () => {
         // No navigation needed, just close the modal
       };
@@ -571,280 +263,11 @@ export default function ClientDetails() {
     } else {
       setEditModalOpen(false);
     }
-  }, [hasUnsavedChanges]);
+  }, [editHasUnsavedChanges]);
 
-  const fetchActivities = async () => {
-    if (!id) return;
-    setLoadingActivities(true);
-    try {
-      const response = await fetch(`${API_URL}/activities?client_id=${id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setActivities(data);
-      }
-    } catch (error) {
-      console.error('Error fetching activities:', error);
-    } finally {
-      setLoadingActivities(false);
-    }
-  };
-
-  const ensureCsrfToken = async (): Promise<string | null> => {
-    if (csrfToken) {
-      return csrfToken;
-    }
-
-    if (!accessToken) {
-      return null;
-    }
-
-    try {
-      const csrfResponse = await fetch(`${API_URL}/auth/me`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      const newCsrfToken = csrfResponse.headers.get('X-CSRF-Token');
-      if (newCsrfToken) {
-        updateCsrfToken(newCsrfToken);
-        return newCsrfToken;
-      }
-    } catch (error) {
-      console.warn('Failed to refresh CSRF token for upload:', error);
-    }
-
-    return null;
-  };
-
-  const fetchCommunications = async () => {
-    if (!id) return;
-    setLoadingCommunications(true);
-    try {
-      const params = new URLSearchParams();
-      params.append('client_id', id);
-
-      if (communicationsTypeFilter !== 'all') {
-        params.append('type', communicationsTypeFilter);
-      }
-      if (communicationsStatusFilter !== 'all') {
-        params.append('status', communicationsStatusFilter);
-      }
-
-      const response = await fetch(`${API_URL}/communications?${params}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        // Handle both paginated and non-paginated responses
-        const communicationsData = data.data || data;
-        setCommunications(communicationsData);
-      }
-    } catch (error) {
-      console.error('Error fetching communications:', error);
-    } finally {
-      setLoadingCommunications(false);
-    }
-  };
-
-  const fetchWorkflowExecutions = async () => {
-    if (!id) return;
-    setLoadingWorkflowExecutions(true);
-    try {
-      const response = await fetch(`${API_URL}/workflow-executions?client_id=${id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setWorkflowExecutions(data.executions || []);
-      }
-    } catch (error) {
-      console.error('Error fetching workflow executions:', error);
-    } finally {
-      setLoadingWorkflowExecutions(false);
-    }
-  };
-
-  const fetchStatuses = async () => {
-    setLoadingStatuses(true);
-    try {
-      const response = await fetch(`${API_URL}/clients/statuses`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch client statuses');
-      }
-
-      const data = await response.json();
-      setStatusOptions(data);
-    } catch (error) {
-      console.error('Error fetching client statuses:', error);
-      // Fallback to hardcoded options if fetch fails
-      setStatusOptions([
-        { value: 'LEAD', label: 'Lead' },
-        { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
-        { value: 'ACTIVE', label: 'Active' },
-        { value: 'PROCESSING', label: 'Processing' },
-        { value: 'UNDERWRITING', label: 'Underwriting' },
-        { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
-        { value: 'CLOSED', label: 'Closed' },
-        { value: 'DENIED', label: 'Denied' },
-        { value: 'INACTIVE', label: 'Inactive' },
-      ]);
-    } finally {
-      setLoadingStatuses(false);
-    }
-  };
-
-  const fetchClient = async () => {
-    setLoading(true);
-    setError(null);
-    setAccessDenied(false);
-
-    try {
-      const response = await fetch(`${API_URL}/clients/${id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (response.status === 403) {
-        setAccessDenied(true);
-        return;
-      }
-
-      if (response.status === 404) {
-        setError('Client not found');
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch client');
-      }
-
-      const data = await response.json();
-      const decrypted = {
-        ...data,
-        name: decryptData(data.name),
-        email: decryptData(data.email),
-        phone: decryptData(data.phone),
-      };
-      setClient(decrypted);
-    } catch (error) {
-      console.error('Error fetching client:', error);
-      setError('Failed to load client details');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const openEditModal = () => {
-    if (client) {
-      setEditForm({
-        name: client.name,
-        email: client.email,
-        phone: client.phone || '',
-        status: client.status,
-      });
-      setEditModalOpen(true);
-    }
-  };
-
-  const handleSaveClient = async () => {
-    if (!editForm.name || !editForm.email) {
-      notifications.show({
-        title: 'Validation Error',
-        message: 'Name and email are required',
-        color: 'red',
-      });
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const response = await api.put(`/clients/${id}`, editForm);
-
-      // Handle deleted client scenario (404)
-      if (response.status === 404) {
-        notifications.show({
-          title: 'Client Not Found',
-          message: 'This client has been deleted by another user. You will be redirected to the clients list.',
-          color: 'orange',
-          autoClose: 4000,
-        });
-        setEditModalOpen(false);
-        // Redirect to clients list after a short delay
-        setTimeout(() => {
-          navigate('/clients');
-        }, 4000);
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error('Failed to update client');
-      }
-
-      const updatedClient = await response.json();
-      setClient(updatedClient);
-      setEditModalOpen(false);
-
-      notifications.show({
-        title: 'Success',
-        message: 'Client updated successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error updating client:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to update client',
-        color: 'red',
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteClient = async () => {
-    setDeleting(true);
-    try {
-      const response = await api.delete(`/clients/${id}`);
-
-      if (!response.ok) {
-        throw new Error('Failed to delete client');
-      }
-
-      notifications.show({
-        title: 'Success',
-        message: 'Client deleted successfully',
-        color: 'green',
-      });
-
-      // Navigate to clients list after successful deletion
-      navigate('/clients');
-    } catch (error) {
-      console.error('Error deleting client:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete client',
-        color: 'red',
-      });
-      setDeleteModalOpen(false);
-    } finally {
-      setDeleting(false);
-    }
+  const getCsrfToken = (): string | null => {
+    const match = document.cookie.match(/(?:^|; )csrf-token=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : null;
   };
 
   const handleStatusChange = async (newStatus: string | null) => {
@@ -885,7 +308,7 @@ export default function ClientDetails() {
 
       // Show inline success indicator - set before updating client to ensure it renders
       setStatusUpdateSuccess(true);
-      setClient(updatedClient);
+      queryClient.setQueryData(['client', id], updatedClient);
 
       // Auto-hide the success indicator after 2.5 seconds
       setTimeout(() => {
@@ -922,7 +345,7 @@ export default function ClientDetails() {
       }
 
       const updatedClient = await response.json();
-      setClient(updatedClient);
+      queryClient.setQueryData(['client', id], updatedClient);
 
       notifications.show({
         title: 'Tags Updated',
@@ -941,30 +364,6 @@ export default function ClientDetails() {
     }
   };
 
-  const fetchNotes = async () => {
-    if (!id) return;
-    setLoadingNotes(true);
-    try {
-      const response = await fetch(`${API_URL}/notes?client_id=${id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setNotes(data);
-        // Extract unique tags from all notes for autocomplete
-        const allTags = data.flatMap((note: Note) => note.tags || []);
-        const uniqueTags = Array.from(new Set(allTags)) as string[];
-        setExistingNoteTags(uniqueTags);
-      }
-    } catch (error) {
-      console.error('Error fetching notes:', error);
-    } finally {
-      setLoadingNotes(false);
-    }
-  };
-
   const sortedNotes = useMemo(() => {
     const copy = [...notes];
     copy.sort((a, b) => {
@@ -978,230 +377,9 @@ export default function ClientDetails() {
     return copy;
   }, [notes]);
 
-  const fetchTasks = async () => {
-    if (!id) return;
-    setLoadingTasks(true);
-    try {
-      const response = await fetch(`${API_URL}/tasks?client_id=${id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        // Handle both old array format and new paginated format
-        setTasks(Array.isArray(data) ? data : data.tasks || []);
-      }
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-    } finally {
-      setLoadingTasks(false);
-    }
-  };
-
-  const fetchLoanScenarios = async () => {
-    if (!id) return;
-    setLoadingScenarios(true);
-    try {
-      const response = await fetch(`${API_URL}/loan-scenarios?client_id=${id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setLoanScenarios(data);
-      }
-    } catch (error) {
-      console.error('Error fetching loan scenarios:', error);
-    } finally {
-      setLoadingScenarios(false);
-    }
-  };
-
-  const fetchDocuments = async () => {
-    if (!id) return;
-    setLoadingDocuments(true);
-    try {
-      const response = await fetch(`${API_URL}/documents?client_id=${id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setDocuments(data);
-      }
-    } catch (error) {
-      console.error('Error fetching documents:', error);
-    } finally {
-      setLoadingDocuments(false);
-    }
-  };
-
-  const fetchTeamMembers = async () => {
-    setLoadingTeamMembers(true);
-    try {
-      const response = await fetch(`${API_URL}/users/team`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setTeamMembers(data);
-      }
-    } catch (error) {
-      console.error('Error fetching team members:', error);
-    } finally {
-      setLoadingTeamMembers(false);
-    }
-  };
-
-  const fetchPackages = async () => {
-    try {
-      const response = await fetch(`${API_URL}/document-packages`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setAvailablePackages(data);
-      }
-    } catch (error) {
-      console.error('Error fetching document packages:', error);
-    }
-  };
-
-  const fetchNoteTemplates = async () => {
-    setLoadingTemplates(true);
-    try {
-      const response = await fetch(`${API_URL}/notes/templates/list`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setNoteTemplates(data);
-      }
-    } catch (error) {
-      console.error('Error fetching note templates:', error);
-    } finally {
-      setLoadingTemplates(false);
-    }
-  };
-
-  const handleCreateNote = async () => {
-    if (!newNoteText.trim()) {
-      notifications.show({
-        title: 'Validation Error',
-        message: 'Note text is required',
-        color: 'red',
-      });
-      return;
-    }
-
-    setSavingNote(true);
-    try {
-      const response = await api.post('/notes', {
-        clientId: id,
-        text: newNoteText,
-        tags: newNoteTags,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create note');
-      }
-
-      const createdNote = await response.json();
-      setNotes([createdNote, ...notes]);
-      // Update existing tags list
-      const newTagsToAdd = newNoteTags.filter(tag => !existingNoteTags.includes(tag));
-      if (newTagsToAdd.length > 0) {
-        setExistingNoteTags([...existingNoteTags, ...newTagsToAdd]);
-      }
-      setAddNoteModalOpen(false);
-      setNewNoteText('');
-      setNewNoteTags([]);
-
-      // Refresh activities to show the new note activity
-      fetchActivities();
-
-      notifications.show({
-        title: 'Success',
-        message: 'Note created successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error creating note:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to create note',
-        color: 'red',
-      });
-    } finally {
-      setSavingNote(false);
-    }
-  };
-
   const handleEditNote = (note: Note) => {
     setEditingNote(note);
-    setEditNoteText(note.text);
-    setEditNoteTags(note.tags || []);
     setEditNoteModalOpen(true);
-  };
-
-  const handleUpdateNote = async () => {
-    if (!editingNote || !editNoteText.trim()) {
-      notifications.show({
-        title: 'Validation Error',
-        message: 'Note text is required',
-        color: 'red',
-      });
-      return;
-    }
-
-    setSavingNote(true);
-    try {
-      const response = await api.put(`/notes/${editingNote.id}`, {
-        text: editNoteText,
-        tags: editNoteTags,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update note');
-      }
-
-      const updatedNote = await response.json();
-      setNotes(notes.map(n => n.id === updatedNote.id ? { ...n, text: updatedNote.text, tags: updatedNote.tags, updatedAt: updatedNote.updatedAt } : n));
-      // Update existing tags list
-      const newTagsToAdd = editNoteTags.filter(tag => !existingNoteTags.includes(tag));
-      if (newTagsToAdd.length > 0) {
-        setExistingNoteTags([...existingNoteTags, ...newTagsToAdd]);
-      }
-      setEditNoteModalOpen(false);
-      setEditingNote(null);
-      setEditNoteText('');
-      setEditNoteTags([]);
-      fetchActivities();
-
-      notifications.show({
-        title: 'Success',
-        message: 'Note updated successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error updating note:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to update note',
-        color: 'red',
-      });
-    } finally {
-      setSavingNote(false);
-    }
   };
 
   const handleDeleteNote = async (noteId: string) => {
@@ -1216,8 +394,8 @@ export default function ClientDetails() {
         throw new Error('Failed to delete note');
       }
 
-      setNotes(notes.filter(n => n.id !== noteId));
-      fetchActivities();
+      queryClient.setQueryData(['client-notes', id], (old: Note[] = []) => old.filter(n => n.id !== noteId));
+      refreshActivities();
 
       notifications.show({
         title: 'Success',
@@ -1247,8 +425,8 @@ export default function ClientDetails() {
       }
 
       const updatedNote = await response.json();
-      setNotes(notes.map(n => n.id === note.id ? { ...n, isPinned: updatedNote.isPinned } : n));
-      fetchActivities();
+      queryClient.setQueryData(['client-notes', id], (old: Note[] = []) => old.map(n => n.id === note.id ? { ...n, isPinned: updatedNote.isPinned } : n));
+      refreshActivities();
 
       notifications.show({
         title: 'Success',
@@ -1266,60 +444,6 @@ export default function ClientDetails() {
   };
 
   // ...
-
-  const handleCreateTask = async () => {
-    if (!newTaskForm.text.trim()) {
-      notifications.show({
-        title: 'Validation Error',
-        message: 'Task text is required',
-        color: 'red',
-      });
-      return;
-    }
-
-    setSavingTask(true);
-    try {
-      const response = await api.post('/tasks', {
-        clientId: id,
-        text: newTaskForm.text,
-        description: newTaskForm.description || undefined,
-        priority: newTaskForm.priority,
-        dueDate: newTaskForm.dueDate ? newTaskForm.dueDate.toISOString() : undefined,
-        assignedToId: newTaskForm.assignedToId || undefined,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create task');
-      }
-
-      const createdTask = await response.json();
-      setTasks([createdTask, ...tasks]);
-      setAddTaskModalOpen(false);
-      setNewTaskForm({
-        text: '',
-        description: '',
-        priority: 'MEDIUM',
-        dueDate: null,
-        assignedToId: '',
-      });
-      fetchActivities();
-
-      notifications.show({
-        title: 'Success',
-        message: 'Task created successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error creating task:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to create task',
-        color: 'red',
-      });
-    } finally {
-      setSavingTask(false);
-    }
-  };
 
   const handleToggleTaskStatus = async (task: Task) => {
     if (togglingTaskId === task.id) {
@@ -1339,8 +463,8 @@ export default function ClientDetails() {
       }
 
       const updatedTask = await response.json();
-      setTasks(tasks.map(t => t.id === task.id ? { ...t, status: updatedTask.status, completedAt: updatedTask.completedAt } : t));
-      fetchActivities();
+      queryClient.setQueryData(['client-tasks', id], (old: Task[] = []) => old.map(t => t.id === task.id ? { ...t, status: updatedTask.status, completedAt: updatedTask.completedAt } : t));
+      refreshActivities();
 
       notifications.show({
         title: 'Success',
@@ -1371,8 +495,8 @@ export default function ClientDetails() {
         throw new Error('Failed to delete task');
       }
 
-      setTasks(tasks.filter(t => t.id !== taskId));
-      fetchActivities();
+      queryClient.setQueryData(['client-tasks', id], (old: Task[] = []) => old.filter(t => t.id !== taskId));
+      refreshActivities();
 
       notifications.show({
         title: 'Success',
@@ -1389,169 +513,6 @@ export default function ClientDetails() {
     }
   };
 
-  const priorityColors: Record<string, string> = {
-    LOW: 'blue',
-    MEDIUM: 'yellow',
-    HIGH: 'red',
-  };
-
-  const isTaskOverdue = (task: Task): boolean => {
-    if (!task.dueDate || task.status === 'COMPLETE') return false;
-    const dueDate = new Date(task.dueDate);
-    const today = new Date();
-    dueDate.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-    return dueDate < today;
-  };
-
-  const isTaskDueToday = (task: Task): boolean => {
-    if (!task.dueDate) return false;
-    const dueDate = new Date(task.dueDate);
-    const today = new Date();
-    dueDate.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-    return dueDate.getTime() === today.getTime();
-  };
-
-  const handleCalculateScenario = async () => {
-    const errors: { name?: string; amount?: string; interestRate?: string; termYears?: string } = {};
-
-    if (!newScenarioForm.name.trim()) {
-      errors.name = 'Scenario name is required';
-    }
-
-    if (newScenarioForm.amount <= 0) {
-      errors.amount = 'Loan amount must be greater than 0';
-    }
-
-    if (newScenarioForm.interestRate <= 0) {
-      errors.interestRate = 'Interest rate must be greater than 0%';
-    } else if (newScenarioForm.interestRate > 30) {
-      errors.interestRate = 'Interest rate cannot exceed 30%';
-    }
-
-    if (!newScenarioForm.termYears || newScenarioForm.termYears <= 0) {
-      errors.termYears = 'Term is required and must be greater than 0';
-    } else if (newScenarioForm.termYears > 40) {
-      errors.termYears = 'Term cannot exceed 40 years';
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setScenarioFormErrors(errors);
-      return;
-    }
-
-    setScenarioFormErrors({});
-
-    try {
-      const response = await api.post('/loan-scenarios/calculate', {
-        amount: newScenarioForm.amount,
-        interestRate: newScenarioForm.interestRate,
-        termYears: newScenarioForm.termYears,
-        downPayment: newScenarioForm.downPayment,
-        propertyValue: newScenarioForm.propertyValue,
-        propertyTaxes: newScenarioForm.propertyTaxes,
-        homeInsurance: newScenarioForm.homeInsurance,
-        hoaFees: newScenarioForm.hoaFees,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to calculate');
-      }
-
-      const result = await response.json();
-      setCalculatedValues(result);
-
-      notifications.show({
-        title: 'Calculated',
-        message: `Monthly Payment: $${result.monthlyPayment?.toLocaleString()}`,
-        color: 'blue',
-      });
-    } catch (error) {
-      console.error('Error calculating scenario:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to calculate loan scenario',
-        color: 'red',
-      });
-    }
-  };
-
-  const handleCreateScenario = async () => {
-    const errors: { name?: string; amount?: string; interestRate?: string; termYears?: string } = {};
-
-    if (!newScenarioForm.name.trim()) {
-      errors.name = 'Scenario name is required';
-    }
-
-    if (newScenarioForm.amount <= 0) {
-      errors.amount = 'Loan amount must be greater than 0';
-    }
-
-    if (newScenarioForm.interestRate <= 0) {
-      errors.interestRate = 'Interest rate must be greater than 0%';
-    } else if (newScenarioForm.interestRate > 30) {
-      errors.interestRate = 'Interest rate cannot exceed 30%';
-    }
-
-    if (!newScenarioForm.termYears || newScenarioForm.termYears <= 0) {
-      errors.termYears = 'Term is required and must be greater than 0';
-    } else if (newScenarioForm.termYears > 40) {
-      errors.termYears = 'Term cannot exceed 40 years';
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setScenarioFormErrors(errors);
-      return;
-    }
-
-    setScenarioFormErrors({});
-    setSavingScenario(true);
-    try {
-      const response = await api.post('/loan-scenarios', {
-        clientId: id,
-        ...newScenarioForm,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create loan scenario');
-      }
-
-      const createdScenario = await response.json();
-      setLoanScenarios([createdScenario, ...loanScenarios]);
-      setAddScenarioModalOpen(false);
-      setNewScenarioForm({
-        name: '',
-        loanType: 'PURCHASE',
-        amount: 400000,
-        interestRate: 6.5,
-        termYears: 30,
-        downPayment: 80000,
-        propertyValue: 500000,
-        propertyTaxes: 0,
-        homeInsurance: 0,
-        hoaFees: 0,
-      });
-      setCalculatedValues(null);
-      fetchActivities();
-
-      notifications.show({
-        title: 'Success',
-        message: 'Loan scenario created successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error creating loan scenario:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to create loan scenario',
-        color: 'red',
-      });
-    } finally {
-      setSavingScenario(false);
-    }
-  };
-
   const handleSetPreferred = async (scenarioId: string) => {
     try {
       const response = await api.patch(`/loan-scenarios/${scenarioId}/preferred`);
@@ -1560,11 +521,11 @@ export default function ClientDetails() {
         throw new Error('Failed to set preferred');
       }
 
-      setLoanScenarios(loanScenarios.map(s => ({
+      queryClient.setQueryData(['client-loan-scenarios', id], (old: LoanScenario[] = []) => old.map(s => ({
         ...s,
         isPreferred: s.id === scenarioId,
       })));
-      fetchActivities();
+      refreshActivities();
 
       notifications.show({
         title: 'Success',
@@ -1587,42 +548,6 @@ export default function ClientDetails() {
     setDeleteScenarioModalOpen(true);
   };
 
-  const cancelDeleteScenario = () => {
-    setDeleteScenarioModalOpen(false);
-    setScenarioToDelete(null);
-  };
-
-  const confirmDeleteScenario = async () => {
-    if (!scenarioToDelete) {
-      cancelDeleteScenario();
-      return;
-    }
-
-    try {
-      const response = await api.delete(`/loan-scenarios/${scenarioToDelete.id}`);
-
-      if (!response.ok) {
-        throw new Error('Failed to delete loan scenario');
-      }
-
-      setLoanScenarios(loanScenarios.filter(s => s.id !== scenarioToDelete.id));
-      fetchActivities();
-      cancelDeleteScenario();
-
-      notifications.show({
-        title: 'Success',
-        message: 'Loan scenario deleted successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error deleting loan scenario:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete loan scenario',
-        color: 'red',
-      });
-    }
-  };
 
   const handleExportScenarioPDF = (scenario: LoanScenario) => {
     const content = `
@@ -1845,175 +770,7 @@ export default function ClientDetails() {
     });
   };
 
-  // ...
-
-  const handleCreateDocument = async () => {
-    if (!newDocumentForm.name.trim()) {
-      notifications.show({
-        title: 'Validation Error',
-        message: 'Document name is required',
-        color: 'red',
-      });
-      return;
-    }
-
-    // If no file is selected, require fileName for metadata-only upload
-    if (!selectedFile && !newDocumentForm.fileName.trim()) {
-      notifications.show({
-        title: 'Validation Error',
-        message: 'Either select a file or enter a file name',
-        color: 'red',
-      });
-      return;
-    }
-
-    setSavingDocument(true);
-
-    // If a file is selected, use XHR for progress tracking
-    if (selectedFile) {
-      setUploadProgress(0);
-
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('clientId', id || '');
-      formData.append('name', newDocumentForm.name);
-      formData.append('category', newDocumentForm.category);
-      formData.append('status', newDocumentForm.status);
-      if (newDocumentForm.notes) {
-        formData.append('notes', newDocumentForm.notes);
-      }
-
-      const xhr = new XMLHttpRequest();
-
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          const percentComplete = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(percentComplete);
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const newDocument = JSON.parse(xhr.responseText);
-            setDocuments([newDocument, ...documents]);
-            setAddDocumentModalOpen(false);
-            setNewDocumentForm({
-              name: '',
-              fileName: '',
-              category: 'OTHER',
-              status: 'UPLOADED',
-              expiresAt: null,
-              notes: '',
-            });
-            setSelectedFile(null);
-            setUploadProgress(null);
-
-            notifications.show({
-              title: 'Success',
-              message: 'Document uploaded successfully',
-              color: 'green',
-            });
-
-            fetchActivities();
-          } catch {
-            notifications.show({
-              title: 'Error',
-              message: 'Failed to process upload response',
-              color: 'red',
-            });
-          }
-        } else {
-          let message = 'Failed to upload document';
-          try {
-            const errorBody = JSON.parse(xhr.responseText);
-            if (errorBody?.message) {
-              message = errorBody.message;
-            }
-          } catch {
-            // Use default message
-          }
-          notifications.show({
-            title: 'Error',
-            message,
-            color: 'red',
-          });
-        }
-        setSavingDocument(false);
-        setUploadProgress(null);
-      });
-
-      xhr.addEventListener('error', () => {
-        notifications.show({
-          title: 'Error',
-          message: 'Upload failed. Please check your connection.',
-          color: 'red',
-        });
-        setSavingDocument(false);
-        setUploadProgress(null);
-      });
-
-      (async () => {
-        const csrf = await ensureCsrfToken();
-        xhr.open('POST', `${API_URL}/documents/upload`);
-        if (accessToken) {
-          xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
-        }
-        if (csrf) {
-          xhr.setRequestHeader('X-CSRF-Token', csrf);
-        }
-        xhr.send(formData);
-      })();
-    } else {
-      // Metadata-only upload (no file)
-      try {
-        const response = await api.post('/documents', {
-          clientId: id,
-          name: newDocumentForm.name,
-          fileName: newDocumentForm.fileName,
-          category: newDocumentForm.category,
-          status: newDocumentForm.status,
-          expiresAt: newDocumentForm.expiresAt ? newDocumentForm.expiresAt.toISOString() : undefined,
-          notes: newDocumentForm.notes || undefined,
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to create document');
-        }
-
-        const newDocument = await response.json();
-        setDocuments([newDocument, ...documents]);
-        setAddDocumentModalOpen(false);
-        setNewDocumentForm({
-          name: '',
-          fileName: '',
-          category: 'OTHER',
-          status: 'UPLOADED',
-          expiresAt: null,
-          notes: '',
-        });
-
-        notifications.show({
-          title: 'Success',
-          message: 'Document created successfully',
-          color: 'green',
-        });
-
-        fetchActivities();
-      } catch (error) {
-        console.error('Error creating document:', error);
-        notifications.show({
-          title: 'Error',
-          message: 'Failed to create document',
-          color: 'red',
-        });
-      } finally {
-        setSavingDocument(false);
-      }
-    }
-  };
-
-  const handleUpdateDocumentStatus = async (documentId: string, newStatus: Document['status']) => {
+  const handleUpdateDocumentStatus = async (documentId: string, newStatus: ClientDocument['status']) => {
     try {
       const response = await api.put(`/documents/${documentId}`, {
         status: newStatus,
@@ -2024,8 +781,8 @@ export default function ClientDetails() {
       }
 
       const updatedDocument = await response.json();
-      setDocuments(documents.map(doc => doc.id === documentId ? { ...doc, status: updatedDocument.status } : doc));
-      fetchActivities();
+      queryClient.setQueryData(['client-documents', id], (old: ClientDocument[] = []) => old.map(doc => doc.id === documentId ? { ...doc, status: updatedDocument.status } : doc));
+      refreshActivities();
 
       notifications.show({
         title: 'Status Updated',
@@ -2054,45 +811,8 @@ export default function ClientDetails() {
         throw new Error('Failed to delete document');
       }
 
-      setDocuments(documents.filter(doc => doc.id !== documentId));
-      fetchActivities();
-
-      notifications.show({
-        title: 'Success',
-        message: 'Document deleted successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error deleting document:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete document',
-        color: 'red',
-      });
-    }
-  };
-
-  const cancelDeleteDocument = () => {
-    setDeleteDocumentModalOpen(false);
-    setDocumentToDelete(null);
-  };
-
-  const confirmDeleteDocument = async () => {
-    if (!documentToDelete) {
-      cancelDeleteDocument();
-      return;
-    }
-
-    try {
-      const response = await api.delete(`/documents/${documentToDelete.id}`);
-
-      if (!response.ok) {
-        throw new Error('Failed to delete document');
-      }
-
-      setDocuments(documents.filter(doc => doc.id !== documentToDelete.id));
-      cancelDeleteDocument();
-      fetchActivities();
+      queryClient.setQueryData(['client-documents', id], (old: ClientDocument[] = []) => old.filter(doc => doc.id !== documentId));
+      refreshActivities();
 
       notifications.show({
         title: 'Success',
@@ -2111,11 +831,7 @@ export default function ClientDetails() {
 
   const handleDownloadDocument = async (documentId: string, fileName?: string) => {
     try {
-      const response = await fetch(`${API_URL}/documents/${documentId}/download`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.get(`/documents/${documentId}/download`);
 
       if (!response.ok) {
         throw new Error('Failed to download document');
@@ -2140,104 +856,6 @@ export default function ClientDetails() {
     }
   };
 
-  const handleAssignPackage = async () => {
-    if (!selectedPackageId || !id) {
-      return;
-    }
-
-    setAssigningPackage(true);
-    try {
-      const response = await api.post('/document-packages/assign', {
-        clientId: id,
-        packageId: selectedPackageId,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to assign package');
-      }
-
-      await fetchDocuments();
-      setAssignPackageModalOpen(false);
-      setSelectedPackageId('');
-      fetchActivities();
-
-      notifications.show({
-        title: 'Success',
-        message: 'Document package assigned successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error assigning package:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to assign document package',
-        color: 'red',
-      });
-    } finally {
-      setAssigningPackage(false);
-    }
-  };
-
-  // ...
-
-  const handleRequestDocument = async () => {
-    if (!requestDocumentForm.documentName.trim()) {
-      notifications.show({
-        title: 'Validation Error',
-        message: 'Please enter a document name',
-        color: 'red',
-      });
-      return;
-    }
-
-    setRequestingDocument(true);
-
-    try {
-      const response = await api.post('/documents/request', {
-        clientId: id,
-        documentName: requestDocumentForm.documentName,
-        category: requestDocumentForm.category,
-        dueDate: requestDocumentForm.dueDate ? requestDocumentForm.dueDate.toISOString() : null,
-        message: requestDocumentForm.message || null,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to request document');
-      }
-
-      const data = await response.json();
-
-      // Refresh documents list
-      await fetchDocuments();
-      fetchActivities();
-
-      notifications.show({
-        title: 'Success',
-        message: data.emailLogged
-          ? 'Document request logged to terminal (dev mode)'
-          : 'Document request sent to client',
-        color: 'green',
-      });
-
-      // Reset form and close modal
-      setRequestDocumentForm({
-        documentName: '',
-        category: 'OTHER',
-        dueDate: null,
-        message: '',
-      });
-      setRequestDocumentModalOpen(false);
-    } catch (error) {
-      console.error('Error requesting document:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to request document',
-        color: 'red',
-      });
-    } finally {
-      setRequestingDocument(false);
-    }
-  };
 
   const formatCurrency = (value: number | undefined | null) => {
     if (value === undefined || value === null || Number.isNaN(value)) return '-';
@@ -2352,7 +970,7 @@ export default function ClientDetails() {
             <Button
               leftSection={<IconEdit size={16} aria-hidden="true" />}
               variant="light"
-              onClick={openEditModal}
+              onClick={() => setEditModalOpen(true)}
             >
               Edit
             </Button>
@@ -2422,1944 +1040,201 @@ export default function ClientDetails() {
         </Tabs.List>
 
         <Tabs.Panel value="overview" pt="md">
-          <SimpleGrid cols={{ base: 1, md: 2 }}>
-            <Card withBorder>
-              <Title order={4} mb="sm">Recent Notes</Title>
-              {client.notes?.length > 0 ? (
-                <Stack gap="xs">
-                  {client.notes.map((note: any) => (
-                    <Paper key={note.id} p="sm" withBorder>
-                      <Text size="sm" lineClamp={2}>{note.text}</Text>
-                      <Text size="xs" c="dimmed" mt="xs">
-                        {new Date(note.createdAt).toLocaleDateString()}
-                      </Text>
-                    </Paper>
-                  ))}
-                </Stack>
-              ) : (
-                <Stack align="center" gap="xs" py="md">
-                  <ThemeIcon size={40} radius="xl" variant="light" color="blue" style={{ opacity: 0.6 }}>
-                    <IconNotes size={20} stroke={1.5} aria-hidden="true" />
-                  </ThemeIcon>
-                  <Text c="dimmed" size="sm" ta="center">No notes yet</Text>
-                  <Text c="dimmed" size="xs" ta="center" maw={200}>
-                    Add notes to track important information
-                  </Text>
-                </Stack>
-              )}
-            </Card>
-
-            <Card withBorder>
-              <Title order={4} mb="sm">Recent Tasks</Title>
-              {client.tasks?.length > 0 ? (
-                <Stack gap="xs">
-                  {client.tasks.map((task: any) => (
-                    <Paper key={task.id} p="sm" withBorder>
-                      <Group justify="space-between">
-                        <Text size="sm">{task.text}</Text>
-                        <Badge size="sm" color={task.status === 'COMPLETE' ? 'green' : 'blue'}>
-                          {task.status}
-                        </Badge>
-                      </Group>
-                    </Paper>
-                  ))}
-                </Stack>
-              ) : (
-                <Stack align="center" gap="xs" py="md">
-                  <ThemeIcon size={40} radius="xl" variant="light" color="orange" style={{ opacity: 0.6 }}>
-                    <IconChecklist size={20} stroke={1.5} aria-hidden="true" />
-                  </ThemeIcon>
-                  <Text c="dimmed" size="sm" ta="center">No tasks yet</Text>
-                  <Text c="dimmed" size="xs" ta="center" maw={200}>
-                    Create tasks to track action items
-                  </Text>
-                </Stack>
-              )}
-            </Card>
-          </SimpleGrid>
+          <OverviewTab client={client} />
         </Tabs.Panel>
 
         <Tabs.Panel value="notes" pt="md">
-          <Group justify="space-between" mb="md">
-            <Title order={4}>Notes</Title>
-            <Button
-              leftSection={<IconPlus size={16} aria-hidden="true" />}
-              onClick={() => {
-                fetchNoteTemplates();
-                setAddNoteModalOpen(true);
-              }}
-            >
-              Add Note
-            </Button>
-          </Group>
-          {loadingNotes ? (
-            <Text c="dimmed">Loading notes...</Text>
-          ) : notes.length === 0 ? (
-            <EmptyState
-              iconType="notes"
-              title="No notes yet"
-              description="Add notes to keep track of important information about this client."
-              ctaLabel="Add Note"
-              onCtaClick={() => {
-                fetchNoteTemplates();
-                setAddNoteModalOpen(true);
-              }}
-            />
-          ) : (
-            <Stack gap="md">
-              {sortedNotes.map((note) => (
-                <Paper key={note.id} p="md" withBorder style={note.isPinned ? { borderColor: 'var(--mantine-color-blue-5)', borderWidth: 2 } : {}}>
-                  <Group justify="space-between" align="flex-start">
-                    <Group gap="xs" style={{ flex: 1 }}>
-                      {note.isPinned && <IconPin size={16} color="var(--mantine-color-blue-6)" aria-hidden="true" />}
-                      <Text style={{ whiteSpace: 'pre-wrap', flex: 1 }}>{note.text}</Text>
-                    </Group>
-                    <Group gap="xs">
-                      <ActionIcon
-                        variant="subtle"
-                        color={note.isPinned ? 'blue' : 'gray'}
-                        onClick={() => handleTogglePin(note)}
-                        title={note.isPinned ? 'Unpin note' : 'Pin to top'}
-                        aria-label={note.isPinned ? 'Unpin note' : 'Pin note to top'}
-                      >
-                        {note.isPinned ? <IconPinnedOff size={16} aria-hidden="true" /> : <IconPin size={16} aria-hidden="true" />}
-                      </ActionIcon>
-                      <ActionIcon variant="subtle" color="blue" onClick={() => handleEditNote(note)} aria-label="Edit note">
-                        <IconEdit size={16} aria-hidden="true" />
-                      </ActionIcon>
-                      <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteNote(note.id)} aria-label="Delete note">
-                        <IconTrash size={16} aria-hidden="true" />
-                      </ActionIcon>
-                    </Group>
-                  </Group>
-                  <Group justify="space-between" mt="sm">
-                    <Text size="xs" c="dimmed">
-                      By {note.createdBy?.name || 'Unknown'}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {new Date(note.createdAt).toLocaleString()}
-                    </Text>
-                  </Group>
-                </Paper>
-              ))}
-            </Stack>
-          )}
+          <NotesTab
+            notes={notes}
+            sortedNotes={sortedNotes}
+            loadingNotes={loadingNotes}
+            onAddNote={() => setAddNoteModalOpen(true)}
+            onTogglePin={handleTogglePin}
+            onEditNote={handleEditNote}
+            onDeleteNote={handleDeleteNote}
+          />
         </Tabs.Panel>
 
         <Tabs.Panel value="documents" pt="md">
-          <Group justify="space-between" mb="md">
-            <Title order={4}>Documents</Title>
-            <Group gap="sm">
-              <Button
-                variant="light"
-                leftSection={<IconPackage size={16} aria-hidden="true" />}
-                onClick={async () => {
-                  await fetchPackages();
-                  setAssignPackageModalOpen(true);
-                }}
-              >
-                Assign Package
-              </Button>
-              <Button
-                variant="light"
-                leftSection={<IconUpload size={16} aria-hidden="true" />}
-                onClick={() => setRequestDocumentModalOpen(true)}
-              >
-                Request Document
-              </Button>
-              <Button
-                leftSection={<IconPlus size={16} aria-hidden="true" />}
-                onClick={() => setAddDocumentModalOpen(true)}
-              >
-                Add Document
-              </Button>
-            </Group>
-          </Group>
-          {loadingDocuments ? (
-            <Text c="dimmed">Loading documents...</Text>
-          ) : documents.length === 0 ? (
-            <EmptyState
-              iconType="documents"
-              title="No documents yet"
-              description="Upload and manage documents for this client's loan application."
-              ctaLabel="Add Document"
-              onCtaClick={() => setAddDocumentModalOpen(true)}
-            />
-          ) : (
-            <Stack gap="md">
-              {documents.map((doc) => {
-                const expired = isDocumentExpired(doc);
-                const expiringSoon = isDocumentExpiringSoon(doc);
-                return (
-                  <Paper
-                    key={doc.id}
-                    p="md"
-                    withBorder
-                    style={{
-                      ...(expired ? { borderColor: 'var(--mantine-color-red-5)', borderWidth: 2, backgroundColor: 'var(--mantine-color-red-0)' } : {}),
-                      ...(expiringSoon && !expired ? { borderColor: 'var(--mantine-color-yellow-5)', borderWidth: 2, backgroundColor: 'var(--mantine-color-yellow-0)' } : {}),
-                    }}
-                  >
-                    <Group justify="space-between" align="flex-start">
-                      <div style={{ flex: 1 }}>
-                        <Group gap="sm" mb="xs">
-                          <IconFiles size={20} aria-hidden="true" />
-                          <Text fw={500}>{doc.name}</Text>
-                          {expired && (
-                            <Badge color="red" variant="filled" size="sm">EXPIRED</Badge>
-                          )}
-                          {expiringSoon && !expired && (
-                            <Badge color="yellow" variant="filled" size="sm" leftSection={<IconAlertTriangle size={12} aria-hidden="true" />}>
-                              EXPIRING SOON
-                            </Badge>
-                          )}
-                        </Group>
-                        <Text size="sm" c="dimmed">{doc.fileName}</Text>
-                        {doc.notes && (
-                          <Text size="sm" c="dimmed" mt="xs">{doc.notes}</Text>
-                        )}
-                      </div>
-                      <Group gap="xs">
-                        <Badge color={documentCategoryLabels[doc.category] ? 'blue' : 'gray'} variant="light" size="sm">
-                          {documentCategoryLabels[doc.category] || doc.category}
-                        </Badge>
-                        <Select
-                          size="xs"
-                          value={doc.status}
-                          data={[
-                            { value: 'REQUIRED', label: 'Required' },
-                            { value: 'REQUESTED', label: 'Requested' },
-                            { value: 'UPLOADED', label: 'Uploaded' },
-                            { value: 'UNDER_REVIEW', label: 'Under Review' },
-                            { value: 'APPROVED', label: 'Approved' },
-                            { value: 'REJECTED', label: 'Rejected' },
-                            { value: 'EXPIRED', label: 'Expired' },
-                          ]}
-                          onChange={(value) => value && handleUpdateDocumentStatus(doc.id, value as Document['status'])}
-                          styles={{
-                            input: {
-                              backgroundColor: `var(--mantine-color-${documentStatusColors[doc.status]}-1)`,
-                              color: `var(--mantine-color-${documentStatusColors[doc.status]}-9)`,
-                              fontWeight: 500,
-                            },
-                          }}
-                        />
-                        <ActionIcon
-                          variant="subtle"
-                          color="blue"
-                          onClick={() => handleDownloadDocument(doc.id, doc.fileName)}
-                          aria-label={`Download document ${doc.name}`}
-                        >
-                          <IconDownload size={16} aria-hidden="true" />
-                        </ActionIcon>
-                        <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteDocument(doc.id)} aria-label={`Delete document ${doc.name}`}>
-                          <IconTrash size={16} aria-hidden="true" />
-                        </ActionIcon>
-                      </Group>
-                    </Group>
-                    <Group justify="space-between" mt="sm">
-                      <Group gap="xs">
-                        {doc.dueDate && (
-                          <Text size="xs" c="dimmed">Due: {new Date(doc.dueDate).toLocaleDateString()}</Text>
-                        )}
-                        {doc.expiresAt && (
-                          <Text size="xs" c={expired ? 'red' : expiringSoon ? 'yellow.7' : 'dimmed'} fw={expired || expiringSoon ? 600 : 400}>
-                            Expires: {new Date(doc.expiresAt).toLocaleDateString()}
-                          </Text>
-                        )}
-                      </Group>
-                      <Text size="xs" c="dimmed">
-                        Created: {new Date(doc.createdAt).toLocaleDateString()}
-                      </Text>
-                    </Group>
-                  </Paper>
-                );
-              })}
-            </Stack>
-          )}
+          <DocumentsTab
+            documents={documents}
+            loadingDocuments={loadingDocuments}
+            onAddDocument={() => setAddDocumentModalOpen(true)}
+            onAssignPackage={async () => {
+              await refetchPackages();
+              setAssignPackageModalOpen(true);
+            }}
+            onRequestDocument={() => setRequestDocumentModalOpen(true)}
+            onUpdateStatus={handleUpdateDocumentStatus}
+            onDownload={handleDownloadDocument}
+            onDelete={handleDeleteDocument}
+          />
         </Tabs.Panel>
 
         <Tabs.Panel value="tasks" pt="md">
-          <Group justify="space-between" mb="md">
-            <Title order={4}>Tasks</Title>
-            <Group>
-              <Select
-                placeholder="Filter by priority"
-                clearable
-                data={[
-                  { value: 'LOW', label: 'Low' },
-                  { value: 'MEDIUM', label: 'Medium' },
-                  { value: 'HIGH', label: 'High' },
-                ]}
-                value={taskPriorityFilter}
-                onChange={setTaskPriorityFilter}
-                style={{ width: 160 }}
-              />
-              <Select
-                placeholder="Due date"
-                clearable
-                data={[
-                  { value: 'today', label: 'Due Today' },
-                ]}
-                value={taskDateFilter}
-                onChange={setTaskDateFilter}
-                style={{ width: 140 }}
-              />
-              <Button
-                leftSection={<IconPlus size={16} aria-hidden="true" />}
-                onClick={() => setAddTaskModalOpen(true)}
-              >
-                Add Task
-              </Button>
-            </Group>
-          </Group>
-          {loadingTasks ? (
-            <Text c="dimmed">Loading tasks...</Text>
-          ) : tasks.length === 0 ? (
-            <EmptyState
-              iconType="tasks"
-              title="No tasks yet"
-              description="Create tasks to track what needs to be done for this client."
-              ctaLabel="Add Task"
-              onCtaClick={() => setAddTaskModalOpen(true)}
-            />
-          ) : tasks.filter(task => {
-          const matchesPriority = !taskPriorityFilter || task.priority === taskPriorityFilter;
-          const matchesDate = !taskDateFilter || (taskDateFilter === 'today' && isTaskDueToday(task));
-          return matchesPriority && matchesDate;
-        }).length === 0 ? (
-            <EmptyState
-              iconType="tasks"
-              title="No matching tasks"
-              description="No tasks match the selected filters. Try changing the filters or add a new task."
-              ctaLabel="Clear Filter"
-              onCtaClick={() => { setTaskPriorityFilter(null); setTaskDateFilter(null); }}
-            />
-          ) : (
-            <Stack gap="md">
-              {tasks.filter(task => !taskPriorityFilter || task.priority === taskPriorityFilter).map((task) => {
-                const overdue = isTaskOverdue(task);
-                return (
-                  <Paper
-                    key={task.id}
-                    p="md"
-                    withBorder
-                    style={{
-                      ...(task.status === 'COMPLETE' ? { opacity: 0.7 } : {}),
-                      ...(overdue ? { borderColor: 'var(--mantine-color-red-5)', borderWidth: 2, backgroundColor: 'var(--mantine-color-red-0)' } : {}),
-                    }}
-                  >
-                    <Group justify="space-between" align="flex-start">
-                      <Group gap="sm" style={{ flex: 1 }}>
-                        <Checkbox
-                          checked={task.status === 'COMPLETE'}
-                          onChange={() => handleToggleTaskStatus(task)}
-                          size="md"
-                          disabled={togglingTaskId === task.id}
-                        />
-                        <div style={{ flex: 1 }}>
-                          <Text style={{ textDecoration: task.status === 'COMPLETE' ? 'line-through' : 'none' }}>
-                            {task.text}
-                          </Text>
-                          {task.description && (
-                            <Text size="sm" c="dimmed" mt="xs">{task.description}</Text>
-                          )}
-                          {task.assignedTo && (
-                            <Group gap="xs" mt="xs">
-                              <IconUser size={14} aria-hidden="true" />
-                              <Text size="xs" c="blue">
-                                Assigned to: {task.assignedTo.name}
-                              </Text>
-                            </Group>
-                          )}
-                        </div>
-                      </Group>
-                      <Group gap="xs">
-                        {overdue && (
-                          <Badge color="red" size="sm" variant="filled">
-                            OVERDUE
-                          </Badge>
-                        )}
-                        <Badge color={priorityColors[task.priority]} size="sm">
-                          {task.priority}
-                        </Badge>
-                        <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteTask(task.id)} aria-label={`Delete task: ${task.text}`}>
-                          <IconTrash size={16} aria-hidden="true" />
-                        </ActionIcon>
-                      </Group>
-                    </Group>
-                    <Group justify="space-between" mt="sm">
-                      <Text size="xs" c={overdue ? 'red' : 'dimmed'} fw={overdue ? 600 : 400}>
-                        {task.dueDate ? `Due: ${new Date(task.dueDate).toLocaleDateString()}` : 'No due date'}
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        Created: {new Date(task.createdAt).toLocaleDateString()}
-                      </Text>
-                    </Group>
-
-                    {/* Subtasks Section */}
-                    {task.subtasks && task.subtasks.length > 0 && (
-                      <Box mt="md">
-                        <Divider mb="sm" />
-                        <SubtaskList
-                          taskId={task.id}
-                          subtasks={task.subtasks}
-                          onSubtasksChange={(updatedSubtasks) => {
-                            setTasks(tasks.map(t =>
-                              t.id === task.id
-                                ? { ...t, subtasks: updatedSubtasks }
-                                : t
-                            ));
-                          }}
-                        />
-                      </Box>
-                    )}
-                  </Paper>
-                );
-              })}
-            </Stack>
-          )}
+          <TasksTab
+            tasks={tasks}
+            loadingTasks={loadingTasks}
+            togglingTaskId={togglingTaskId}
+            onAddTask={() => setAddTaskModalOpen(true)}
+            onToggleTaskStatus={handleToggleTaskStatus}
+            onDeleteTask={handleDeleteTask}
+            onSubtasksChange={(taskId, updatedSubtasks) => {
+              queryClient.setQueryData(['client-tasks', id], (old: Task[] = []) => old.map(t =>
+                t.id === taskId ? { ...t, subtasks: updatedSubtasks } : t
+              ));
+            }}
+          />
         </Tabs.Panel>
 
         <Tabs.Panel value="loans" pt="md">
-          <Group justify="space-between" mb="md">
-            <Title order={4}>Loan Scenarios</Title>
-            <Group>
-              {selectedScenarios.length >= 2 && (
-                <Button
-                  leftSection={<IconScale size={16} aria-hidden="true" />}
-                  variant="light"
-                  onClick={() => setCompareModalOpen(true)}
-                >
-                  Compare ({selectedScenarios.length})
-                </Button>
-              )}
-              <Button
-                leftSection={<IconPlus size={16} aria-hidden="true" />}
-                onClick={() => setAddScenarioModalOpen(true)}
-              >
-                Add Scenario
-              </Button>
-            </Group>
-          </Group>
-          {loadingScenarios ? (
-            <Text c="dimmed">Loading loan scenarios...</Text>
-          ) : loanScenarios.length === 0 ? (
-            <EmptyState
-              iconType="scenarios"
-              title="No loan scenarios yet"
-              description="Create loan scenarios to compare different financing options for this client."
-              ctaLabel="Add Scenario"
-              onCtaClick={() => setAddScenarioModalOpen(true)}
-            />
-          ) : (
-            <>
-              {loanScenarios.length > 1 && (
-                <Text size="sm" c="dimmed" mb="md">
-                  Select 2 or more scenarios to compare them side-by-side
-                </Text>
-              )}
-              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-                {loanScenarios.map((scenario) => (
-                  <Card
-                    key={scenario.id}
-                    withBorder
-                    shadow="sm"
-                    padding="lg"
-                    style={{
-                      ...(scenario.isPreferred ? { borderColor: 'var(--mantine-color-yellow-5)', borderWidth: 2 } : {}),
-                      ...(selectedScenarios.includes(scenario.id) ? { borderColor: 'var(--mantine-color-blue-5)', borderWidth: 2, backgroundColor: 'var(--mantine-color-blue-0)' } : {}),
-                    }}
-                  >
-                    <Group justify="space-between" mb="sm">
-                      <Group gap="xs">
-                        <Checkbox
-                          checked={selectedScenarios.includes(scenario.id)}
-                          onChange={() => handleToggleScenarioSelection(scenario.id)}
-                        />
-                        {scenario.isPreferred && (
-                          <ThemeIcon color="yellow" size="sm" variant="light">
-                            <IconStar
-                              size={14}
-                              aria-hidden="true"
-                              fill="currentColor"
-                              stroke="currentColor"
-                            />
-                          </ThemeIcon>
-                        )}
-                        <Text fw={600} size="lg">{scenario.name}</Text>
-                      </Group>
-                      <Badge color={scenario.loanType === 'PURCHASE' ? 'blue' : 'green'}>
-                        {scenario.loanType}
-                      </Badge>
-                    </Group>
-
-                  <Divider mb="sm" />
-
-                  <SimpleGrid cols={2} spacing="xs" mb="md">
-                    <div>
-                      <Text size="xs" c="dimmed">Loan Amount</Text>
-                      <Text fw={500}>{formatCurrency(scenario.amount)}</Text>
-                    </div>
-                    <div>
-                      <Text size="xs" c="dimmed">Property Value</Text>
-                      <Text fw={500}>{formatCurrency(scenario.propertyValue)}</Text>
-                    </div>
-                    <div>
-                      <Text size="xs" c="dimmed">Interest Rate</Text>
-                      <Text fw={500}>{formatPercent(scenario.interestRate)}</Text>
-                    </div>
-                    <div>
-                      <Text size="xs" c="dimmed">Term</Text>
-                      <Text fw={500}>{scenario.termYears} years</Text>
-                    </div>
-                    <div>
-                      <Text size="xs" c="dimmed">Down Payment</Text>
-                      <Text fw={500}>{formatCurrency(scenario.downPayment)}</Text>
-                    </div>
-                    <div>
-                      <Text size="xs" c="dimmed">LTV Ratio</Text>
-                      <Text fw={500}>{formatPercent(scenario.loanToValue)}</Text>
-                    </div>
-                  </SimpleGrid>
-
-                  <Divider mb="sm" />
-
-                  <SimpleGrid cols={2} spacing="xs" mb="md">
-                    <div>
-                      <Text size="xs" c="dimmed">Monthly P&I</Text>
-                      <Text fw={600} c="blue" size="lg">{formatCurrency(scenario.monthlyPayment)}</Text>
-                    </div>
-                    <div>
-                      <Text size="xs" c="dimmed">Total Monthly (PITI)</Text>
-                      <Text fw={600} c="green" size="lg">{formatCurrency(scenario.totalMonthlyPayment)}</Text>
-                    </div>
-                  </SimpleGrid>
-
-                  <Text size="xs" c="dimmed" mb="md">
-                    Total Interest: {formatCurrency(scenario.totalInterest)} over {scenario.termYears} years
-                  </Text>
-
-                  <Group justify="flex-end" gap="xs">
-                    <ActionIcon
-                      variant="subtle"
-                      color="blue"
-                      onClick={() => handleExportScenarioPDF(scenario)}
-                      title="Export to PDF"
-                      aria-label={`Export ${scenario.name} to PDF`}
-                    >
-                      <IconDownload size={16} aria-hidden="true" />
-                    </ActionIcon>
-                    <ActionIcon
-                      variant="subtle"
-                      color="teal"
-                      onClick={() => handleExportAmortizationSchedule(scenario)}
-                      title="Export Amortization Schedule"
-                      aria-label={`Export amortization schedule for ${scenario.name}`}
-                    >
-                      <IconCalendar size={16} aria-hidden="true" />
-                    </ActionIcon>
-                    {!scenario.isPreferred && (
-                      <ActionIcon
-                        variant="subtle"
-                        color="yellow"
-                        onClick={() => handleSetPreferred(scenario.id)}
-                        title="Set as preferred"
-                        aria-label={`Set ${scenario.name} as preferred scenario`}
-                      >
-                        <IconStar size={16} aria-hidden="true" />
-                      </ActionIcon>
-                    )}
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      onClick={() => handleDeleteScenario(scenario.id)}
-                      title="Delete scenario"
-                      aria-label={`Delete scenario: ${scenario.name}`}
-                    >
-                      <IconTrash size={16} aria-hidden="true" />
-                    </ActionIcon>
-                  </Group>
-                </Card>
-              ))}
-              </SimpleGrid>
-            </>
-          )}
+          <LoansTab
+            loanScenarios={loanScenarios}
+            loadingScenarios={loadingScenarios}
+            onAddScenario={() => setAddScenarioModalOpen(true)}
+            onCompare={() => setCompareModalOpen(true)}
+            onToggleSelection={handleToggleScenarioSelection}
+            onSetPreferred={handleSetPreferred}
+            onDelete={handleDeleteScenario}
+            onExportPDF={handleExportScenarioPDF}
+            onExportAmortization={handleExportAmortizationSchedule}
+            selectedScenarios={selectedScenarios}
+            formatCurrency={formatCurrency}
+            formatPercent={formatPercent}
+          />
         </Tabs.Panel>
 
         <Tabs.Panel value="communications" pt="md">
-          <Group justify="space-between" mb="md">
-            <Title order={4}>Communications</Title>
-            <Button
-              leftSection={<IconSend size={16} aria-hidden="true" />}
-              onClick={() => navigate(`/communications/${id}/compose`)}
-            >
-              Compose New
-            </Button>
-          </Group>
-
-          <Group gap="sm" mb="md">
-            <Select
-              placeholder="Filter by type"
-              value={communicationsTypeFilter}
-              onChange={(value) => {
-                setCommunicationsTypeFilter(value || 'all');
-                fetchCommunications();
-              }}
-              data={[
-                { value: 'all', label: 'All Types' },
-                { value: 'EMAIL', label: 'Email' },
-                { value: 'SMS', label: 'SMS' },
-                { value: 'LETTER', label: 'Letter' },
-              ]}
-              style={{ width: 150 }}
-              clearable
-            />
-            <Select
-              placeholder="Filter by status"
-              value={communicationsStatusFilter}
-              onChange={(value) => {
-                setCommunicationsStatusFilter(value || 'all');
-                fetchCommunications();
-              }}
-              data={[
-                { value: 'all', label: 'All Statuses' },
-                { value: 'DRAFT', label: 'Draft' },
-                { value: 'READY', label: 'Ready' },
-                { value: 'PENDING', label: 'Pending' },
-                { value: 'SENT', label: 'Sent' },
-                { value: 'FAILED', label: 'Failed' },
-                { value: 'DELIVERED', label: 'Delivered' },
-                { value: 'SCHEDULED', label: 'Scheduled' },
-              ]}
-              style={{ width: 150 }}
-              clearable
-            />
-          </Group>
-
-          {loadingCommunications ? (
-            <Text c="dimmed">Loading communications...</Text>
-          ) : communications.length === 0 ? (
-            <EmptyState
-              iconType="communications"
-              title="No communications yet"
-              description="Create and send communications to this client."
-              ctaLabel="Compose Communication"
-              onCtaClick={() => navigate(`/communications/${id}/compose`)}
-            />
-          ) : (
-            <Stack gap="md">
-              {communications.map((comm) => {
-                const typeConfig: Record<string, { label: string; color: string }> = {
-                  EMAIL: { label: 'Email', color: 'blue' },
-                  SMS: { label: 'SMS', color: 'cyan' },
-                  LETTER: { label: 'Letter', color: 'grape' },
-                };
-                const statusConfig: Record<string, { label: string; color: string }> = {
-                  DRAFT: { label: 'Draft', color: 'gray' },
-                  READY: { label: 'Ready', color: 'blue' },
-                  PENDING: { label: 'Pending', color: 'yellow' },
-                  SENT: { label: 'Sent', color: 'green' },
-                  FAILED: { label: 'Failed', color: 'red' },
-                  DELIVERED: { label: 'Delivered', color: 'green' },
-                  SCHEDULED: { label: 'Scheduled', color: 'cyan' },
-                };
-
-                const typeInfo = typeConfig[comm.type] || { label: comm.type, color: 'gray' };
-                const statusInfo = statusConfig[comm.status] || { label: comm.status, color: 'gray' };
-
-                return (
-                  <Paper key={comm.id} p="md" withBorder>
-                    <Group justify="space-between" align="flex-start" mb="xs">
-                      <Group gap="sm">
-                        <Badge color={typeInfo.color}>{typeInfo.label}</Badge>
-                        <Badge color={statusInfo.color}>{statusInfo.label}</Badge>
-                        {comm.templateName && (
-                          <Badge variant="light" color="blue">Template: {comm.templateName}</Badge>
-                        )}
-                      </Group>
-                      <Group gap="xs">
-                        <ActionIcon
-                          variant="subtle"
-                          color="blue"
-                          onClick={() => {
-                            setPreviewCommunication(comm);
-                            setPreviewCommunicationOpened(true);
-                          }}
-                          title="View communication"
-                          aria-label="View communication"
-                        >
-                          <IconEye size={16} aria-hidden="true" />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          color="green"
-                          onClick={() => {
-                            navigate(`/communications/${id}/compose`, {
-                              state: { cloneFrom: comm }
-                            });
-                          }}
-                          title="Clone and reuse"
-                          aria-label="Clone and reuse"
-                        >
-                          <IconCopy size={16} aria-hidden="true" />
-                        </ActionIcon>
-                      </Group>
-                    </Group>
-
-                    {comm.subject && (
-                      <Text fw={500} mb="xs">{comm.subject}</Text>
-                    )}
-
-                    <Text
-                      size="sm"
-                      style={{
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 3,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                      }}
-                      mb="sm"
-                    >
-                      {comm.body}
-                    </Text>
-
-                    <Group justify="space-between" mt="sm">
-                      <Group gap="xs">
-                        {comm.recipient && (
-                          <Text size="xs" c="dimmed">
-                            To: {comm.recipient}
-                          </Text>
-                        )}
-                      </Group>
-                      <Group gap="sm">
-                        {comm.scheduledAt && (
-                          <Text size="xs" c="blue">
-                            Scheduled: {new Date(comm.scheduledAt).toLocaleString()}
-                          </Text>
-                        )}
-                        {comm.followUpDate && (
-                          <Text size="xs" c="orange">
-                            Follow-up: {new Date(comm.followUpDate).toLocaleDateString()}
-                          </Text>
-                        )}
-                        <Text size="xs" c="dimmed">
-                          {formatRelativeTime(comm.createdAt)}
-                        </Text>
-                      </Group>
-                    </Group>
-
-                    {comm.createdBy && (
-                      <Text size="xs" c="dimmed" mt="xs">
-                        By {comm.createdBy.name || 'Unknown'}
-                      </Text>
-                    )}
-                  </Paper>
-                );
-              })}
-            </Stack>
-          )}
+          <CommunicationsTab
+            clientId={id!}
+            communications={communications}
+            loadingCommunications={loadingCommunications}
+            communicationsTypeFilter={communicationsTypeFilter}
+            communicationsStatusFilter={communicationsStatusFilter}
+            onTypeFilterChange={setCommunicationsTypeFilter}
+            onStatusFilterChange={setCommunicationsStatusFilter}
+            onPreview={(comm) => {
+              setPreviewCommunication(comm);
+              setPreviewCommunicationOpened(true);
+            }}
+          />
         </Tabs.Panel>
 
         <Tabs.Panel value="activity" pt="md">
-          <Title order={4} mb="md">Activity Timeline</Title>
-          {loadingActivities ? (
-            <Text c="dimmed">Loading activities...</Text>
-          ) : activities.length === 0 ? (
-            <EmptyState
-              iconType="activity"
-              title="No activity recorded yet"
-              description="Activity will appear here as you work with this client's records."
-            />
-          ) : (
-            <Stack gap="md">
-              {activities.map((activity) => (
-                <Paper key={activity.id} p="md" withBorder>
-                  <Group justify="space-between" align="flex-start">
-                    <Group gap="sm">
-                      <Badge color={activityTypeColors[activity.type] || 'gray'} variant="light">
-                        {activityTypeLabels[activity.type] || activity.type}
-                      </Badge>
-                      <Text size="sm">{activity.description}</Text>
-                    </Group>
-                  </Group>
-                  <Group justify="space-between" mt="sm">
-                    <Text size="xs" c="dimmed">
-                      By {activity.user?.name || 'Unknown'}
-                    </Text>
-                    <Text size="xs" c="dimmed" title={new Date(activity.createdAt).toLocaleString()}>
-                      {formatRelativeTime(activity.createdAt)}
-                    </Text>
-                  </Group>
-                </Paper>
-              ))}
-            </Stack>
-          )}
-
-          <Divider my="xl" />
-
-          {/* Workflow Executions Section */}
-          <Title order={4} mb="md">Workflow Executions</Title>
-          {loadingWorkflowExecutions ? (
-            <Text c="dimmed">Loading workflow executions...</Text>
-          ) : workflowExecutions.length === 0 ? (
-            <Text c="dimmed">No workflow executions for this client.</Text>
-          ) : (
-            <Stack gap="md">
-              {workflowExecutions.map((execution) => (
-                <Paper key={execution.id} p="md" withBorder>
-                  <Group justify="space-between" align="flex-start">
-                    <Stack gap={0}>
-                      <Group gap="sm">
-                        <Text fw={500}>{execution.workflowName}</Text>
-                        <Badge
-                          color={
-                            execution.status === 'COMPLETED' ? 'green' :
-                            execution.status === 'RUNNING' ? 'blue' :
-                            execution.status === 'PAUSED' ? 'orange' :
-                            execution.status === 'FAILED' ? 'red' :
-                            'gray'
-                          }
-                          variant="light"
-                        >
-                          {execution.status}
-                        </Badge>
-                      </Group>
-                      {execution.errorMessage && (
-                        <Text size="sm" c="red">{execution.errorMessage}</Text>
-                      )}
-                      <Group gap="xs" mt="xs">
-                        <Text size="xs" c="dimmed">
-                          Started: {new Date(execution.startedAt || execution.createdAt).toLocaleString()}
-                        </Text>
-                        {execution.completedAt && (
-                          <Text size="xs" c="dimmed">
-                            • Completed: {new Date(execution.completedAt).toLocaleString()}
-                          </Text>
-                        )}
-                      </Group>
-                      <Text size="xs" c="dimmed">
-                        Step: {execution.currentStep}
-                      </Text>
-                    </Stack>
-                    <Button
-                      size="xs"
-                      variant="light"
-                      onClick={() => window.open(`/workflows/executions?execution_id=${execution.id}`, '_blank')}
-                    >
-                      View Details
-                    </Button>
-                  </Group>
-                </Paper>
-              ))}
-            </Stack>
-          )}
+          <ActivityTab
+            activities={activities}
+            loadingActivities={loadingActivities}
+            workflowExecutions={workflowExecutions}
+            loadingWorkflowExecutions={loadingWorkflowExecutions}
+          />
         </Tabs.Panel>
       </Tabs>
 
       {/* Edit Client Modal */}
-      <Modal
+      <EditClientModal
         opened={editModalOpen}
         onClose={handleCloseEditModal}
-        title="Edit Client"
-      >
-        <Stack>
-          <TextInput
-            label="Name"
-            placeholder="Client name"
-            required
-            value={editForm.name}
-            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-          />
-          <TextInput
-            label="Email"
-            placeholder="client@example.com"
-            required
-            type="email"
-            value={editForm.email}
-            onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-          />
-          <TextInput
-            label="Phone"
-            placeholder="(555) 123-4567"
-            value={editForm.phone}
-            onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-          />
-          <Select
-            label="Status"
-            data={[
-              { value: 'LEAD', label: 'Lead' },
-              { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
-              { value: 'ACTIVE', label: 'Active' },
-              { value: 'PROCESSING', label: 'Processing' },
-              { value: 'UNDERWRITING', label: 'Underwriting' },
-              { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
-              { value: 'CLOSED', label: 'Closed' },
-            ]}
-            value={editForm.status}
-            onChange={(value) => setEditForm({ ...editForm, status: value || 'LEAD' })}
-          />
-          <Group justify="flex-end" mt="md">
-            <Button variant="subtle" onClick={handleCloseEditModal}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveClient} loading={saving}>
-              Save
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        client={client}
+        clientId={id!}
+        onUnsavedChange={setEditHasUnsavedChanges}
+      />
 
       {/* Delete Confirmation Modal */}
-      <Modal
+      <DeleteClientModal
         opened={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
-        title="Delete Client"
-        centered
-      >
-        <Stack>
-          <Text>
-            Are you sure you want to delete <strong>{client.name}</strong>? This action cannot be undone.
-          </Text>
-          <Group justify="flex-end" mt="md">
-            <Button variant="subtle" onClick={() => setDeleteModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button color="red" onClick={handleDeleteClient} loading={deleting}>
-              Delete
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        clientId={id!}
+        clientName={client.name}
+      />
       {/* Add Note Modal */}
-      <Modal
+      <AddNoteModal
         opened={addNoteModalOpen}
-        onClose={() => { setAddNoteModalOpen(false); setNewNoteText(''); setNewNoteTags([]); }}
-        title="Add Note"
-      >
-        <Stack>
-          <Select
-            label="Use Template (optional)"
-            placeholder={loadingTemplates ? "Loading templates..." : "Select a template to start with"}
-            data={noteTemplates.map(t => ({ value: t.id, label: t.name }))}
-            clearable
-            disabled={loadingTemplates}
-            onChange={(value) => {
-              const template = noteTemplates.find(t => t.id === value);
-              if (template) {
-                setNewNoteText(template.content);
-              }
-            }}
-          />
-          <Textarea
-            label="Note"
-            placeholder="Enter your note..."
-            required
-            minRows={4}
-            value={newNoteText}
-            onChange={(e) => setNewNoteText(e.target.value)}
-          />
-          <TagsInput
-            label="Tags (optional)"
-            placeholder="Add tags (press Enter to add)"
-            value={newNoteTags}
-            onChange={setNewNoteTags}
-            data={existingNoteTags}
-            clearable
-            acceptValueOnBlur
-          />
-          <Group justify="flex-end" mt="md">
-            <Button variant="subtle" onClick={() => { setAddNoteModalOpen(false); setNewNoteText(''); setNewNoteTags([]); }}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateNote} loading={savingNote}>
-              Save
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        onClose={() => setAddNoteModalOpen(false)}
+        clientId={id!}
+        existingNoteTags={existingNoteTags}
+      />
+
       {/* Edit Note Modal */}
-      <Modal
+      <EditNoteModal
         opened={editNoteModalOpen}
-        onClose={() => { setEditNoteModalOpen(false); setEditingNote(null); setEditNoteText(''); setEditNoteTags([]); }}
-        title="Edit Note"
-      >
-        <Stack>
-          <Textarea
-            label="Note"
-            placeholder="Enter your note..."
-            required
-            minRows={4}
-            value={editNoteText}
-            onChange={(e) => setEditNoteText(e.target.value)}
-          />
-          <TagsInput
-            label="Tags (optional)"
-            placeholder="Add tags (press Enter to add)"
-            value={editNoteTags}
-            onChange={setEditNoteTags}
-            data={existingNoteTags}
-            clearable
-            acceptValueOnBlur
-          />
-          <Group justify="flex-end" mt="md">
-            <Button variant="subtle" onClick={() => { setEditNoteModalOpen(false); setEditingNote(null); setEditNoteText(''); setEditNoteTags([]); }}>
-              Cancel
-            </Button>
-            <Button onClick={handleUpdateNote} loading={savingNote}>
-              Save
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        onClose={() => { setEditNoteModalOpen(false); setEditingNote(null); }}
+        clientId={id!}
+        note={editingNote}
+        existingNoteTags={existingNoteTags}
+      />
 
       {/* Add Document Modal */}
-      <Modal
+      <AddDocumentModal
         opened={addDocumentModalOpen}
-        onClose={() => {
-          if (!savingDocument) {
-            setAddDocumentModalOpen(false);
-            setNewDocumentForm({ name: '', fileName: '', category: 'OTHER', status: 'UPLOADED', expiresAt: null, notes: '' });
-            setSelectedFile(null);
-            setUploadProgress(null);
-          }
-        }}
-        title="Add Document"
-        closeOnClickOutside={!savingDocument}
-        closeOnEscape={!savingDocument}
-      >
-        <Stack>
-          <TextInput
-            label="Document Name"
-            placeholder="e.g., W-2 Tax Form 2025"
-            required
-            value={newDocumentForm.name}
-            onChange={(e) => setNewDocumentForm({ ...newDocumentForm, name: e.target.value })}
-            disabled={savingDocument}
-          />
-          <Dropzone
-            onDrop={(files: FileWithPath[]) => {
-              const file = files[0];
-
-              // Check for dangerous file extensions
-              const dangerousExtensions = ['.exe', '.bat', '.cmd', '.com', '.scr', '.pif', '.vbs', '.js', '.jar', '.app', '.deb', '.rpm', '.dmg', '.pkg', '.sh', '.ps1', '.vb', '.wsf'];
-              const fileName = file.name.toLowerCase();
-              const hasDangerousExtension = dangerousExtensions.some(ext => fileName.endsWith(ext));
-
-              if (hasDangerousExtension) {
-                notifications.show({
-                  title: 'File Type Not Allowed',
-                  message: `Dangerous file types (${dangerousExtensions.join(', ')}) are not permitted for security reasons. Allowed types: PDF, images, and documents.`,
-                  color: 'red',
-                  autoClose: 5000,
-                });
-                return;
-              }
-
-              setSelectedFile(file);
-              // Auto-fill document name from file name if empty
-              if (file && !newDocumentForm.name) {
-                const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
-                setNewDocumentForm({ ...newDocumentForm, name: nameWithoutExt });
-              }
-            }}
-            onReject={(files) => {
-              const rejectedFile = files[0];
-              const errors = rejectedFile.errors;
-
-              if (errors[0]?.code === 'file-too-large') {
-                notifications.show({
-                  title: 'File Too Large',
-                  message: 'Maximum file size is 10MB. Please compress your file or contact support.',
-                  color: 'red',
-                  autoClose: 5000,
-                });
-              } else if (errors[0]?.code === 'file-invalid-type') {
-                notifications.show({
-                  title: 'Invalid File Type',
-                  message: 'Allowed file types: PDF, images (JPEG, PNG, GIF, TIFF, BMP, WebP), and documents (Word, Excel, PowerPoint, RTF, CSV, plain text). Dangerous file types (.exe, .bat, .cmd, etc.) are not permitted.',
-                  color: 'red',
-                  autoClose: 7000,
-                });
-              } else {
-                notifications.show({
-                  title: 'File Upload Error',
-                  message: 'Some files were rejected. Please check the file format and size.',
-                  color: 'red',
-                });
-              }
-            }}
-            maxSize={10 * 1024 * 1024} // 10MB
-            accept={[
-              'application/pdf',
-              'image/png',
-              'image/jpeg',
-              'image/jpg',
-              'image/gif',
-              'image/tiff',
-              'image/bmp',
-              'image/webp',
-              'application/msword',
-              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-              'application/vnd.ms-excel',
-              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-              'application/vnd.ms-powerpoint',
-              'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-              'text/plain',
-              'text/csv',
-              'application/rtf',
-            ]}
-            disabled={savingDocument}
-            style={{
-              border: '2px dashed var(--mantine-color-blue-5)',
-              borderRadius: '8px',
-              padding: '40px 20px',
-              backgroundColor: selectedFile ? 'var(--mantine-color-blue-0)' : 'transparent',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-            }}
-          >
-            <Group justify="center" gap="xl" mih={120} style={{ pointerEvents: 'none' }}>
-              <Dropzone.Accept>
-                <ThemeIcon size={60} color="blue" variant="light">
-                  <IconUpload size={30} style={{ width: '30px', height: '30px' }} aria-hidden="true" />
-                </ThemeIcon>
-              </Dropzone.Accept>
-              <Dropzone.Reject>
-                <ThemeIcon size={60} color="red" variant="light">
-                  <IconUpload size={30} style={{ width: '30px', height: '30px' }} aria-hidden="true" />
-                </ThemeIcon>
-              </Dropzone.Reject>
-              <Dropzone.Idle>
-                <ThemeIcon size={60} color="gray" variant="light">
-                  <IconUpload size={30} style={{ width: '30px', height: '30px' }} aria-hidden="true" />
-                </ThemeIcon>
-              </Dropzone.Idle>
-
-              <Box>
-                <Text size="xl" inline>
-                  {selectedFile ? 'Drag another file or click to replace' : 'Drag files here or click to upload'}
-                </Text>
-                <Text size="sm" c="dimmed" inline mt={7}>
-                  Attach PDF, images, or documents (max 10MB)
-                </Text>
-                <Text size="xs" c="blue" inline mt={4} display="block">
-                  Allowed: PDF, images (JPEG, PNG, GIF, TIFF, BMP, WebP), Word, Excel, PowerPoint, RTF, CSV, plain text
-                </Text>
-              </Box>
-            </Group>
-          </Dropzone>
-          {selectedFile && (
-            <Text size="sm" c="dimmed">
-              Selected: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-            </Text>
-          )}
-          {uploadProgress !== null && (
-            <Stack gap="xs">
-              <Progress value={uploadProgress} size="lg" animated striped />
-              <Text size="sm" ta="center" c="blue">
-                Uploading... {uploadProgress}%
-              </Text>
-            </Stack>
-          )}
-          {!selectedFile && (
-            <TextInput
-              label="File Name (if not uploading)"
-              placeholder="e.g., w2_2025.pdf"
-              value={newDocumentForm.fileName}
-              onChange={(e) => setNewDocumentForm({ ...newDocumentForm, fileName: e.target.value })}
-              disabled={savingDocument}
-            />
-          )}
-          <Select
-            label="Category"
-            data={[
-              { value: 'INCOME', label: 'Income' },
-              { value: 'EMPLOYMENT', label: 'Employment' },
-              { value: 'ASSETS', label: 'Assets' },
-              { value: 'PROPERTY', label: 'Property' },
-              { value: 'INSURANCE', label: 'Insurance' },
-              { value: 'CREDIT', label: 'Credit' },
-              { value: 'OTHER', label: 'Other' },
-            ]}
-            value={newDocumentForm.category}
-            onChange={(value) => setNewDocumentForm({ ...newDocumentForm, category: (value as Document['category']) || 'OTHER' })}
-            disabled={savingDocument}
-          />
-          <Select
-            label="Status"
-            data={[
-              { value: 'REQUIRED', label: 'Required' },
-              { value: 'REQUESTED', label: 'Requested' },
-              { value: 'UPLOADED', label: 'Uploaded' },
-              { value: 'UNDER_REVIEW', label: 'Under Review' },
-              { value: 'APPROVED', label: 'Approved' },
-              { value: 'REJECTED', label: 'Rejected' },
-            ]}
-            value={newDocumentForm.status}
-            onChange={(value) => setNewDocumentForm({ ...newDocumentForm, status: (value as Document['status']) || 'UPLOADED' })}
-            disabled={savingDocument}
-          />
-          <DateInput
-            label="Expiration Date (optional)"
-            placeholder="Select expiration date"
-            value={newDocumentForm.expiresAt}
-            onChange={(value) => setNewDocumentForm({ ...newDocumentForm, expiresAt: value })}
-            clearable
-            disabled={savingDocument}
-          />
-          <Textarea
-            label="Notes (optional)"
-            placeholder="Add any notes about this document..."
-            minRows={2}
-            value={newDocumentForm.notes}
-            onChange={(e) => setNewDocumentForm({ ...newDocumentForm, notes: e.target.value })}
-            disabled={savingDocument}
-          />
-          <Group justify="flex-end" mt="md">
-            <Button
-              variant="subtle"
-              onClick={() => {
-                setAddDocumentModalOpen(false);
-                setNewDocumentForm({ name: '', fileName: '', category: 'OTHER', status: 'UPLOADED', expiresAt: null, notes: '' });
-                setSelectedFile(null);
-                setUploadProgress(null);
-              }}
-              disabled={savingDocument}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleCreateDocument} loading={savingDocument}>
-              {selectedFile ? 'Upload' : 'Save'}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        onClose={() => setAddDocumentModalOpen(false)}
+        clientId={id!}
+      />
 
       {/* Assign Package Modal */}
-      <Modal
+      <AssignPackageModal
         opened={assignPackageModalOpen}
-        onClose={() => {
-          if (!assigningPackage) {
-            setAssignPackageModalOpen(false);
-            setSelectedPackageId('');
-          }
-        }}
-        title="Assign Document Package"
-        closeOnClickOutside={!assigningPackage}
-        closeOnEscape={!assigningPackage}
-      >
-        <Stack>
-          <Text size="sm">
-            Select a document package to assign to this client. All documents in the package will be created with "Required" status.
-          </Text>
-          <Select
-            label="Document Package"
-            placeholder="Select a package"
-            required
-            data={availablePackages.map((pkg) => ({ value: pkg.id, label: pkg.name }))}
-            value={selectedPackageId}
-            onChange={(value) => setSelectedPackageId(value || '')}
-            disabled={assigningPackage}
-            nothingFoundMessage="No packages available"
-          />
-          {availablePackages.find((pkg) => pkg.id === selectedPackageId)?.description && (
-            <Text size="sm" c="dimmed">
-              {availablePackages.find((pkg) => pkg.id === selectedPackageId)?.description}
-            </Text>
-          )}
-          {selectedPackageId && availablePackages.find((pkg) => pkg.id === selectedPackageId) && (
-            <Paper withBorder p="sm" bg="gray.0">
-              <Text size="sm" fw={500} mb="xs">Documents included:</Text>
-              <Stack gap="xs">
-                {JSON.parse(
-                  availablePackages.find((pkg) => pkg.id === selectedPackageId)?.documents || '[]'
-                ).map((doc: any, idx: number) => (
-                  <Text key={idx} size="sm">• {doc.name}</Text>
-                ))}
-              </Stack>
-            </Paper>
-          )}
-          <Group justify="flex-end" mt="md">
-            <Button
-              variant="subtle"
-              onClick={() => {
-                setAssignPackageModalOpen(false);
-                setSelectedPackageId('');
-              }}
-              disabled={assigningPackage}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleAssignPackage} loading={assigningPackage} disabled={!selectedPackageId}>
-              Assign Package
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        onClose={() => setAssignPackageModalOpen(false)}
+        clientId={id!}
+      />
 
       {/* Request Document Modal */}
-      <Modal
+      <RequestDocumentModal
         opened={requestDocumentModalOpen}
-        onClose={() => {
-          if (!requestingDocument) {
-            setRequestDocumentModalOpen(false);
-            setRequestDocumentForm({ documentName: '', category: 'OTHER', dueDate: null, message: '' });
-          }
-        }}
-        title="Request Document from Client"
-        closeOnClickOutside={!requestingDocument}
-        closeOnEscape={!requestingDocument}
-      >
-        <Stack>
-          <TextInput
-            label="Document Name"
-            placeholder="e.g., W-2 Tax Form 2025"
-            required
-            value={requestDocumentForm.documentName}
-            onChange={(e) => setRequestDocumentForm({ ...requestDocumentForm, documentName: e.target.value })}
-            disabled={requestingDocument}
-          />
-          <Select
-            label="Category"
-            data={[
-              { value: 'INCOME', label: 'Income' },
-              { value: 'EMPLOYMENT', label: 'Employment' },
-              { value: 'ASSETS', label: 'Assets' },
-              { value: 'PROPERTY', label: 'Property' },
-              { value: 'INSURANCE', label: 'Insurance' },
-              { value: 'CREDIT', label: 'Credit' },
-              { value: 'OTHER', label: 'Other' },
-            ]}
-            value={requestDocumentForm.category}
-            onChange={(value) => setRequestDocumentForm({ ...requestDocumentForm, category: (value as Document['category']) || 'OTHER' })}
-            disabled={requestingDocument}
-          />
-          <DateInput
-            label="Due Date (optional)"
-            placeholder="Select due date"
-            value={requestDocumentForm.dueDate}
-            onChange={(value) => setRequestDocumentForm({ ...requestDocumentForm, dueDate: value })}
-            clearable
-            disabled={requestingDocument}
-          />
-          <Textarea
-            label="Message to Client (optional)"
-            placeholder="Add any additional instructions for the client..."
-            minRows={3}
-            value={requestDocumentForm.message}
-            onChange={(e) => setRequestDocumentForm({ ...requestDocumentForm, message: e.target.value })}
-            disabled={requestingDocument}
-          />
-          <Text size="sm" c="dimmed" style={{ fontStyle: 'italic' }}>
-            In development mode, the email will be logged to the terminal instead of being sent.
-          </Text>
-          <Group justify="flex-end" mt="md">
-            <Button
-              variant="subtle"
-              onClick={() => {
-                setRequestDocumentModalOpen(false);
-                setRequestDocumentForm({ documentName: '', category: 'OTHER', dueDate: null, message: '' });
-              }}
-              disabled={requestingDocument}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleRequestDocument} loading={requestingDocument}>
-              Send Request
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        onClose={() => setRequestDocumentModalOpen(false)}
+        clientId={id!}
+      />
 
       {/* Delete Document Confirmation Modal */}
-      <Modal
+      <DeleteDocumentModal
         opened={deleteDocumentModalOpen}
-        onClose={cancelDeleteDocument}
-        title="Delete Document"
-        centered
-      >
-        <Stack>
-          <Text>
-            Are you sure you want to delete the document <Text fw={700}>"{documentToDelete?.name}"</Text>?
-          </Text>
-          <Text size="sm" c="dimmed">
-            This action cannot be undone.
-          </Text>
-          <Group justify="flex-end" mt="md">
-            <Button variant="light" onClick={cancelDeleteDocument}>
-              Cancel
-            </Button>
-            <Button color="red" onClick={confirmDeleteDocument}>
-              Delete Document
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        onClose={() => { setDeleteDocumentModalOpen(false); setDocumentToDelete(null); }}
+        clientId={id!}
+        document={documentToDelete}
+      />
 
       {/* Delete Loan Scenario Confirmation Modal */}
-      <Modal
+      <DeleteScenarioModal
         opened={deleteScenarioModalOpen}
-        onClose={cancelDeleteScenario}
-        title="Delete Loan Scenario"
-        centered
-      >
-        <Stack>
-          <Text>
-            Are you sure you want to delete the loan scenario <Text fw={700}>"{scenarioToDelete?.name}"</Text>?
-          </Text>
-          <Text size="sm" c="dimmed">
-            This action cannot be undone.
-          </Text>
-          <Group justify="flex-end" mt="md">
-            <Button variant="light" onClick={cancelDeleteScenario}>
-              Cancel
-            </Button>
-            <Button color="red" onClick={confirmDeleteScenario}>
-              Delete Scenario
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        onClose={() => { setDeleteScenarioModalOpen(false); setScenarioToDelete(null); }}
+        clientId={id!}
+        scenario={scenarioToDelete}
+      />
 
       {/* Add Task Modal */}
-      <Modal
+      <AddTaskModal
         opened={addTaskModalOpen}
-        onClose={() => {
-          setAddTaskModalOpen(false);
-          setNewTaskForm({ text: '', description: '', priority: 'MEDIUM', dueDate: null, assignedToId: '' });
-        }}
-        title="Add Task"
-      >
-        <Stack>
-          <TextInput
-            label="Task"
-            placeholder="Enter task description..."
-            required
-            value={newTaskForm.text}
-            onChange={(e) => setNewTaskForm({ ...newTaskForm, text: e.target.value })}
-          />
-          <Textarea
-            label="Description (optional)"
-            placeholder="Add more details..."
-            minRows={2}
-            value={newTaskForm.description}
-            onChange={(e) => setNewTaskForm({ ...newTaskForm, description: e.target.value })}
-          />
-          <Select
-            label="Priority"
-            data={[
-              { value: 'LOW', label: 'Low' },
-              { value: 'MEDIUM', label: 'Medium' },
-              { value: 'HIGH', label: 'High' },
-            ]}
-            value={newTaskForm.priority}
-            onChange={(value) => setNewTaskForm({ ...newTaskForm, priority: (value as 'LOW' | 'MEDIUM' | 'HIGH') || 'MEDIUM' })}
-          />
-          <Select
-            label="Assign To (optional)"
-            placeholder="Select team member"
-            clearable
-            disabled={loadingTeamMembers}
-            data={teamMembers.map(member => ({
-              value: member.id,
-              label: `${member.name} (${member.role})`,
-            }))}
-            value={newTaskForm.assignedToId}
-            onChange={(value) => setNewTaskForm({ ...newTaskForm, assignedToId: value as string || '' })}
-          />
-          <DateInput
-            label="Due Date (optional)"
-            placeholder="Select due date"
-            value={newTaskForm.dueDate}
-            onChange={(date) => setNewTaskForm({ ...newTaskForm, dueDate: date })}
-            clearable
-            minDate={new Date()}
-          />
-          <Group justify="flex-end" mt="md">
-            <Button
-              variant="subtle"
-              onClick={() => {
-                setAddTaskModalOpen(false);
-                setNewTaskForm({ text: '', description: '', priority: 'MEDIUM', dueDate: null, assignedToId: '' });
-              }}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleCreateTask} loading={savingTask}>
-              Save
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        onClose={() => setAddTaskModalOpen(false)}
+        clientId={id!}
+      />
 
       {/* Add Loan Scenario Modal */}
-      <Modal
+      <AddScenarioModal
         opened={addScenarioModalOpen}
-        onClose={() => {
-          setAddScenarioModalOpen(false);
-          setNewScenarioForm({
-            name: '',
-            loanType: 'PURCHASE',
-            amount: 400000,
-            interestRate: 6.5,
-            termYears: 30,
-            downPayment: 80000,
-            propertyValue: 500000,
-            propertyTaxes: 0,
-            homeInsurance: 0,
-            hoaFees: 0,
-          });
-          setCalculatedValues(null);
-          setScenarioFormErrors({});
-        }}
-        title="Add Loan Scenario"
-        size="lg"
-      >
-        <Stack>
-          <TextInput
-            label="Scenario Name"
-            placeholder="e.g., 30-Year Fixed 6.5%"
-            required
-            value={newScenarioForm.name}
-            onChange={(e) => {
-              setNewScenarioForm({ ...newScenarioForm, name: e.target.value });
-              if (scenarioFormErrors.name) setScenarioFormErrors({ ...scenarioFormErrors, name: undefined });
-            }}
-            error={scenarioFormErrors.name}
-          />
-
-          <Select
-            label="Loan Type"
-            data={[
-              { value: 'PURCHASE', label: 'Purchase' },
-              { value: 'REFINANCE', label: 'Refinance' },
-            ]}
-            value={newScenarioForm.loanType}
-            onChange={(value) => setNewScenarioForm({ ...newScenarioForm, loanType: (value as 'PURCHASE' | 'REFINANCE') || 'PURCHASE' })}
-          />
-
-          <SimpleGrid cols={2}>
-            <NumberInput
-              label="Loan Amount"
-              placeholder="400000"
-              required
-              value={newScenarioForm.amount}
-              onChange={(value) => {
-                setNewScenarioForm({ ...newScenarioForm, amount: Number(value) || 0 });
-                if (scenarioFormErrors.amount) setScenarioFormErrors({ ...scenarioFormErrors, amount: undefined });
-              }}
-              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-              thousandSeparator=","
-              error={scenarioFormErrors.amount}
-            />
-            <NumberInput
-              label="Property Value"
-              placeholder="500000"
-              min={0}
-              value={newScenarioForm.propertyValue}
-              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, propertyValue: Number(value) || 0 })}
-              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-              thousandSeparator=","
-            />
-          </SimpleGrid>
-
-          <SimpleGrid cols={3}>
-            <NumberInput
-              label="Interest Rate (%)"
-              placeholder="6.5"
-              required
-              min={0}
-              step={0.125}
-              decimalScale={3}
-              value={newScenarioForm.interestRate}
-              onChange={(value) => {
-                setNewScenarioForm({ ...newScenarioForm, interestRate: Number(value) || 0 });
-                if (scenarioFormErrors.interestRate) setScenarioFormErrors({ ...scenarioFormErrors, interestRate: undefined });
-              }}
-              leftSection={<IconPercentage size={16} aria-hidden="true" />}
-              error={scenarioFormErrors.interestRate}
-            />
-            <NumberInput
-              label="Term (Years)"
-              placeholder="30"
-              required
-              min={1}
-              max={40}
-              value={newScenarioForm.termYears}
-              onChange={(value) => {
-                setNewScenarioForm({ ...newScenarioForm, termYears: Number(value) || 0 });
-                if (scenarioFormErrors.termYears) setScenarioFormErrors({ ...scenarioFormErrors, termYears: undefined });
-              }}
-              leftSection={<IconCalendar size={16} aria-hidden="true" />}
-              error={scenarioFormErrors.termYears}
-            />
-            <NumberInput
-              label="Down Payment"
-              placeholder="80000"
-              min={0}
-              value={newScenarioForm.downPayment}
-              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, downPayment: Number(value) || 0 })}
-              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-              thousandSeparator=","
-            />
-          </SimpleGrid>
-
-          <Divider label="Additional Costs (Annual)" labelPosition="center" />
-
-          <SimpleGrid cols={3}>
-            <NumberInput
-              label="Property Taxes"
-              placeholder="0"
-              min={0}
-              value={newScenarioForm.propertyTaxes}
-              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, propertyTaxes: Number(value) || 0 })}
-              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-              thousandSeparator=","
-            />
-            <NumberInput
-              label="Home Insurance"
-              placeholder="0"
-              min={0}
-              value={newScenarioForm.homeInsurance}
-              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, homeInsurance: Number(value) || 0 })}
-              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-              thousandSeparator=","
-            />
-            <NumberInput
-              label="HOA Fees (Monthly)"
-              placeholder="0"
-              min={0}
-              value={newScenarioForm.hoaFees}
-              onChange={(value) => setNewScenarioForm({ ...newScenarioForm, hoaFees: Number(value) || 0 })}
-              leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-              thousandSeparator=","
-            />
-          </SimpleGrid>
-
-          {calculatedValues && (
-            <>
-              <Divider label="Calculated Values" labelPosition="center" />
-              <Paper p="md" withBorder bg="gray.0">
-                <SimpleGrid cols={2}>
-                  <div>
-                    <Text size="xs" c="dimmed">Monthly P&I</Text>
-                    <Text fw={600} size="lg" c="blue">{formatCurrency(calculatedValues.monthlyPayment)}</Text>
-                  </div>
-                  <div>
-                    <Text size="xs" c="dimmed">Total Monthly (PITI)</Text>
-                    <Text fw={600} size="lg" c="green">{formatCurrency(calculatedValues.totalMonthlyPayment)}</Text>
-                  </div>
-                  <div>
-                    <Text size="xs" c="dimmed">Total Interest</Text>
-                    <Text fw={500}>{formatCurrency(calculatedValues.totalInterest)}</Text>
-                  </div>
-                  <div>
-                    <Text size="xs" c="dimmed">LTV Ratio</Text>
-                    <Text fw={500}>{formatPercent(calculatedValues.loanToValue)}</Text>
-                  </div>
-                </SimpleGrid>
-              </Paper>
-            </>
-          )}
-
-          <Group justify="space-between" mt="md">
-            <Button variant="light" onClick={handleCalculateScenario}>
-              Calculate
-            </Button>
-            <Group>
-              <Button
-                variant="subtle"
-                onClick={() => {
-                  setAddScenarioModalOpen(false);
-                  setNewScenarioForm({
-                    name: '',
-                    loanType: 'PURCHASE',
-                    amount: 400000,
-                    interestRate: 6.5,
-                    termYears: 30,
-                    downPayment: 80000,
-                    propertyValue: 500000,
-                    propertyTaxes: 0,
-                    homeInsurance: 0,
-                    hoaFees: 0,
-                  });
-                  setCalculatedValues(null);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleCreateScenario} loading={savingScenario}>
-                Save
-              </Button>
-            </Group>
-          </Group>
-        </Stack>
-      </Modal>
+        onClose={() => setAddScenarioModalOpen(false)}
+        clientId={id!}
+      />
 
       {/* Compare Loan Scenarios Modal */}
-      <Modal
+      <CompareModal
         opened={compareModalOpen}
         onClose={() => setCompareModalOpen(false)}
-        title="Compare Loan Scenarios"
-        size="xl"
-      >
-        <Stack>
-          {getSelectedScenariosData().length >= 2 && (() => {
-            const scenarios = getSelectedScenariosData();
-            const minPayment = Math.min(...scenarios.map(s => s.monthlyPayment || 0));
-            const maxPayment = Math.max(...scenarios.map(s => s.monthlyPayment || 0));
-            const minInterest = Math.min(...scenarios.map(s => s.totalInterest || 0));
-            const maxInterest = Math.max(...scenarios.map(s => s.totalInterest || 0));
-            const paymentDiff = maxPayment - minPayment;
-            const interestDiff = maxInterest - minInterest;
-
-            return (
-              <>
-                <Paper p="md" withBorder bg="blue.0" mb="md">
-                  <SimpleGrid cols={2}>
-                    <div>
-                      <Text size="sm" c="dimmed">Monthly Payment Difference</Text>
-                      <Text fw={700} size="xl" c="blue">{formatCurrency(paymentDiff)}/mo</Text>
-                    </div>
-                    <div>
-                      <Text size="sm" c="dimmed">Total Interest Difference</Text>
-                      <Text fw={700} size="xl" c="red">{formatCurrency(interestDiff)}</Text>
-                    </div>
-                  </SimpleGrid>
-                </Paper>
-
-                <Table striped highlightOnHover withTableBorder>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Metric</Table.Th>
-                      {scenarios.map(s => (
-                        <Table.Th key={s.id}>{s.name}</Table.Th>
-                      ))}
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    <Table.Tr>
-                      <Table.Td fw={500}>Loan Type</Table.Td>
-                      {scenarios.map(s => (
-                        <Table.Td key={s.id}>
-                          <Badge color={s.loanType === 'PURCHASE' ? 'blue' : 'green'}>{s.loanType}</Badge>
-                        </Table.Td>
-                      ))}
-                    </Table.Tr>
-                    <Table.Tr>
-                      <Table.Td fw={500}>Loan Amount</Table.Td>
-                      {scenarios.map(s => (
-                        <Table.Td key={s.id}>{formatCurrency(s.amount)}</Table.Td>
-                      ))}
-                    </Table.Tr>
-                    <Table.Tr>
-                      <Table.Td fw={500}>Interest Rate</Table.Td>
-                      {scenarios.map(s => (
-                        <Table.Td key={s.id}>{formatPercent(s.interestRate)}</Table.Td>
-                      ))}
-                    </Table.Tr>
-                    <Table.Tr>
-                      <Table.Td fw={500}>Term</Table.Td>
-                      {scenarios.map(s => (
-                        <Table.Td key={s.id}>{s.termYears} years</Table.Td>
-                      ))}
-                    </Table.Tr>
-                    <Table.Tr>
-                      <Table.Td fw={500}>Down Payment</Table.Td>
-                      {scenarios.map(s => (
-                        <Table.Td key={s.id}>{formatCurrency(s.downPayment)}</Table.Td>
-                      ))}
-                    </Table.Tr>
-                    <Table.Tr>
-                      <Table.Td fw={500}>Property Value</Table.Td>
-                      {scenarios.map(s => (
-                        <Table.Td key={s.id}>{formatCurrency(s.propertyValue)}</Table.Td>
-                      ))}
-                    </Table.Tr>
-                    <Table.Tr>
-                      <Table.Td fw={500}>LTV Ratio</Table.Td>
-                      {scenarios.map(s => (
-                        <Table.Td key={s.id}>{formatPercent(s.loanToValue)}</Table.Td>
-                      ))}
-                    </Table.Tr>
-                    <Table.Tr bg="blue.0">
-                      <Table.Td fw={700}>Monthly P&I</Table.Td>
-                      {scenarios.map(s => (
-                        <Table.Td key={s.id}>
-                          <Text fw={700} c={s.monthlyPayment === minPayment ? 'green' : s.monthlyPayment === maxPayment ? 'red' : undefined}>
-                            {formatCurrency(s.monthlyPayment)}
-                            {s.monthlyPayment === minPayment && <Badge ml="xs" size="xs" color="green">Lowest</Badge>}
-                          </Text>
-                        </Table.Td>
-                      ))}
-                    </Table.Tr>
-                    <Table.Tr bg="blue.0">
-                      <Table.Td fw={700}>Total Monthly (PITI)</Table.Td>
-                      {scenarios.map(s => (
-                        <Table.Td key={s.id}>
-                          <Text fw={700}>{formatCurrency(s.totalMonthlyPayment)}</Text>
-                        </Table.Td>
-                      ))}
-                    </Table.Tr>
-                    <Table.Tr bg="red.0">
-                      <Table.Td fw={700}>Total Interest</Table.Td>
-                      {scenarios.map(s => (
-                        <Table.Td key={s.id}>
-                          <Text fw={700} c={s.totalInterest === minInterest ? 'green' : s.totalInterest === maxInterest ? 'red' : undefined}>
-                            {formatCurrency(s.totalInterest)}
-                            {s.totalInterest === minInterest && <Badge ml="xs" size="xs" color="green">Lowest</Badge>}
-                          </Text>
-                        </Table.Td>
-                      ))}
-                    </Table.Tr>
-                  </Table.Tbody>
-                </Table>
-              </>
-            );
-          })()}
-
-          <Group justify="flex-end" mt="md">
-            <Button variant="subtle" onClick={() => setCompareModalOpen(false)}>
-              Close
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        scenarios={getSelectedScenariosData()}
+      />
 
       {/* Communication Preview Modal */}
-      <Modal
+      <CommunicationPreviewModal
         opened={previewCommunicationOpened}
         onClose={() => setPreviewCommunicationOpened(false)}
-        title={
-          <Group gap="sm">
-            <IconMail size={20} aria-hidden="true" />
-            <span>Communication Details</span>
-          </Group>
-        }
-        size="lg"
-      >
-        {previewCommunication && (
-          <Stack gap="md">
-            <Group gap="sm">
-              <Badge color={
-                previewCommunication.type === 'EMAIL' ? 'blue' :
-                previewCommunication.type === 'SMS' ? 'cyan' : 'grape'
-              }>
-                {previewCommunication.type}
-              </Badge>
-              <Badge color={
-                previewCommunication.status === 'SENT' || previewCommunication.status === 'DELIVERED' ? 'green' :
-                previewCommunication.status === 'FAILED' ? 'red' :
-                previewCommunication.status === 'DRAFT' ? 'gray' :
-                previewCommunication.status === 'SCHEDULED' ? 'cyan' : 'blue'
-              }>
-                {previewCommunication.status}
-              </Badge>
-              {previewCommunication.templateName && (
-                <Badge variant="light" color="blue">Template: {previewCommunication.templateName}</Badge>
-              )}
-            </Group>
-
-            {previewCommunication.subject && (
-              <>
-                <Text size="sm" fw={500} c="dimmed">Subject</Text>
-                <Paper p="sm" withBorder>
-                  <Text>{previewCommunication.subject}</Text>
-                </Paper>
-              </>
-            )}
-
-            <Text size="sm" fw={500} c="dimmed">Message</Text>
-            <Paper p="sm" withBorder style={{ maxHeight: 300, overflow: 'auto' }}>
-              <Text style={{ whiteSpace: 'pre-wrap' }}>{previewCommunication.body}</Text>
-            </Paper>
-
-            {previewCommunication.recipient && (
-              <>
-                <Text size="sm" fw={500} c="dimmed">Recipient</Text>
-                <Text>{previewCommunication.recipient}</Text>
-              </>
-            )}
-
-            <SimpleGrid cols={2}>
-              <div>
-                <Text size="xs" c="dimmed">Created</Text>
-                <Text size="sm">{new Date(previewCommunication.createdAt).toLocaleString()}</Text>
-              </div>
-              {previewCommunication.scheduledAt && (
-                <div>
-                  <Text size="xs" c="dimmed">Scheduled For</Text>
-                  <Text size="sm">{new Date(previewCommunication.scheduledAt).toLocaleString()}</Text>
-                </div>
-              )}
-              {previewCommunication.sentAt && (
-                <div>
-                  <Text size="xs" c="dimmed">Sent At</Text>
-                  <Text size="sm">{new Date(previewCommunication.sentAt).toLocaleString()}</Text>
-                </div>
-              )}
-              {previewCommunication.followUpDate && (
-                <div>
-                  <Text size="xs" c="dimmed">Follow-up Date</Text>
-                  <Text size="sm">{new Date(previewCommunication.followUpDate).toLocaleDateString()}</Text>
-                </div>
-              )}
-            </SimpleGrid>
-
-            {previewCommunication.createdBy && (
-              <div>
-                <Text size="xs" c="dimmed">Created By</Text>
-                <Text size="sm">{previewCommunication.createdBy.name || 'Unknown'}</Text>
-              </div>
-            )}
-
-            <Group justify="flex-end" mt="md">
-              <Button
-                variant="subtle"
-                onClick={() => setPreviewCommunicationOpened(false)}
-              >
-                Close
-              </Button>
-              <Button
-                leftSection={<IconCopy size={16} aria-hidden="true" />}
-                onClick={() => {
-                  setPreviewCommunicationOpened(false);
-                  navigate(`/communications/${id}/compose`, {
-                    state: { cloneFrom: previewCommunication }
-                  });
-                }}
-              >
-                Clone and Reuse
-              </Button>
-            </Group>
-          </Stack>
-        )}
-      </Modal>
+        communication={previewCommunication}
+        clientId={id!}
+      />
 
       {/* Unsaved Changes Warning Modal */}
-      <Modal
+      <UnsavedChangesModal
         opened={unsavedChangesModalOpen}
-        onClose={handleStayOnPage}
-        title="Unsaved Changes"
-        centered
-      >
-        <Stack>
-          <Alert color="yellow" icon={<IconAlertCircle size={16} aria-hidden="true" />}>
-            You have unsaved changes in the edit form. Are you sure you want to leave? Your changes will be lost.
-          </Alert>
-          <Group justify="flex-end" mt="md">
-            <Button variant="subtle" onClick={handleStayOnPage}>
-              Stay
-            </Button>
-            <Button color="red" onClick={handleLeavePage}>
-              Leave
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        onStay={handleStayOnPage}
+        onLeave={handleLeavePage}
+      />
 
     </Container>
   );

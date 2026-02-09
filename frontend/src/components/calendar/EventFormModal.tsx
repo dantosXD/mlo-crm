@@ -30,6 +30,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import dayjs from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '../../utils/api';
 
 interface Event {
   id?: string;
@@ -89,19 +90,28 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
     queryFn: async () => {
-      const response = await fetch('/api/clients?limit=100', {
-        credentials: 'include',
-      });
+      const response = await apiRequest('/clients?limit=100');
       if (!response.ok) throw new Error('Failed to fetch clients');
       return response.json();
     },
     enabled: opened,
   });
 
-  const clientOptions = clients.map((client: Client) => ({
-    value: client.id,
-    label: JSON.parse(client.nameEncrypted)?.name || 'Unknown Client',
-  }));
+  const clientOptions = clients.map((client: Client) => {
+    let label = 'Unknown Client';
+    if (client.nameEncrypted) {
+      try {
+        const parsed = JSON.parse(client.nameEncrypted);
+        label = parsed?.name || label;
+      } catch {
+        label = client.nameEncrypted;
+      }
+    }
+    return {
+      value: client.id,
+      label,
+    };
+  });
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -145,15 +155,14 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
     };
 
     try {
-      const url = event?.id ? `/api/events/${event.id}` : '/api/events';
+      const url = event?.id ? `/events/${event.id}` : '/events';
       const method = event?.id ? 'PUT' : 'POST';
 
-      const response = await fetch(url, {
+      const response = await apiRequest(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify(eventData),
       });
 
@@ -209,13 +218,13 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
   };
 
   const reminderOptions = [
-    { value: 0, label: 'At time of event' },
-    { value: 5, label: '5 minutes before' },
-    { value: 15, label: '15 minutes before' },
-    { value: 30, label: '30 minutes before' },
-    { value: 60, label: '1 hour before' },
-    { value: 1440, label: '1 day before' },
-    { value: 10080, label: '1 week before' },
+    { value: '0', label: 'At time of event' },
+    { value: '5', label: '5 minutes before' },
+    { value: '15', label: '15 minutes before' },
+    { value: '30', label: '30 minutes before' },
+    { value: '60', label: '1 hour before' },
+    { value: '1440', label: '1 day before' },
+    { value: '10080', label: '1 week before' },
   ];
 
   return (
@@ -388,7 +397,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
               <Group>
                 <Select
                   placeholder="Select reminder time"
-                  data={reminderOptions.filter(r => !reminders.includes(r.value))}
+                  data={reminderOptions.filter(r => !reminders.includes(Number(r.value)))}
                   onChange={(value) => {
                     if (value !== null) {
                       addReminder(Number(value));
@@ -404,7 +413,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
                     Active Reminders
                   </Text>
                   {reminders.map((minutes) => {
-                    const option = reminderOptions.find(r => r.value === minutes);
+                    const option = reminderOptions.find(r => Number(r.value) === minutes);
                     return (
                       <Card key={minutes} padding="xs" withBorder>
                         <Group justify="space-between">

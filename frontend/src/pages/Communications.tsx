@@ -31,60 +31,15 @@ import {
   IconPlus,
   IconPaperclip,
 } from '@tabler/icons-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { API_URL } from '../utils/apiBase';
 import { api } from '../utils/api';
+import { COMM_TYPE_CONFIG, COMM_STATUS_CONFIG } from '../utils/constants';
+import type { Communication, CommunicationsResponse } from '../types';
 
-interface Communication {
-  id: string;
-  clientId: string;
-  clientName: string;
-  type: string;
-  status: string;
-  subject: string | null;
-  body: string;
-  recipient: string | null;
-  scheduledAt: string | null;
-  sentAt: string | null;
-  followUpDate: string | null;
-  attachments: any[];
-  createdAt: string;
-  createdBy: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  templateName: string | null;
-}
-
-interface CommunicationsResponse {
-  data: Communication[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
-// Type labels and colors
-const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
-  EMAIL: { label: 'Email', color: 'blue' },
-  SMS: { label: 'SMS', color: 'cyan' },
-  LETTER: { label: 'Letter', color: 'grape' },
-};
-
-// Status labels and colors
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  DRAFT: { label: 'Draft', color: 'gray' },
-  READY: { label: 'Ready', color: 'blue' },
-  PENDING: { label: 'Pending', color: 'yellow' },
-  SENT: { label: 'Sent', color: 'green' },
-  FAILED: { label: 'Failed', color: 'red' },
-  DELIVERED: { label: 'Delivered', color: 'green' },
-  SCHEDULED: { label: 'Scheduled', color: 'cyan' },
-};
+const TYPE_CONFIG = COMM_TYPE_CONFIG;
+const STATUS_CONFIG = COMM_STATUS_CONFIG;
 
 export function Communications() {
   const { accessToken, user } = useAuthStore();
@@ -92,21 +47,17 @@ export function Communications() {
   const location = useLocation();
   const isReadOnly = ['VIEWER', 'PROCESSOR', 'UNDERWRITER'].includes((user?.role || '').toUpperCase());
 
-  const [communications, setCommunications] = useState<Communication[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [clientSearch, setClientSearch] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [scheduledFilter, setScheduledFilter] = useState<boolean>(false);
   const [followUpFilter, setFollowUpFilter] = useState<boolean>(false);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0,
-  });
+  const [page, setPage] = useState(1);
+  const limit = 20;
 
   // Preview modal state
   const [previewOpened, setPreviewOpened] = useState(false);
@@ -115,10 +66,6 @@ export function Communications() {
   const [isSavingFollowUp, setIsSavingFollowUp] = useState(false);
 
   const canViewAll = user?.role === 'ADMIN' || user?.role === 'MANAGER';
-
-  useEffect(() => {
-    fetchCommunications();
-  }, [pagination.page, typeFilter, statusFilter, startDate, endDate]);
 
   useEffect(() => {
     const state = location.state as { toast?: { title: string; message: string; color?: string } } | null;
@@ -133,66 +80,33 @@ export function Communications() {
     }
   }, [location, navigate]);
 
-  const fetchCommunications = async () => {
-    setLoading(true);
-    try {
+  const { data: commsData, isLoading: loading } = useQuery({
+    queryKey: ['communications', page, typeFilter, statusFilter, scheduledFilter, followUpFilter, startDate?.toISOString(), endDate?.toISOString(), searchTerm],
+    queryFn: async () => {
       const params = new URLSearchParams({
-        page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
+        page: page.toString(),
+        limit: limit.toString(),
       });
+      if (typeFilter !== 'all') params.append('type', typeFilter);
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (scheduledFilter) params.append('scheduled', 'true');
+      if (followUpFilter) params.append('follow_up', 'true');
+      if (startDate) params.append('start_date', startDate.toISOString());
+      if (endDate) params.append('end_date', endDate.toISOString());
+      if (searchTerm) params.append('client_id', searchTerm);
 
-      if (typeFilter !== 'all') {
-        params.append('type', typeFilter);
-      }
-      if (statusFilter !== 'all') {
-        params.append('status', statusFilter);
-      }
-      if (scheduledFilter) {
-        params.append('scheduled', 'true');
-      }
-      if (followUpFilter) {
-        params.append('follow_up', 'true');
-      }
-      if (startDate) {
-        params.append('start_date', startDate.toISOString());
-      }
-      if (endDate) {
-        params.append('end_date', endDate.toISOString());
-      }
-      if (clientSearch) {
-        params.append('client_id', clientSearch);
-      }
+      const response = await api.get(`/communications?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch communications');
+      return response.json() as Promise<CommunicationsResponse>;
+    },
+  });
 
-      const response = await fetch(`${API_URL}/communications?${params}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch communications');
-      }
-
-      const data: CommunicationsResponse = await response.json();
-      setCommunications(data.data || []);
-      setPagination(prev => ({
-        ...prev,
-        total: data.pagination.total,
-        totalPages: data.pagination.totalPages,
-      }));
-    } catch (error) {
-      console.error('Error fetching communications:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load communications',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const communications = commsData?.data ?? [];
+  const pagination = commsData?.pagination ?? { page: 1, limit, total: 0, totalPages: 0 };
 
   const handleSearch = () => {
-    setPagination(prev => ({ ...prev, page: 1 }));
-    fetchCommunications();
+    setPage(1);
+    setSearchTerm(clientSearch);
   };
 
   const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -207,7 +121,7 @@ export function Communications() {
     setStatusFilter('all');
     setStartDate(null);
     setEndDate(null);
-    setPagination(prev => ({ ...prev, page: 1 }));
+    setPage(1);
   };
 
   const handlePreview = (communication: Communication) => {
@@ -236,7 +150,7 @@ export function Communications() {
       });
 
       // Refresh the communication data
-      await fetchCommunications();
+      await queryClient.invalidateQueries({ queryKey: ['communications'] });
 
       // Update the preview communication
       const updatedComm = await response.json();
@@ -346,7 +260,7 @@ export function Communications() {
             <Button
               variant="default"
               leftSection={<IconRefresh size={16} />}
-              onClick={fetchCommunications}
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['communications'] })}
             >
               Refresh
             </Button>
@@ -376,7 +290,7 @@ export function Communications() {
                 value={typeFilter}
                 onChange={(value: string | null) => {
                   setTypeFilter(value || 'all');
-                  setPagination(prev => ({ ...prev, page: 1 }));
+                  setPage(1);
                 }}
                 style={{ minWidth: 140 }}
                 clearable
@@ -396,7 +310,7 @@ export function Communications() {
                 value={statusFilter}
                 onChange={(value: string | null) => {
                   setStatusFilter(value || 'all');
-                  setPagination(prev => ({ ...prev, page: 1 }));
+                  setPage(1);
                 }}
                 style={{ minWidth: 140 }}
                 clearable
@@ -407,7 +321,7 @@ export function Communications() {
                 checked={scheduledFilter}
                 onChange={(event) => {
                   setScheduledFilter(event.currentTarget.checked);
-                  setPagination(prev => ({ ...prev, page: 1 }));
+                  setPage(1);
                 }}
               />
 
@@ -416,7 +330,7 @@ export function Communications() {
                 checked={followUpFilter}
                 onChange={(event) => {
                   setFollowUpFilter(event.currentTarget.checked);
-                  setPagination(prev => ({ ...prev, page: 1 }));
+                  setPage(1);
                 }}
               />
 
@@ -496,7 +410,7 @@ export function Communications() {
             <Pagination
               total={pagination.totalPages}
               value={pagination.page}
-              onChange={page => setPagination(prev => ({ ...prev, page }))}
+              onChange={(p) => setPage(p)}
             />
           </Group>
         )}

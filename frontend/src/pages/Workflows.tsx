@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Title,
   Stack,
@@ -33,9 +33,9 @@ import {
   IconDownload,
   IconUpload,
 } from '@tabler/icons-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
-import { API_URL } from '../utils/apiBase';
 import { api } from '../utils/api';
 
 interface Workflow {
@@ -78,20 +78,16 @@ const TRIGGER_LABELS: Record<string, string> = {
 };
 
 export function Workflows() {
-  const { accessToken, user } = useAuthStore();
+  const { user } = useAuthStore();
   const navigate = useNavigate();
 
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [isActiveFilter, setIsActiveFilter] = useState<string>('all');
   const [triggerTypeFilter, setTriggerTypeFilter] = useState<string>('all');
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0,
-  });
+  const [page, setPage] = useState(1);
+  const limit = 20;
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [cloning, setCloning] = useState<string | null>(null);
@@ -103,63 +99,29 @@ export function Workflows() {
 
   const canManageWorkflows = user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'MLO';
 
-  useEffect(() => {
-    fetchWorkflows();
-  }, [pagination.page, isActiveFilter, triggerTypeFilter]);
-
-  const fetchWorkflows = async () => {
-    setLoading(true);
-    try {
+  const { data: workflowData, isLoading: loading } = useQuery({
+    queryKey: ['workflows', page, isActiveFilter, triggerTypeFilter, searchTerm],
+    queryFn: async () => {
       const params = new URLSearchParams({
-        page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
+        page: page.toString(),
+        limit: limit.toString(),
       });
+      if (isActiveFilter !== 'all') params.append('is_active', isActiveFilter);
+      if (triggerTypeFilter !== 'all') params.append('trigger_type', triggerTypeFilter);
+      if (searchTerm) params.append('search', searchTerm);
 
-      if (isActiveFilter !== 'all') {
-        params.append('is_active', isActiveFilter);
-      }
+      const response = await api.get(`/workflows?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch workflows');
+      return response.json() as Promise<WorkflowResponse>;
+    },
+  });
 
-      if (triggerTypeFilter !== 'all') {
-        params.append('trigger_type', triggerTypeFilter);
-      }
-
-      if (search) {
-        params.append('search', search);
-      }
-
-      const response = await fetch(`${API_URL}/workflows?${params}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch workflows');
-      }
-
-      const data: WorkflowResponse = await response.json();
-      setWorkflows(data.workflows);
-      setPagination({
-        page: data.pagination.page,
-        limit: data.pagination.limit,
-        total: data.pagination.total,
-        totalPages: data.pagination.totalPages,
-      });
-    } catch (error) {
-      console.error('Error fetching workflows:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load workflows',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const workflows = workflowData?.workflows ?? [];
+  const pagination = workflowData?.pagination ?? { page: 1, limit, total: 0, totalPages: 0 };
 
   const handleSearch = () => {
-    setPagination({ ...pagination, page: 1 });
-    fetchWorkflows();
+    setPage(1);
+    setSearchTerm(search);
   };
 
   const handleToggleActive = async (id: string, currentStatus: boolean) => {
@@ -186,7 +148,7 @@ export function Workflows() {
         color: 'green',
       });
 
-      fetchWorkflows();
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
     } catch (error) {
       console.error('Error toggling workflow:', error);
       notifications.show({
@@ -227,7 +189,7 @@ export function Workflows() {
         color: 'green',
       });
 
-      fetchWorkflows();
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
     } catch (error) {
       console.error('Error deleting workflow:', error);
       notifications.show({
@@ -266,7 +228,7 @@ export function Workflows() {
         color: 'green',
       });
 
-      fetchWorkflows();
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
 
       // Navigate to edit the cloned workflow
       navigate(`/workflows/${clonedWorkflow.id}/edit`);
@@ -322,11 +284,7 @@ export function Workflows() {
   const handleExport = async (id: string, name: string) => {
     setExporting(id);
     try {
-      const response = await fetch(`${API_URL}/workflows/${id}/export`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.get(`/workflows/${id}/export`);
 
       if (!response.ok) {
         throw new Error('Failed to export workflow');
@@ -401,7 +359,7 @@ export function Workflows() {
       setImportModalOpen(false);
       setImportFile(null);
       setImportAsTemplate(false);
-      fetchWorkflows();
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
     } catch (error) {
       console.error('Error importing workflow:', error);
       notifications.show({
@@ -528,7 +486,7 @@ export function Workflows() {
             <Button
               leftSection={<IconRefresh size={16} />}
               variant="light"
-              onClick={fetchWorkflows}
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['workflows'] })}
               loading={loading}
             >
               Refresh
@@ -625,7 +583,7 @@ export function Workflows() {
             <Pagination
               total={pagination.totalPages}
               value={pagination.page}
-              onChange={(page) => setPagination({ ...pagination, page })}
+              onChange={(p) => setPage(p)}
             />
           </Group>
         )}

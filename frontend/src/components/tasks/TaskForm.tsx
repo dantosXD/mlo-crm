@@ -16,11 +16,10 @@ import {
   Divider,
   Alert,
 } from '@mantine/core';
-import { DatePicker } from '@mantine/dates';
-import { IconCalendar, IconTag, IconRepeat, IconBell, IconClock, IconCalendarEvent } from '@tabler/icons-react';
+import { DateInput } from '@mantine/dates';
+import { IconTag, IconRepeat, IconBell, IconClock, IconCalendarEvent } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
-import { useAuthStore } from '../../stores/authStore';
-import api from '../../utils/apiBase';
+import api, { apiRequest } from '../../utils/api';
 
 interface TaskFormProps {
   opened: boolean;
@@ -53,8 +52,6 @@ const recurringPatterns = [
 ];
 
 export default function TaskForm({ opened, onClose, onSuccess, clientId, editTask }: TaskFormProps) {
-  const { accessToken } = useAuthStore();
-
   const [loading, setLoading] = useState(false);
   const [createdTaskId, setCreatedTaskId] = useState<string | null>(null);
   const [text, setText] = useState(editTask?.text || '');
@@ -101,16 +98,9 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
         payload.clientId = clientId;
       }
 
-      const url = editTask
-        ? `${API_URL}/api/tasks/${editTask.id}`
-        : `${API_URL}/api/tasks`;
-
-      const response = await fetch(url, {
+      const response = await apiRequest(editTask ? `/tasks/${editTask.id}` : '/tasks', {
         method: editTask ? 'PUT' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
@@ -164,12 +154,15 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
     if (!createdTaskId) return;
 
     try {
-      await api.post('/integration/task-to-event', {
+      const response = await api.post('/integration/task-to-event', {
         taskId: createdTaskId,
         eventData: {
           allDay: true,
         },
       });
+      if (!response.ok) {
+        throw new Error('Failed to convert task to event');
+      }
 
       notifications.show({
         title: 'Success',
@@ -192,9 +185,12 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
     if (!createdTaskId) return;
 
     try {
-      await api.post('/integration/task-to-reminder', {
+      const response = await api.post('/integration/task-to-reminder', {
         taskId: createdTaskId,
       });
+      if (!response.ok) {
+        throw new Error('Failed to create reminder');
+      }
 
       notifications.show({
         title: 'Success',
@@ -222,7 +218,7 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
     <Modal
       opened={opened}
       onClose={handleClose}
-      title={<Title order={4}>{editTask ? 'Edit Task' : 'Create New Task'}</Title>}
+      title={editTask ? 'Edit Task' : 'Create New Task'}
       size="lg"
     >
       <Stack>
@@ -263,12 +259,11 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
         />
 
         {/* Due Date */}
-        <DatePicker
+        <DateInput
           label="Due Date"
           placeholder="Select due date"
           value={dueDate}
           onChange={setDueDate}
-          leftSection={<IconCalendar size={16} />}
           clearable
         />
 
@@ -313,7 +308,7 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
                 />
               )}
 
-              <DatePicker
+              <DateInput
                 label="End Date (Optional)"
                 placeholder="When should recurrence end?"
                 value={recurringEndDate}

@@ -16,8 +16,7 @@ import {
   IconSend,
   IconAlertCircle,
 } from '@tabler/icons-react';
-import { API_URL } from '../utils/apiBase';
-import { useAuthStore } from '../stores/authStore';
+import { api } from '../utils/api';
 
 interface AnalyticsData {
   overview: {
@@ -49,7 +48,6 @@ interface CommunicationsAnalyticsWidgetProps {
 export function CommunicationsAnalyticsWidget({
   days = 30,
 }: CommunicationsAnalyticsWidgetProps) {
-  const { accessToken } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AnalyticsData | null>(null);
 
@@ -60,14 +58,7 @@ export function CommunicationsAnalyticsWidget({
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
-      const response = await fetch(
-        `${API_URL}/analytics/communications?days=${days}`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
+      const response = await api.get(`/analytics/communications?days=${days}`);
 
       if (response.ok) {
         const analytics = await response.json();

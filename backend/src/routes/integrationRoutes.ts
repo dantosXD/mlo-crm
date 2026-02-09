@@ -12,6 +12,9 @@ router.use(authenticateToken);
 router.get('/today', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -75,14 +78,13 @@ router.get('/today', async (req: AuthRequest, res: Response) => {
           },
         },
         eventAttendees: {
-          include: {
-            attendee: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
+          select: {
+            id: true,
+            userId: true,
+            email: true,
+            name: true,
+            rsvpStatus: true,
+            respondedAt: true,
           },
         },
       },
@@ -103,7 +105,7 @@ router.get('/today', async (req: AuthRequest, res: Response) => {
     // Fetch reminders due today
     const remindersToday = await prisma.reminder.findMany({
       where: {
-        createdById: userId,
+        userId,
         remindAt: {
           gte: today.toISOString(),
           lt: tomorrow.toISOString(),
@@ -200,6 +202,10 @@ router.post('/task-to-event', async (req: AuthRequest, res: Response) => {
     const { taskId, eventData } = req.body;
     const userId = req.user?.userId;
 
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     if (!taskId) {
       return res.status(400).json({ error: 'Task ID is required' });
     }
@@ -251,6 +257,10 @@ router.post('/task-to-reminder', async (req: AuthRequest, res: Response) => {
     const { taskId, reminderData } = req.body;
     const userId = req.user?.userId;
 
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     if (!taskId) {
       return res.status(400).json({ error: 'Task ID is required' });
     }
@@ -275,6 +285,7 @@ router.post('/task-to-reminder', async (req: AuthRequest, res: Response) => {
     // Create reminder from task
     const reminder = await prisma.reminder.create({
       data: {
+        userId: userId!,
         title: reminderData?.title || `Reminder: ${task.text}`,
         description: reminderData?.description || task.description || '',
         category: reminderData?.category || 'CLIENT',
@@ -282,9 +293,7 @@ router.post('/task-to-reminder', async (req: AuthRequest, res: Response) => {
         remindAt: reminderData?.remindAt || task.dueDate || new Date().toISOString(),
         dueDate: reminderData?.dueDate || task.dueDate,
         clientId: task.clientId,
-        taskId: task.id,
         status: 'PENDING',
-        createdById: userId,
       },
     });
 
@@ -300,6 +309,10 @@ router.post('/event-to-task', async (req: AuthRequest, res: Response) => {
   try {
     const { eventId, taskData } = req.body;
     const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     if (!eventId) {
       return res.status(400).json({ error: 'Event ID is required' });
@@ -328,7 +341,6 @@ router.post('/event-to-task', async (req: AuthRequest, res: Response) => {
         priority: taskData?.priority || 'MEDIUM',
         dueDate: taskData?.dueDate || event.startTime,
         clientId: event.clientId,
-        eventId: event.id,
         status: 'TODO',
         createdById: userId,
       },
@@ -346,6 +358,10 @@ router.post('/event-to-reminder', async (req: AuthRequest, res: Response) => {
   try {
     const { eventId, reminderData } = req.body;
     const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     if (!eventId) {
       return res.status(400).json({ error: 'Event ID is required' });
@@ -368,6 +384,7 @@ router.post('/event-to-reminder', async (req: AuthRequest, res: Response) => {
     // Create reminder from event
     const reminder = await prisma.reminder.create({
       data: {
+        userId: userId!,
         title: reminderData?.title || `Reminder: ${event.title}`,
         description: reminderData?.description || event.description,
         category: reminderData?.category || 'GENERAL',
@@ -375,9 +392,7 @@ router.post('/event-to-reminder', async (req: AuthRequest, res: Response) => {
         remindAt: reminderData?.remindAt || event.startTime,
         dueDate: reminderData?.dueDate || event.startTime,
         clientId: event.clientId,
-        eventId: event.id,
         status: 'PENDING',
-        createdById: userId,
       },
     });
 
@@ -396,6 +411,10 @@ router.get('/unified-search', async (req: AuthRequest, res: Response) => {
     const query = q as string;
     const searchTypes = types ? (types as string).split(',') : ['tasks', 'events', 'reminders'];
 
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     if (!query) {
       return res.status(400).json({ error: 'Search query is required' });
     }
@@ -410,13 +429,19 @@ router.get('/unified-search', async (req: AuthRequest, res: Response) => {
     if (searchTypes.includes('tasks')) {
       const tasks = await prisma.task.findMany({
         where: {
-          OR: [
-            { createdById: userId },
-            { assignedToId: userId },
-          ],
-          OR: [
-            { text: { contains: query, mode: 'insensitive' } },
-            { description: { contains: query, mode: 'insensitive' } },
+          AND: [
+            {
+              OR: [
+                { createdById: userId },
+                { assignedToId: userId },
+              ],
+            },
+            {
+              OR: [
+                { text: { contains: query } },
+                { description: { contains: query } },
+              ],
+            },
           ],
           deletedAt: null,
         },
@@ -447,9 +472,9 @@ router.get('/unified-search', async (req: AuthRequest, res: Response) => {
         where: {
           createdById: userId,
           OR: [
-            { title: { contains: query, mode: 'insensitive' } },
-            { description: { contains: query, mode: 'insensitive' } },
-            { location: { contains: query, mode: 'insensitive' } },
+            { title: { contains: query } },
+            { description: { contains: query } },
+            { location: { contains: query } },
           ],
         },
         include: {
@@ -477,10 +502,10 @@ router.get('/unified-search', async (req: AuthRequest, res: Response) => {
     if (searchTypes.includes('reminders')) {
       const reminders = await prisma.reminder.findMany({
         where: {
-          createdById: userId,
+          userId,
           OR: [
-            { title: { contains: query, mode: 'insensitive' } },
-            { description: { contains: query, mode: 'insensitive' } },
+            { title: { contains: query } },
+            { description: { contains: query } },
           ],
         },
         include: {
@@ -516,6 +541,10 @@ router.get('/unified-activity', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
     const { limit = '50' } = req.query;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     // Fetch recent activities
     const [tasks, events, reminders] = await Promise.all([
@@ -559,7 +588,7 @@ router.get('/unified-activity', async (req: AuthRequest, res: Response) => {
       }),
       prisma.reminder.findMany({
         where: {
-          createdById: userId,
+          userId,
         },
         include: {
           client: {

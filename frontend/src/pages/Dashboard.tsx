@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -12,61 +12,16 @@ import {
 import { IconRefresh } from '@tabler/icons-react';
 import ReactGridLayout, { WidthProvider } from 'react-grid-layout';
 import { notifications } from '@mantine/notifications';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
-import { API_URL } from '../utils/apiBase';
 import { api } from '../utils/api';
-import { decryptData } from '../utils/encryption';
 import { StatsCardsWidget } from '../widgets/StatsCardsWidget';
 import { PipelineOverviewWidget } from '../widgets/PipelineOverviewWidget';
 import { PendingTasksWidget } from '../widgets/PendingTasksWidget';
 import { RecentClientsWidget } from '../widgets/RecentClientsWidget';
 import { WorkflowStatusWidget } from '../widgets/WorkflowStatusWidget';
 import 'react-grid-layout/css/styles.css';
-
-interface Task {
-  id: string;
-  text: string;
-  status: string;
-  priority: string;
-  dueDate: string | null;
-  clientId: string | null;
-  clientName?: string;
-}
-
-interface DashboardStats {
-  totalClients: number;
-  totalDocuments: number;
-  totalTasks: number;
-  totalLoanScenarios: number;
-  clientsByStatus: Record<string, number>;
-  recentClients: Array<{
-    id: string;
-    name: string;
-    status: string;
-    createdAt: string;
-  }>;
-  pendingTasks: number;
-  pendingTasksList: Task[];
-  workflowStats?: {
-    activeWorkflows: number;
-    completedToday: number;
-    failedToday: number;
-    runningExecutions: Array<{
-      id: string;
-      status: string;
-      startedAt: string;
-      completedAt: string | null;
-      workflow: {
-        id: string;
-        name: string;
-      };
-      client?: {
-        id: string;
-        name: string;
-      } | null;
-    }>;
-  };
-}
+import type { Task, DashboardStats } from '../types';
 
 interface LayoutItem {
   i: string;
@@ -97,37 +52,156 @@ const DEFAULT_LAYOUTS = {
   ],
 };
 
+// Fetch all dashboard stats in parallel
+async function fetchDashboardData(): Promise<DashboardStats> {
+  const [
+    clientsResult,
+    docsResult,
+    tasksResult,
+    scenariosResult,
+    runningResult,
+    completedResult,
+    failedResult,
+    workflowsResult,
+  ] = await Promise.allSettled([
+    api.get('/clients'),
+    api.get('/documents'),
+    api.get('/tasks'),
+    api.get('/loan-scenarios'),
+    api.get('/workflow-executions?status=RUNNING&limit=5'),
+    api.get('/workflow-executions?status=COMPLETED&limit=100'),
+    api.get('/workflow-executions?status=FAILED&limit=100'),
+    api.get('/workflows'),
+  ]);
+
+  // Process clients
+  let clients: any[] = [];
+  if (clientsResult.status === 'fulfilled' && clientsResult.value.ok) {
+    const clientsPayload = await clientsResult.value.json();
+    clients = Array.isArray(clientsPayload) ? clientsPayload : clientsPayload.data || [];
+  }
+  const clientsByStatus: Record<string, number> = {};
+  clients.forEach((client: { status: string }) => {
+    clientsByStatus[client.status] = (clientsByStatus[client.status] || 0) + 1;
+  });
+  const recentClients = [...clients]
+    .sort((a: { createdAt: string }, b: { createdAt: string }) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+    .slice(0, 5)
+    .map((client: { id: string; name: string; status: string; createdAt: string }) => ({
+      id: client.id,
+      name: client.name,
+      status: client.status,
+      createdAt: client.createdAt,
+    }));
+
+  // Process documents
+  let totalDocuments = 0;
+  if (docsResult.status === 'fulfilled' && docsResult.value.ok) {
+    totalDocuments = (await docsResult.value.json()).length;
+  }
+
+  // Process tasks
+  let totalTasks = 0;
+  let pendingTasks = 0;
+  let pendingTasksList: Task[] = [];
+  if (tasksResult.status === 'fulfilled' && tasksResult.value.ok) {
+    const tasks = await tasksResult.value.json();
+    totalTasks = tasks.length;
+    const pending = tasks.filter((t: { status: string }) => t.status !== 'COMPLETE');
+    pendingTasks = pending.length;
+    pendingTasksList = pending.slice(0, 5).map((t: Task & { client?: { id: string; name: string } | null }) => ({
+      id: t.id,
+      text: t.text,
+      status: t.status,
+      priority: t.priority,
+      dueDate: t.dueDate,
+      clientId: t.clientId,
+      clientName: t.client?.name ?? undefined,
+    }));
+  }
+
+  // Process loan scenarios
+  let totalLoanScenarios = 0;
+  if (scenariosResult.status === 'fulfilled' && scenariosResult.value.ok) {
+    totalLoanScenarios = (await scenariosResult.value.json()).length;
+  }
+
+  // Process workflow stats
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const workflowStats = {
+    activeWorkflows: 0,
+    completedToday: 0,
+    failedToday: 0,
+    runningExecutions: [] as any[],
+  };
+  if (runningResult.status === 'fulfilled' && runningResult.value.ok) {
+    workflowStats.runningExecutions = await runningResult.value.json();
+  }
+  if (completedResult.status === 'fulfilled' && completedResult.value.ok) {
+    const completedData = await completedResult.value.json();
+    workflowStats.completedToday = completedData.filter((e: { completedAt: string }) =>
+      new Date(e.completedAt) >= today
+    ).length;
+  }
+  if (failedResult.status === 'fulfilled' && failedResult.value.ok) {
+    const failedData = await failedResult.value.json();
+    workflowStats.failedToday = failedData.filter((e: { completedAt: string }) =>
+      new Date(e.completedAt) >= today
+    ).length;
+  }
+  if (workflowsResult.status === 'fulfilled' && workflowsResult.value.ok) {
+    const activeWorkflows = await workflowsResult.value.json();
+    workflowStats.activeWorkflows = activeWorkflows.filter((w: { isActive: boolean }) => w.isActive).length;
+  }
+
+  return {
+    totalClients: clients.length,
+    totalDocuments,
+    totalTasks,
+    totalLoanScenarios,
+    clientsByStatus,
+    recentClients,
+    pendingTasks,
+    pendingTasksList,
+    workflowStats,
+  };
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { accessToken } = useAuthStore();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [layouts, setLayouts] = useState<LayoutItem[]>(DEFAULT_LAYOUTS.lg);
   const [savingLayout, setSavingLayout] = useState(false);
 
-  // Fetch user preferences on mount
-  useEffect(() => {
-    if (accessToken) {
-      fetchUserPreferences();
-      fetchDashboardStats();
-    }
-  }, [accessToken]);
+  // Fetch dashboard stats
+  const { data: stats, isLoading: loading } = useQuery({
+    queryKey: ['dashboard-stats'],
+    queryFn: fetchDashboardData,
+    enabled: !!accessToken,
+    staleTime: 30_000, // 30 seconds
+  });
 
-  const fetchUserPreferences = async () => {
-    if (!accessToken) return;
-    try {
+  // Fetch user preferences
+  useQuery({
+    queryKey: ['user-preferences'],
+    queryFn: async () => {
       const res = await api.get('/users/preferences');
-
       if (res.ok) {
         const prefs: UserPreferences = await res.json();
         if (prefs.dashboardLayout && prefs.dashboardLayout.length > 0) {
           setLayouts(prefs.dashboardLayout);
         }
+        return prefs;
       }
-    } catch (error) {
-      console.error('Error fetching preferences:', error);
-    }
-  };
+      return null;
+    },
+    enabled: !!accessToken,
+    staleTime: 60_000,
+  });
 
   const saveUserPreferences = async (newLayouts: typeof DEFAULT_LAYOUTS.lg) => {
     if (!accessToken) return;
@@ -150,194 +224,12 @@ export default function Dashboard() {
     }
   };
 
-  const fetchDashboardStats = async () => {
-    try {
-      setLoading(true);
-
-      // Fetch clients count
-      const clientsRes = await fetch(`${API_URL}/clients`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      if (!clientsRes.ok) throw new Error('Failed to fetch clients');
-      const clientsPayload = await clientsRes.json();
-      const clients = Array.isArray(clientsPayload)
-        ? clientsPayload
-        : clientsPayload.data || [];
-      const decryptedClients = clients.map((client: { name: string }) => ({
-        ...client,
-        name: decryptData(client.name),
-      }));
-
-      // Initialize workflow stats with default values
-      let workflowStats = {
-        activeWorkflows: 0,
-        completedToday: 0,
-        failedToday: 0,
-        runningExecutions: [],
-      };
-
-      // Calculate clients by status
-      const clientsByStatus: Record<string, number> = {};
-      decryptedClients.forEach((client: { status: string }) => {
-        clientsByStatus[client.status] = (clientsByStatus[client.status] || 0) + 1;
-      });
-
-      // Get recent clients (last 5)
-      const recentClients = decryptedClients
-        .sort((a: { createdAt: string }, b: { createdAt: string }) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        )
-        .slice(0, 5)
-        .map((client: { id: string; name: string; status: string; createdAt: string }) => ({
-          id: client.id,
-          name: decryptData(client.name),
-          status: client.status,
-          createdAt: client.createdAt,
-        }));
-
-      // Fetch documents count
-      let totalDocuments = 0;
-      try {
-        const docsRes = await fetch(`${API_URL}/documents`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (docsRes.ok) {
-          const docs = await docsRes.json();
-          totalDocuments = docs.length;
-        }
-      } catch {
-        // Documents API may not exist yet
-      }
-
-      // Fetch tasks count and pending tasks list
-      let totalTasks = 0;
-      let pendingTasks = 0;
-      let pendingTasksList: Task[] = [];
-      try {
-        const tasksRes = await fetch(`${API_URL}/tasks`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (tasksRes.ok) {
-          const tasks = await tasksRes.json();
-          totalTasks = tasks.length;
-          const pending = tasks.filter((t: { status: string }) => t.status !== 'COMPLETE');
-          pendingTasks = pending.length;
-          // Get up to 5 pending tasks for the widget
-          pendingTasksList = pending.slice(0, 5).map((t: Task & { client?: { id: string; name: string } | null }) => ({
-            id: t.id,
-            text: t.text,
-            status: t.status,
-            priority: t.priority,
-            dueDate: t.dueDate,
-            clientId: t.clientId,
-            clientName: t.client?.name ? decryptData(t.client.name) : undefined,
-          }));
-        }
-      } catch {
-        // Tasks API may not exist yet
-      }
-
-      // Fetch loan scenarios count
-      let totalLoanScenarios = 0;
-      try {
-        const scenariosRes = await fetch(`${API_URL}/loan-scenarios`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (scenariosRes.ok) {
-          const scenarios = await scenariosRes.json();
-          totalLoanScenarios = scenarios.length;
-        }
-      } catch {
-        // Loan scenarios API may not exist yet
-      }
-
-      // Fetch workflow stats
-      try {
-        // Get today's start for filtering completed/failed today
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // Fetch running executions
-        const runningRes = await fetch(`${API_URL}/workflow-executions?status=RUNNING&limit=5`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (runningRes.ok) {
-          const runningData = await runningRes.json();
-          workflowStats.runningExecutions = runningData;
-        }
-
-        // Fetch completed executions from today
-        const completedRes = await fetch(`${API_URL}/workflow-executions?status=COMPLETED&limit=100`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (completedRes.ok) {
-          const completedData = await runningRes.ok ? await completedRes.json() : [];
-          workflowStats.completedToday = completedData.filter((e: { completedAt: string }) =>
-            new Date(e.completedAt) >= today
-          ).length;
-        }
-
-        // Fetch failed executions from today
-        const failedRes = await fetch(`${API_URL}/workflow-executions?status=FAILED&limit=100`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (failedRes.ok) {
-          const failedData = await failedRes.json();
-          workflowStats.failedToday = failedData.filter((e: { completedAt: string }) =>
-            new Date(e.completedAt) >= today
-          ).length;
-        }
-
-        // Count active workflows (excluding completed/failed)
-        const activeRes = await fetch(`${API_URL}/workflows`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (activeRes.ok) {
-          const activeWorkflows = await activeRes.json();
-          workflowStats.activeWorkflows = activeWorkflows.filter((w: { isActive: boolean }) => w.isActive).length;
-        }
-      } catch {
-        // Workflow APIs may not exist yet
-      }
-
-      setStats({
-        totalClients: clients.length,
-        totalDocuments,
-        totalTasks,
-        totalLoanScenarios,
-        clientsByStatus,
-        recentClients,
-        pendingTasks,
-        pendingTasksList,
-        workflowStats,
-      });
-    } catch (error) {
-      console.error('Error fetching dashboard stats:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load dashboard statistics',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleTaskComplete = async (taskId: string) => {
     try {
       const res = await api.put(`/tasks/${taskId}`, { status: 'COMPLETE' });
 
       if (res.ok) {
-        // Update local state to remove completed task
-        setStats(prev => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            pendingTasks: prev.pendingTasks - 1,
-            pendingTasksList: prev.pendingTasksList.filter(t => t.id !== taskId),
-          };
-        });
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
         notifications.show({
           title: 'Task completed',
           message: 'Task has been marked as complete',

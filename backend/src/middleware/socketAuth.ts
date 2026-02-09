@@ -1,5 +1,6 @@
 import { Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import { getEnv } from '../config/env.js';
 
 interface SocketData {
   userId: string;
@@ -19,7 +20,7 @@ export const authenticateSocket = async (socket: Socket, next: any) => {
     }
 
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+    const decoded = jwt.verify(token, getEnv().JWT_SECRET) as any;
 
     if (!decoded.userId) {
       return next(new Error('Authentication error: Invalid token'));

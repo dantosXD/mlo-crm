@@ -136,7 +136,7 @@ export function WorkflowStatusWidget({
                 value={successRate}
                 color={successRate >= 80 ? 'green' : successRate >= 50 ? 'yellow' : 'red'}
                 size="sm"
-                rounded
+                radius="xl"
               />
             </div>
           )}

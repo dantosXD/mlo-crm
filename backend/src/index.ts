@@ -3,7 +3,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
-import { config } from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import clientRoutes from './routes/clientRoutes.js';
 import noteRoutes from './routes/noteRoutes.js';
@@ -28,72 +27,102 @@ import calendarSyncRoutes from './routes/calendarSyncRoutes.js';
 import calendarShareRoutes from './routes/calendarShareRoutes.js';
 import reminderRoutes from './routes/reminderRoutes.js';
 import integrationRoutes from './routes/integrationRoutes.js';
+import healthRoutes from './routes/healthRoutes.js';
 import { generateCsrfToken, validateCsrfToken } from './middleware/csrf.js';
-import {
-  checkOverdueTasks,
-  checkTaskDueDates,
-} from './services/triggerHandler.js';
-import { seedWorkflowTemplates } from './scripts/seedWorkflowTemplates.js';
 import { initializeWebSocket } from './services/websocketService.js';
+import prisma from './utils/prisma.js';
+import { getEnv } from './config/env.js';
+import { installConsoleBridge, logger } from './utils/logger.js';
+import { requestIdMiddleware, requestLoggingMiddleware } from './middleware/requestLogging.js';
+import { checkS3Health } from './utils/s3.js';
+import { initSentry, sentryErrorHandler, captureException } from './monitoring/sentry.js';
+import { getMetricsSnapshot, recordDbLatency } from './monitoring/metrics.js';
+import { getRedisClient } from './utils/redis.js';
 
-// Load environment variables
-config();
-
+installConsoleBridge();
+const env = getEnv();
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = env.PORT;
 
-// Create HTTP server for Socket.IO
 const httpServer = createServer(app);
-
-// Initialize WebSocket
 const io = initializeWebSocket(httpServer);
 
-// Middleware
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+initSentry(app);
 
-    const isLocalDevOrigin =
-      /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
+app.use(requestIdMiddleware);
+app.use(requestLoggingMiddleware);
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
 
-    const allowedOrigins = [process.env.FRONTEND_URL].filter(Boolean);
+      const isLocalDevOrigin =
+        /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
 
-    if (isLocalDevOrigin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
+      const allowedOrigins = [env.FRONTEND_URL].filter(Boolean);
+      if (isLocalDevOrigin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
 
-    return callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  exposedHeaders: ['X-CSRF-Token'], // Expose CSRF token header to frontend
-}));
+      return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+    exposedHeaders: ['X-CSRF-Token'],
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-
-// Generate CSRF token for all authenticated requests
 app.use(generateCsrfToken);
 
-// Health check endpoint
-app.get('/health', (_req, res) => {
-  res.json({
-    status: 'ok',
+app.get('/health/live', (_req, res) => {
+  res.status(200).json({
+    status: 'live',
     timestamp: new Date().toISOString(),
-    version: '1.0.0',
   });
 });
 
-// API routes placeholder
+app.get('/health/ready', async (_req, res) => {
+  const dbStart = Date.now();
+  const dbHealthy = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
+  recordDbLatency(Date.now() - dbStart);
+  const s3Healthy = await checkS3Health();
+  let redisHealthy = true;
+  if (env.REDIS_URL) {
+    const redisClient = getRedisClient();
+    redisHealthy = await redisClient?.ping().then(() => true).catch(() => false) ?? false;
+  }
+
+  const ready = dbHealthy && s3Healthy && redisHealthy;
+
+  res.status(ready ? 200 : 503).json({
+    status: ready ? 'ready' : 'not_ready',
+    services: {
+      database: dbHealthy ? 'ok' : 'error',
+      objectStorage: s3Healthy ? 'ok' : 'error',
+      redis: !env.REDIS_URL ? 'disabled' : redisHealthy ? 'ok' : 'error',
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/health/metrics', async (_req, res) => {
+  const snapshot = await getMetricsSnapshot();
+  res.status(200).json(snapshot);
+});
+
 app.get('/api', (_req, res) => {
   res.json({
     message: 'MLO Dashboard API',
     version: '1.0.0',
     endpoints: {
       auth: '/api/auth/*',
+      health: '/health/live, /health/ready, /api/health/*',
       clients: '/api/clients/*',
       notes: '/api/notes/*',
       tasks: '/api/tasks/*',
@@ -110,10 +139,8 @@ app.get('/api', (_req, res) => {
   });
 });
 
-// Auth routes (no CSRF validation for login/register)
+app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
-
-// Protected routes with CSRF validation
 app.use('/api/clients', validateCsrfToken, clientRoutes);
 app.use('/api/notes', validateCsrfToken, noteRoutes);
 app.use('/api/tasks', validateCsrfToken, taskRoutes);
@@ -121,56 +148,23 @@ app.use('/api/users', validateCsrfToken, userRoutes);
 app.use('/api/documents', validateCsrfToken, documentRoutes);
 app.use('/api/document-packages', validateCsrfToken, documentPackageRoutes);
 app.use('/api/loan-scenarios', validateCsrfToken, loanScenarioRoutes);
-
-// Activity routes
 app.use('/api/activities', validateCsrfToken, activityRoutes);
-
-// Notification routes
 app.use('/api/notifications', validateCsrfToken, notificationRoutes);
-
-// Workflow routes
 app.use('/api/workflows', validateCsrfToken, workflowRoutes);
-
-// Workflow execution routes
 app.use('/api/workflow-executions', validateCsrfToken, workflowExecutionRoutes);
-
-// Communication routes
 app.use('/api/communications', validateCsrfToken, communicationRoutes);
-
-// Communication template routes
 app.use('/api/communication-templates', validateCsrfToken, communicationTemplateRoutes);
-
-// Attachment routes
 app.use('/api/attachments', validateCsrfToken, attachmentRoutes);
-
-// Event routes
 app.use('/api/events', validateCsrfToken, eventRoutes);
-
-// Calendar sync routes
 app.use('/api/calendar-sync', validateCsrfToken, calendarSyncRoutes);
-
-// Calendar sharing routes
 app.use('/api/calendar', validateCsrfToken, calendarShareRoutes);
-
-// Reminder routes
 app.use('/api/reminders', validateCsrfToken, reminderRoutes);
-
-// Integration routes
 app.use('/api/integration', validateCsrfToken, integrationRoutes);
-
-// Unified search routes
 app.use('/api/unified-search', validateCsrfToken, unifiedSearchRoutes);
-
-// Today view routes
 app.use('/api/today', validateCsrfToken, todayRoutes);
-
-// Analytics routes
 app.use('/api/analytics', validateCsrfToken, workflowAnalyticsRoutes);
-
-// Webhook routes (no authentication or CSRF - for external systems)
 app.use('/api/webhooks', webhookRoutes);
 
-// 404 handler
 app.use((_req, res) => {
   res.status(404).json({
     error: 'Not Found',
@@ -178,64 +172,56 @@ app.use((_req, res) => {
   });
 });
 
-// Error handler
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Error:', err.message);
+app.use(sentryErrorHandler());
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const requestId = (req as express.Request & { requestId?: string }).requestId;
+  captureException(err, { requestId, path: req.path, method: req.method });
+  logger.error('http_unhandled_error', {
+    requestId,
+    path: req.path,
+    method: req.method,
+    error: err.message,
+  });
+
   res.status(500).json({
     error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred',
+    message: env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred',
   });
 });
 
-// Start server
 httpServer.listen(PORT, () => {
-  console.log(`
-  ╔════════════════════════════════════════════╗
-  ║     MLO Dashboard API Server               ║
-  ╠════════════════════════════════════════════╣
-  ║  Status: Running                           ║
-  ║  Port:   ${PORT}                              ║
-  ║  Mode:   ${process.env.NODE_ENV || 'development'}                     ║
-  ║  WebSocket: Enabled                         ║
-  ╠════════════════════════════════════════════╣
-  ║  Health: http://localhost:${PORT}/health       ║
-  ║  API:    http://localhost:${PORT}/api          ║
-  ╚════════════════════════════════════════════╝
-  `);
+  logger.info('api_server_started', {
+    port: PORT,
+    mode: env.NODE_ENV,
+    healthLive: `http://localhost:${PORT}/health/live`,
+    healthReady: `http://localhost:${PORT}/health/ready`,
+    apiRoot: `http://localhost:${PORT}/api`,
+  });
+});
 
-  // Start scheduled job to check for overdue tasks (runs every hour)
-  setInterval(async () => {
-    try {
-      await checkOverdueTasks();
-      await checkTaskDueDates(1); // Check tasks due within 1 day
-    } catch (error) {
-      console.error('[Scheduled Jobs] Error checking task triggers:', error);
-    }
-  }, 60 * 60 * 1000); // Run every hour
+let shuttingDown = false;
+async function gracefulShutdown(signal: string) {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+  logger.info('api_shutdown_started', { signal });
 
-  // Run once on startup
-  setTimeout(async () => {
-    try {
-      console.log('[Scheduled Jobs] Running initial task trigger checks...');
-      await checkOverdueTasks();
-      await checkTaskDueDates(1);
-      console.log('[Scheduled Jobs] Initial task trigger checks completed');
-    } catch (error) {
-      console.error('[Scheduled Jobs] Error in initial task trigger checks:', error);
-    }
-  }, 5000); // Run 5 seconds after server starts
+  await new Promise<void>((resolve) => {
+    httpServer.close(() => resolve());
+  });
 
-  // Seed workflow templates on startup
-  setTimeout(async () => {
-    try {
-      console.log('[Initialization] Checking workflow templates...');
-      await seedWorkflowTemplates();
-      console.log('[Initialization] Workflow templates check completed');
-    } catch (error) {
-      console.error('[Initialization] Error seeding workflow templates:', error);
-      // Don't fail the server if seeding fails
-    }
-  }, 10000); // Run 10 seconds after server starts (after DB is ready)
+  await io.close();
+  await prisma.$disconnect();
+  logger.info('api_shutdown_complete', { signal });
+  process.exit(0);
+}
+
+process.on('SIGINT', () => {
+  void gracefulShutdown('SIGINT');
+});
+process.on('SIGTERM', () => {
+  void gracefulShutdown('SIGTERM');
 });
 
 export default app;

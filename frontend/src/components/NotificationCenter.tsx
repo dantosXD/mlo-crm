@@ -15,7 +15,7 @@ import {
 } from '@mantine/core';
 import { IconBell, IconBellRinging, IconCheck, IconTrash } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
 import { useAuthStore } from '../stores/authStore';
 
 interface Notification {
@@ -45,11 +45,7 @@ export function NotificationCenter() {
         setLoading(false);
         return;
       }
-      const response = await fetch(`${API_URL}/notifications?limit=20`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.get('/notifications?limit=20');
 
       if (response.ok) {
         const data = await response.json();
@@ -69,11 +65,7 @@ export function NotificationCenter() {
         setUnreadCount(0);
         return;
       }
-      const response = await fetch(`${API_URL}/notifications/unread-count`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.get('/notifications/unread-count');
 
       if (response.ok) {
         const data = await response.json();
@@ -88,12 +80,7 @@ export function NotificationCenter() {
   const markAsRead = async (notificationId: string) => {
     try {
       if (!accessToken) return;
-      const response = await fetch(`${API_URL}/notifications/${notificationId}/read`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.patch(`/notifications/${notificationId}/read`);
 
       if (response.ok) {
         setNotifications(prev =>
@@ -110,12 +97,7 @@ export function NotificationCenter() {
   const markAllAsRead = async () => {
     try {
       if (!accessToken) return;
-      const response = await fetch(`${API_URL}/notifications/read-all`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.patch('/notifications/read-all');
 
       if (response.ok) {
         setNotifications(prev => prev.map(n => ({ ...n, isRead: true, readAt: new Date().toISOString() })));
@@ -130,12 +112,7 @@ export function NotificationCenter() {
   const deleteNotification = async (notificationId: string) => {
     try {
       if (!accessToken) return;
-      const response = await fetch(`${API_URL}/notifications/${notificationId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.delete(`/notifications/${notificationId}`);
 
       if (response.ok) {
         setNotifications(prev => {

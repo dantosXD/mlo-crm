@@ -136,7 +136,7 @@ router.get('/workflows', async (req: AuthRequest, res: Response) => {
 
     executions.forEach((execution) => {
       const dateStr = execution.createdAt.toISOString().split('T')[0];
-      if (executionsPerDay.hasOwnProperty(dateStr)) {
+      if (Object.prototype.hasOwnProperty.call(executionsPerDay, dateStr)) {
         executionsPerDay[dateStr]++;
       }
     });

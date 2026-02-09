@@ -8,9 +8,7 @@ import {
   ActionIcon,
   Checkbox,
   Menu,
-  Swipeable,
   Box,
-  TouchRipple,
 } from '@mantine/core';
 import {
   IconCheck,
@@ -208,17 +206,17 @@ export function MobileTaskCard({
                 </Group>
               )}
 
-              {task.client && (
+              {task.client?.id && (
                 <Text
                   size="sm"
                   c="blue"
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate(`/clients/${task.client.id}`);
+                    navigate(`/clients/${task.client!.id}`);
                   }}
                   style={{ textDecoration: 'underline' }}
                 >
-                  {task.client.name}
+                  {task.client?.name || 'Client'}
                 </Text>
               )}
 

@@ -172,6 +172,14 @@ router.get('/:ownerId/events', authenticateToken, async (req: Request, res: Resp
           { expiresAt: null },
           { expiresAt: { gte: new Date() } }
         ]
+      },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
       }
     });
 

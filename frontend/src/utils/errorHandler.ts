@@ -180,29 +180,29 @@ export async function fetchWithErrorHandling(
   context: string = 'Request'
 ): Promise<Response> {
   try {
-    // Import auth store dynamically to avoid circular dependencies
-    const { useAuthStore } = await import('../stores/authStore');
-    const { csrfToken, updateCsrfToken } = useAuthStore.getState();
-
-    // Add CSRF token for state-changing methods
+    // Add CSRF token for state-changing methods (read from cookie)
     const method = (options?.method || 'GET').toUpperCase();
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && csrfToken) {
-      // Prepare headers with CSRF token
-      const extraHeaders = options?.headers instanceof Headers
-        ? Object.fromEntries(options.headers.entries())
-        : Array.isArray(options?.headers)
-          ? Object.fromEntries(options.headers)
-          : options?.headers;
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      const csrfMatch = document.cookie.match(/(?:^|; )csrf-token=([^;]*)/);
+      const csrf = csrfMatch ? decodeURIComponent(csrfMatch[1]) : null;
 
-      const headers: Record<string, string> = {
-        ...(extraHeaders ?? {}),
-        'X-CSRF-Token': csrfToken,
-      };
+      if (csrf) {
+        const extraHeaders = options?.headers instanceof Headers
+          ? Object.fromEntries(options.headers.entries())
+          : Array.isArray(options?.headers)
+            ? Object.fromEntries(options.headers)
+            : options?.headers;
 
-      options = {
-        ...options,
-        headers,
-      };
+        const headers: Record<string, string> = {
+          ...(extraHeaders ?? {}),
+          'X-CSRF-Token': csrf,
+        };
+
+        options = {
+          ...options,
+          headers,
+        };
+      }
     }
 
     const controller = new AbortController();
@@ -211,15 +211,10 @@ export async function fetchWithErrorHandling(
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
+      credentials: 'include',
     });
 
     clearTimeout(timeoutId);
-
-    // Update CSRF token from response headers if present
-    const newCsrfToken = response.headers.get('X-CSRF-Token');
-    if (newCsrfToken) {
-      updateCsrfToken(newCsrfToken);
-    }
 
     if (!response.ok) {
       // Try to read error message from response body

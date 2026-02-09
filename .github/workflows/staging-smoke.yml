@@ -1,0 +1,39 @@
+name: Staging Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_base_url:
+        description: "Optional staging base URL override (e.g. https://staging.example.com)"
+        required: false
+        type: string
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_BASE_URL: ${{ inputs.staging_base_url || secrets.STAGING_BASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate staging URL
+        run: |
+          if [ -z "$STAGING_BASE_URL" ]; then
+            echo "Missing STAGING_BASE_URL input/secret."
+            exit 1
+          fi
+
+      - name: Run staging smoke checks
+        run: npm run ops:staging-smoke

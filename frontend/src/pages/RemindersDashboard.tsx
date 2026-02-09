@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Container,
   Title,
@@ -40,50 +40,22 @@ import {
   IconTrendingUp,
   IconAlertTriangle,
   IconCircleCheck,
+  IconTrash,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import api from '../utils/apiBase';
+import api from '../utils/api';
 import ReminderForm from '../components/reminders/ReminderForm';
 import ReminderWidget from '../components/reminders/ReminderWidget';
 import { MobileReminderCard } from '../components/reminders/MobileReminderCard';
 import { SimpleFab } from '../components/common/MobileFloatingActionButton';
-
-interface Reminder {
-  id: string;
-  title: string;
-  description?: string;
-  category: string;
-  priority: string;
-  remindAt: string;
-  dueDate?: string;
-  status: string;
-  client?: {
-    id: string;
-    name: string;
-  };
-  tags?: string[];
-  isRecurring: boolean;
-  snoozedUntil?: string;
-  snoozeCount: number;
-}
-
-interface ReminderStats {
-  total: number;
-  pending: number;
-  overdue: number;
-  completed: number;
-  snoozed: number;
-  byCategory: Record<string, number>;
-  byPriority: Record<string, number>;
-}
+import type { Reminder, ReminderStats } from '../types';
 
 const RemindersDashboard: React.FC = () => {
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 768px)');
-  const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [stats, setStats] = useState<ReminderStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [selectedReminders, setSelectedReminders] = useState<Set<string>>(new Set());
 
   // Filter states
@@ -100,62 +72,45 @@ const RemindersDashboard: React.FC = () => {
   const priorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
   const statuses = ['PENDING', 'SNOOZED', 'COMPLETED', 'DISMISSED'];
 
-  useEffect(() => {
-    fetchReminders();
-    fetchStats();
-  }, [statusFilter, categoryFilter, priorityFilter]);
-
-  const fetchReminders = async () => {
-    try {
-      setLoading(true);
+  const { data: reminders = [], isLoading: loading } = useQuery({
+    queryKey: ['reminders', statusFilter, categoryFilter, priorityFilter],
+    queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (categoryFilter !== 'all') params.append('category', categoryFilter);
       if (priorityFilter !== 'all') params.append('priority', priorityFilter);
-
       const response = await api.get(`/reminders?${params.toString()}`);
-      let data = response.data;
+      if (!response.ok) throw new Error('Failed to fetch reminders');
+      return response.json() as Promise<Reminder[]>;
+    },
+  });
 
-      // Apply search filter client-side
-      if (searchQuery) {
-        data = data.filter((r: Reminder) =>
-          r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          r.description?.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-      }
-
-      setReminders(data);
-    } catch (error) {
-      console.error('Error fetching reminders:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load reminders',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchStats = async () => {
-    try {
+  const { data: stats = null } = useQuery({
+    queryKey: ['reminder-stats'],
+    queryFn: async () => {
       const response = await api.get('/reminders/stats/summary');
-      setStats(response.data);
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    }
+      if (!response.ok) throw new Error('Failed to fetch stats');
+      return response.json() as Promise<ReminderStats>;
+    },
+  });
+
+  const refreshAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['reminders'] });
+    queryClient.invalidateQueries({ queryKey: ['reminder-stats'] });
   };
 
   const handleComplete = async (reminderId: string) => {
     try {
-      await api.post(`/reminders/${reminderId}/complete`);
+      const response = await api.post(`/reminders/${reminderId}/complete`);
+      if (!response.ok) {
+        throw new Error('Failed to complete reminder');
+      }
       notifications.show({
         title: 'Success',
         message: 'Reminder marked as complete',
         color: 'green',
       });
-      fetchReminders();
-      fetchStats();
+      refreshAll();
     } catch (error) {
       notifications.show({
         title: 'Error',
@@ -167,14 +122,16 @@ const RemindersDashboard: React.FC = () => {
 
   const handleDismiss = async (reminderId: string) => {
     try {
-      await api.post(`/reminders/${reminderId}/dismiss`);
+      const response = await api.post(`/reminders/${reminderId}/dismiss`);
+      if (!response.ok) {
+        throw new Error('Failed to dismiss reminder');
+      }
       notifications.show({
         title: 'Success',
         message: 'Reminder dismissed',
         color: 'blue',
       });
-      fetchReminders();
-      fetchStats();
+      refreshAll();
     } catch (error) {
       notifications.show({
         title: 'Error',
@@ -186,14 +143,16 @@ const RemindersDashboard: React.FC = () => {
 
   const handleSnooze = async (reminderId: string, minutes: number = 15) => {
     try {
-      await api.post(`/reminders/${reminderId}/snooze`, { minutes });
+      const response = await api.post(`/reminders/${reminderId}/snooze`, { minutes });
+      if (!response.ok) {
+        throw new Error('Failed to snooze reminder');
+      }
       notifications.show({
         title: 'Success',
         message: `Reminder snoozed for ${minutes} minutes`,
         color: 'blue',
       });
-      fetchReminders();
-      fetchStats();
+      refreshAll();
     } catch (error) {
       notifications.show({
         title: 'Error',
@@ -203,22 +162,48 @@ const RemindersDashboard: React.FC = () => {
     }
   };
 
+  const handleDelete = async (reminderId: string) => {
+    const confirmed = window.confirm('Are you sure you want to delete this reminder?');
+    if (!confirmed) return;
+
+    try {
+      const response = await api.delete(`/reminders/${reminderId}`);
+      if (!response.ok) {
+        throw new Error('Failed to delete reminder');
+      }
+      notifications.show({
+        title: 'Success',
+        message: 'Reminder deleted',
+        color: 'green',
+      });
+      refreshAll();
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete reminder',
+        color: 'red',
+      });
+    }
+  };
+
   const handleBulkAction = async (action: 'complete' | 'dismiss' | 'delete') => {
     if (selectedReminders.size === 0) return;
 
     try {
-      await api.post('/reminders/bulk', {
+      const response = await api.post('/reminders/bulk', {
         action,
         reminderIds: Array.from(selectedReminders),
       });
+      if (!response.ok) {
+        throw new Error(`Failed to ${action} reminders`);
+      }
       notifications.show({
         title: 'Success',
         message: `${action.charAt(0).toUpperCase() + action.slice(1)}d ${selectedReminders.size} reminder(s)`,
         color: 'green',
       });
       setSelectedReminders(new Set());
-      fetchReminders();
-      fetchStats();
+      refreshAll();
     } catch (error) {
       notifications.show({
         title: 'Error',
@@ -277,10 +262,7 @@ const RemindersDashboard: React.FC = () => {
               <Button
                 variant="light"
                 leftSection={<IconRefresh size={16} />}
-                onClick={() => {
-                  fetchReminders();
-                  fetchStats();
-                }}
+                onClick={refreshAll}
               >
                 Refresh
               </Button>
@@ -296,10 +278,7 @@ const RemindersDashboard: React.FC = () => {
             {isMobile && (
               <ActionIcon
                 variant="light"
-                onClick={() => {
-                  fetchReminders();
-                  fetchStats();
-                }}
+                onClick={refreshAll}
                 style={{ minHeight: '44px', minWidth: '44px' }}
               >
                 <IconRefresh size={20} />
@@ -571,14 +550,13 @@ const RemindersDashboard: React.FC = () => {
                                   })}
                                 </Text>
                               </Group>
-                              {reminder.client && (
+                              {reminder.client?.id && (
                                 <Button
                                   size="xs"
                                   variant="light"
-                                  compact
-                                  onClick={() => navigate(`/clients/${reminder.client.id}`)}
+                                  onClick={() => navigate(`/clients/${reminder.client!.id}`)}
                                 >
-                                  {reminder.client.name}
+                                  {reminder.client?.name || 'Client'}
                                 </Button>
                               )}
                               {reminder.snoozeCount > 0 && (
@@ -635,6 +613,14 @@ const RemindersDashboard: React.FC = () => {
                                 >
                                   Edit
                                 </Menu.Item>
+                                <Menu.Divider />
+                                <Menu.Item
+                                  color="red"
+                                  leftSection={<IconTrash size={16} />}
+                                  onClick={() => handleDelete(reminder.id)}
+                                >
+                                  Delete
+                                </Menu.Item>
                               </>
                             )}
                           </Menu.Dropdown>
@@ -658,8 +644,7 @@ const RemindersDashboard: React.FC = () => {
             setEditingReminder(null);
           }}
           onSuccess={() => {
-            fetchReminders();
-            fetchStats();
+            refreshAll();
             setShowCreateModal(false);
             setEditingReminder(null);
           }}

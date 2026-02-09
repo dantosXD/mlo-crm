@@ -35,84 +35,14 @@ import { api } from '../utils/api';
 import { AttachmentManager } from '../components/attachments/AttachmentManager';
 import type { Attachment } from '../utils/attachments';
 import { useAuthStore } from '../stores/authStore';
-import { decryptData } from '../utils/encryption';
+import { PLACEHOLDER_INFO, PLACEHOLDER_KEYS } from '../utils/constants';
+import type { CommunicationTemplate, MetaOption } from '../types';
 
-interface Client {
+interface ComposerClient {
   id: string;
   nameEncrypted: string;
   name?: string;
 }
-
-interface CommunicationTemplate {
-  id: string;
-  name: string;
-  type: string;
-  category: string;
-  subject: string | null;
-  body: string;
-  placeholders: string[];
-  isActive: boolean;
-}
-
-interface MetaOption {
-  value: string;
-  label: string;
-  description: string;
-}
-
-// Placeholder descriptions for preview
-const PLACEHOLDER_INFO: Record<string, { description: string; example: string }> = {
-  '{{client_name}}': {
-    description: 'Full name of the client',
-    example: 'John Smith',
-  },
-  '{{client_email}}': {
-    description: 'Email address of the client',
-    example: 'john@example.com',
-  },
-  '{{client_phone}}': {
-    description: 'Phone number of the client',
-    example: '(555) 123-4567',
-  },
-  '{{client_status}}': {
-    description: 'Current status of the client',
-    example: 'Active',
-  },
-  '{{loan_amount}}': {
-    description: 'Loan amount',
-    example: '$350,000',
-  },
-  '{{loan_officer_name}}': {
-    description: 'Name of the loan officer',
-    example: 'Jane Doe',
-  },
-  '{{company_name}}': {
-    description: 'Name of your company',
-    example: 'ABC Mortgage',
-  },
-  '{{due_date}}': {
-    description: 'Due date for documents/tasks',
-    example: 'January 15, 2026',
-  },
-  '{{date}}': {
-    description: 'Current date',
-    example: 'February 2, 2026',
-  },
-  '{{time}}': {
-    description: 'Current time',
-    example: '2:30 PM',
-  },
-  '{{property_address}}': {
-    description: 'Property address',
-    example: '123 Main St, City, State 12345',
-  },
-  '{{trigger_type}}': {
-    description: 'Type of trigger that initiated the communication',
-    example: 'Document Uploaded',
-  },
-};
-
-const PLACEHOLDER_KEYS = Object.keys(PLACEHOLDER_INFO);
 
 export function CommunicationComposer() {
   const navigate = useNavigate();
@@ -126,7 +56,7 @@ export function CommunicationComposer() {
   const [previewMode, setPreviewMode] = useState(false);
 
   // Data
-  const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<ComposerClient[]>([]);
   const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
   const [selectedClient, setSelectedClient] = useState<string | null>(clientId || null);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -143,11 +73,6 @@ export function CommunicationComposer() {
   // Preview state
   const [previewBody, setPreviewBody] = useState('');
 
-  // Helper to decrypt client name
-  const decryptName = (value: string | null): string => {
-    const decoded = decryptData(value ?? '');
-    return decoded || 'Unknown';
-  };
 
   useEffect(() => {
     if (!hasHydrated || !accessToken) return;
@@ -234,7 +159,7 @@ export function CommunicationComposer() {
 
     // Replace placeholders with example values
     PLACEHOLDER_KEYS.forEach(key => {
-      previewText = previewText.replaceAll(
+      previewText = previewText.replace(
         new RegExp(key, 'g'),
         PLACEHOLDER_INFO[key].example
       );
@@ -558,7 +483,7 @@ export function CommunicationComposer() {
                 required
                 data={clients.map(client => ({
                   value: client.id,
-                  label: decryptName(client.name ?? client.nameEncrypted),
+                  label: client.name ?? client.nameEncrypted ?? 'Unknown',
                 }))}
                 value={selectedClient}
                 onChange={setSelectedClient}
@@ -593,9 +518,10 @@ export function CommunicationComposer() {
                 { value: 'LETTER', label: 'Letter' },
               ]}
               value={type}
-              onChange={(value: string) => {
-                setType(value || 'EMAIL');
-                if (value === 'SMS') {
+              onChange={(value) => {
+                const nextType = value ?? 'EMAIL';
+                setType(nextType);
+                if (nextType === 'SMS') {
                   setSubject('');
                 }
               }}

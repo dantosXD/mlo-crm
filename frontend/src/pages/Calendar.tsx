@@ -46,6 +46,7 @@ import dayjs from 'dayjs';
 import { EventFormModal } from '../components/calendar/EventFormModal';
 import { CalendarShareModal } from '../components/calendar/CalendarShareModal';
 import { SharedCalendarsSidebar } from '../components/calendar/SharedCalendarsSidebar';
+import { apiRequest } from '../utils/api';
 
 // Types
 interface Event {
@@ -94,17 +95,14 @@ const Calendar: React.FC = () => {
 
   // Fetch events and tasks
   const { data: events = [], isLoading, refetch } = useQuery({
-    queryKey: ['events', currentDate.format('YYYY-MM'), Array.from(enabledSharedCalendars)],
+    queryKey: ['events', currentDate.format('YYYY-MM'), view, Array.from(enabledSharedCalendars)],
     queryFn: async () => {
       const startDate = currentDate.startOf(view === 'month' ? 'month' : view === 'week' ? 'week' : 'day').toISOString();
       const endDate = currentDate.endOf(view === 'month' ? 'month' : view === 'week' ? 'week' : 'day').toISOString();
 
       // Fetch own events
-      const response = await fetch(
-        `/api/events?startDate=${startDate}&endDate=${endDate}`,
-        {
-          credentials: 'include',
-        }
+      const response = await apiRequest(
+        `/events?startDate=${startDate}&endDate=${endDate}`
       );
 
       if (!response.ok) {
@@ -117,9 +115,7 @@ const Calendar: React.FC = () => {
       const sharedEventsPromises = Array.from(enabledSharedCalendars).map(async (shareId) => {
         try {
           // Get share details to find ownerId
-          const shareResponse = await fetch(`/api/calendar/shares/${shareId}`, {
-            credentials: 'include',
-          });
+          const shareResponse = await apiRequest(`/calendar/shares/${shareId}`);
 
           if (!shareResponse.ok) {
             return [];
@@ -127,11 +123,8 @@ const Calendar: React.FC = () => {
 
           const share = await shareResponse.json();
 
-          const eventsResponse = await fetch(
-            `/api/calendar/${share.ownerId}/events?startDate=${startDate}&endDate=${endDate}`,
-            {
-              credentials: 'include',
-            }
+          const eventsResponse = await apiRequest(
+            `/calendar/${share.ownerId}/events?startDate=${startDate}&endDate=${endDate}`
           );
 
           if (!eventsResponse.ok) {
@@ -168,11 +161,8 @@ const Calendar: React.FC = () => {
       const startDate = currentDate.startOf('month').toISOString();
       const endDate = currentDate.endOf('month').toISOString();
 
-      const response = await fetch(
-        `/api/tasks?due_date=upcoming&page=1&limit=100`,
-        {
-          credentials: 'include',
-        }
+      const response = await apiRequest(
+        `/tasks?due_date=upcoming&page=1&limit=100`
       );
 
       if (!response.ok) {
@@ -527,8 +517,7 @@ const MonthView: React.FC<{
                       <Text
                         size="sm"
                         fw={isToday(date) ? 700 : 400}
-                        c={isCurrentMonth(date) ? 'white' : 'gray'}
-                        sx={{
+                        style={{
                           color: isCurrentMonth(date) ? 'inherit' : '#868e96',
                         }}
                       >

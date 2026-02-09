@@ -146,7 +146,6 @@ export function AttachmentManager({
         <FileInput
           label="Add Attachment"
           placeholder="Click to upload or drag and drop"
-          icon={<IconUpload size={14} />}
           onChange={handleFileUpload}
           disabled={!communicationId || uploading}
           accept="*/*"

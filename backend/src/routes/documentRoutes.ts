@@ -1,33 +1,26 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import {
   fireDocumentUploadedTrigger,
   fireDocumentStatusChangedTrigger,
 } from '../services/triggerHandler.js';
+import {
+  uploadFileToS3,
+  getPresignedDownloadUrl,
+  deleteFileFromS3,
+} from '../utils/s3.js';
+import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 import multer from 'multer';
-import path from 'path';
 import fs from 'fs';
 
 const router = Router();
 const prisma = new PrismaClient();
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Configure multer for file uploads
-const uploadDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Configure multer for in-memory uploads (persist to object storage)
+const storage = multer.memoryStorage();
 
 // Define allowed MIME types and dangerous file extensions
 const ALLOWED_MIME_TYPES = [
@@ -103,6 +96,15 @@ function decrypt(encryptedData: string): string {
   }
 }
 
+function isLikelyLocalPath(filePath: string): boolean {
+  return (
+    filePath.startsWith('/') ||
+    filePath.startsWith('./') ||
+    filePath.startsWith('../') ||
+    /^[a-zA-Z]:[\\/]/.test(filePath)
+  );
+}
+
 // GET /api/documents - Get all documents (optionally filtered by client)
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -160,7 +162,10 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
     res.json(formattedDocuments);
   } catch (error) {
-    console.error('Error fetching documents:', error);
+    logger.error('documents_fetch_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      userId: req.user?.userId,
+    });
     res.status(500).json({ error: 'Failed to fetch documents' });
   }
 });
@@ -207,7 +212,11 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       clientName: document.client ? decrypt(document.client.nameEncrypted) : null,
     });
   } catch (error) {
-    console.error('Error fetching document:', error);
+    logger.error('document_fetch_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      documentId: req.params.id,
+      userId: req.user?.userId,
+    });
     res.status(500).json({ error: 'Failed to fetch document' });
   }
 });
@@ -217,7 +226,10 @@ router.post('/upload', authenticateToken, (req: AuthRequest, res: Response) => {
   upload.single('file')(req, res, async (err: any) => {
     // Handle multer errors (including file filter errors)
     if (err) {
-      console.error('File upload error:', err.message);
+      logger.warn('document_upload_validation_failed', {
+        error: err?.message || String(err),
+        userId: req.user?.userId,
+      });
 
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({
@@ -260,23 +272,26 @@ router.post('/upload', authenticateToken, (req: AuthRequest, res: Response) => {
       });
 
       if (!client) {
-        // Clean up uploaded file
-        fs.unlinkSync(file.path);
         return res.status(404).json({ error: 'Client not found' });
       }
 
       if (userRole !== 'ADMIN' && userRole !== 'MANAGER' && client.createdById !== userId) {
-        // Clean up uploaded file
-        fs.unlinkSync(file.path);
         return res.status(403).json({ error: 'Access denied' });
       }
+
+      const uploadedFile = await uploadFileToS3(
+        file.buffer,
+        file.originalname,
+        file.mimetype,
+        `documents/${clientId}/`
+      );
 
       const document = await prisma.document.create({
         data: {
           clientId,
           name: name || file.originalname,
           fileName: file.originalname,
-          filePath: file.path,
+          filePath: uploadedFile.filePath,
           fileSize: file.size,
           mimeType: file.mimetype,
           status: status || 'UPLOADED',
@@ -297,11 +312,10 @@ router.post('/upload', authenticateToken, (req: AuthRequest, res: Response) => {
 
       res.status(201).json(document);
     } catch (error) {
-      console.error('Error uploading document:', error);
-      // Clean up file if it exists
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
+      logger.error('document_upload_failed', {
+        error: error instanceof Error ? error.message : String(error),
+        userId: req.user?.userId,
+      });
       res.status(500).json({ error: 'Failed to upload document' });
     }
   });
@@ -352,7 +366,10 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(document);
   } catch (error) {
-    console.error('Error creating document:', error);
+    logger.error('document_create_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      userId: req.user?.userId,
+    });
     res.status(500).json({ error: 'Failed to create document' });
   }
 });
@@ -406,7 +423,11 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
 
     res.json(updatedDocument);
   } catch (error) {
-    console.error('Error updating document:', error);
+    logger.error('document_update_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      documentId: req.params.id,
+      userId: req.user?.userId,
+    });
     res.status(500).json({ error: 'Failed to update document' });
   }
 });
@@ -434,20 +455,41 @@ router.get('/:id/download', authenticateToken, async (req: AuthRequest, res: Res
       }
     }
 
-    // Check if file exists
-    if (!document.filePath || !fs.existsSync(document.filePath)) {
-      return res.status(404).json({ error: 'File not found on server' });
+    if (!document.filePath) {
+      return res.status(404).json({ error: 'File path is missing' });
     }
 
-    // Set headers for download
-    res.setHeader('Content-Disposition', `attachment; filename="${document.fileName}"`);
-    res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
+    const localPath = isLikelyLocalPath(document.filePath);
 
-    // Stream the file
-    const fileStream = fs.createReadStream(document.filePath);
-    fileStream.pipe(res);
+    // Keep local-file fallback only for non-production environments.
+    if (!isProduction && localPath && fs.existsSync(document.filePath)) {
+      res.setHeader('Content-Disposition', `attachment; filename="${document.fileName}"`);
+      res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
+
+      const fileStream = fs.createReadStream(document.filePath);
+      fileStream.pipe(res);
+      return;
+    }
+
+    if (isProduction && localPath) {
+      logger.error('document_legacy_local_path_in_production', {
+        documentId: id,
+        userId,
+      });
+      return res.status(500).json({
+        error: 'Legacy Storage',
+        message: 'Document is stored on legacy local disk path and must be migrated to object storage',
+      });
+    }
+
+    const downloadUrl = await getPresignedDownloadUrl(document.filePath, 600);
+    return res.redirect(downloadUrl);
   } catch (error) {
-    console.error('Error downloading document:', error);
+    logger.error('document_download_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      documentId: req.params.id,
+      userId: req.user?.userId,
+    });
     res.status(500).json({ error: 'Failed to download document' });
   }
 });
@@ -506,22 +548,17 @@ router.post('/request', authenticateToken, async (req: AuthRequest, res: Respons
       },
     });
 
-    // In development mode, log the email to terminal instead of sending
+    // In development mode, emit a structured preview instead of sending
     if (process.env.NODE_ENV === 'development') {
-      console.log('\n========================================');
-      console.log('📧 DOCUMENT REQUEST EMAIL (DEV MODE)');
-      console.log('========================================');
-      console.log(`To: ${clientEmail}`);
-      console.log(`Subject: Document Request: ${documentName}`);
-      console.log('\nBody:');
-      console.log(`Dear ${clientName},`);
-      console.log(`\nWe need you to provide the following document:`);
-      console.log(`\nDocument: ${documentName}`);
-      if (category) console.log(`Category: ${category}`);
-      if (dueDate) console.log(`Due Date: ${new Date(dueDate).toLocaleDateString()}`);
-      if (message) console.log(`\nMessage: ${message}`);
-      console.log(`\nPlease upload this document through your client portal or contact us.`);
-      console.log('\n========================================\n');
+      logger.info('document_request_email_dev_preview', {
+        to: clientEmail,
+        subject: `Document Request: ${documentName}`,
+        clientName,
+        documentName,
+        category: category || null,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        customMessage: message || null,
+      });
     }
 
     res.status(201).json({
@@ -530,7 +567,10 @@ router.post('/request', authenticateToken, async (req: AuthRequest, res: Respons
       emailLogged: process.env.NODE_ENV === 'development',
     });
   } catch (error) {
-    console.error('Error requesting document:', error);
+    logger.error('document_request_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      userId: req.user?.userId,
+    });
     res.status(500).json({ error: 'Failed to request document' });
   }
 });
@@ -560,9 +600,36 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
 
     await prisma.document.delete({ where: { id } });
 
+    if (document.filePath) {
+      const localPath = isLikelyLocalPath(document.filePath);
+
+      if (!isProduction && localPath && fs.existsSync(document.filePath)) {
+        try {
+          fs.unlinkSync(document.filePath);
+        } catch (unlinkError) {
+          logger.warn('document_local_file_delete_failed', {
+            documentId: id,
+            error: unlinkError instanceof Error ? unlinkError.message : String(unlinkError),
+          });
+        }
+      } else if (!localPath) {
+        await deleteFileFromS3(document.filePath).catch(() => {
+          // Storage cleanup failures should not block API delete.
+        });
+      } else {
+        logger.warn('document_legacy_local_path_delete_skipped', {
+          documentId: id,
+        });
+      }
+    }
+
     res.json({ message: 'Document deleted successfully' });
   } catch (error) {
-    console.error('Error deleting document:', error);
+    logger.error('document_delete_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      documentId: req.params.id,
+      userId: req.user?.userId,
+    });
     res.status(500).json({ error: 'Failed to delete document' });
   }
 });

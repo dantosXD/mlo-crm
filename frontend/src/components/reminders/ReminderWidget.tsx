@@ -25,7 +25,7 @@ import {
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
-import api from '../../utils/apiBase';
+import api from '../../utils/api';
 
 interface ReminderWidgetProps {
   limit?: number;
@@ -44,7 +44,10 @@ const ReminderWidget: React.FC<ReminderWidgetProps> = ({ limit = 5 }) => {
     try {
       setLoading(true);
       const response = await api.get(`/reminders?status=PENDING&status=SNOOZED&limit=${limit}`);
-      setReminders(response.data);
+      if (!response.ok) {
+        throw new Error('Failed to fetch reminders');
+      }
+      setReminders(await response.json());
     } catch (error) {
       console.error('Error fetching reminders:', error);
     } finally {
@@ -54,7 +57,10 @@ const ReminderWidget: React.FC<ReminderWidgetProps> = ({ limit = 5 }) => {
 
   const handleComplete = async (reminderId: string) => {
     try {
-      await api.post(`/reminders/${reminderId}/complete`);
+      const response = await api.post(`/reminders/${reminderId}/complete`);
+      if (!response.ok) {
+        throw new Error('Failed to complete reminder');
+      }
       notifications.show({
         title: 'Success',
         message: 'Reminder marked as complete',
@@ -72,7 +78,10 @@ const ReminderWidget: React.FC<ReminderWidgetProps> = ({ limit = 5 }) => {
 
   const handleSnooze = async (reminderId: string) => {
     try {
-      await api.post(`/reminders/${reminderId}/snooze`, { minutes: 15 });
+      const response = await api.post(`/reminders/${reminderId}/snooze`, { minutes: 15 });
+      if (!response.ok) {
+        throw new Error('Failed to snooze reminder');
+      }
       notifications.show({
         title: 'Success',
         message: 'Reminder snoozed for 15 minutes',
@@ -219,8 +228,8 @@ const ReminderWidget: React.FC<ReminderWidgetProps> = ({ limit = 5 }) => {
                             <>
                               <Text size="xs">•</Text>
                               <Text size="xs" fw={500}>
-                            {reminder.client.name}
-                          </Text>
+                                {reminder.client?.name}
+                              </Text>
                             </>
                           )}
                         </Group>

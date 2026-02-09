@@ -6,82 +6,54 @@ export interface CsrfRequest extends Request {
   csrfToken?: string;
 }
 
-// Store for CSRF tokens (in production, use Redis or similar)
-const tokenStore = new Map<string, { token: string; expiresAt: number }>();
+const CSRF_COOKIE_NAME = 'csrf-token';
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Clean up expired tokens every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [sessionId, data] of tokenStore.entries()) {
-    if (data.expiresAt < now) {
-      tokenStore.delete(sessionId);
-    }
-  }
-}, 5 * 60 * 1000);
+/**
+ * Cookie-based double-submit CSRF protection.
+ *
+ * How it works:
+ * 1. generateCsrfToken sets a non-HttpOnly cookie with a random token on
+ *    every authenticated response. The cookie uses SameSite=Strict so the
+ *    browser will never send it on cross-origin requests.
+ * 2. The frontend reads the cookie value and echoes it in the X-CSRF-Token
+ *    header on every state-changing request (POST/PUT/PATCH/DELETE).
+ * 3. validateCsrfToken compares the cookie value with the header value.
+ *    If they match the request is legitimate — an attacker on another origin
+ *    cannot read the cookie (Same-Origin Policy) so they cannot forge the header.
+ *
+ * No server-side token store is needed. Survives restarts and scales to
+ * multiple instances without Redis.
+ */
 
-// Generate CSRF token
 function createCsrfToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-// Get session ID from request
-function getSessionId(req: Request): string {
-  // Try to get session ID from cookie first
-  if (req.cookies?.sessionId) {
-    return req.cookies.sessionId;
-  }
-
-  // Try to get session ID from header
-  const headerSessionId = req.headers['x-session-id'] as string;
-  if (headerSessionId) {
-    return headerSessionId;
-  }
-
-  // For authenticated requests with JWT, use the user ID from the token
-  // This is decoded by the authenticateToken middleware and attached to req
-  const authHeader = req.headers['authorization'];
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    // Use a consistent hash based on the Bearer token itself
-    // This ensures the same token always gets the same session ID
-    return crypto.createHash('sha256')
-      .update(authHeader)
-      .digest('hex');
-  }
-
-  // Fallback to IP + User-Agent (for non-authenticated requests)
-  return crypto.createHash('sha256')
-    .update(`${req.ip}-${req.headers['user-agent'] || 'unknown'}`)
-    .digest('hex');
-}
-
-// Middleware to generate CSRF token for authenticated requests
+// Middleware to set CSRF cookie for authenticated requests
 export function generateCsrfToken(req: CsrfRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
 
-  // Only generate CSRF token for authenticated requests
+  // Only set CSRF cookie for authenticated requests
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    const sessionId = getSessionId(req);
-    const existingData = tokenStore.get(sessionId);
-
-    // Only generate new token if one doesn't exist or is expired
-    let token;
-    if (!existingData || existingData.expiresAt < Date.now()) {
+    // Reuse existing cookie value if present, otherwise generate new
+    let token = req.cookies?.[CSRF_COOKIE_NAME];
+    if (!token) {
       token = createCsrfToken();
-
-      // Store token with 1 hour expiration
-      tokenStore.set(sessionId, {
-        token,
-        expiresAt: Date.now() + (60 * 60 * 1000), // 1 hour
-      });
-    } else {
-      // Use existing token
-      token = existingData.token;
     }
 
-    // Add CSRF token to response headers
-    res.setHeader('X-CSRF-Token', token);
+    // Set cookie: NOT HttpOnly so frontend JS can read it
+    // SameSite=Strict prevents cross-origin sending
+    res.cookie(CSRF_COOKIE_NAME, token, {
+      httpOnly: false,
+      secure: isProduction,
+      sameSite: 'strict',
+      path: '/',
+      maxAge: 60 * 60 * 1000, // 1 hour
+    });
 
-    // Also store it on request for potential use
+    // Also expose in response header for backward compatibility
+    res.setHeader('X-CSRF-Token', token);
     req.csrfToken = token;
   }
 
@@ -101,28 +73,28 @@ export function validateCsrfToken(req: CsrfRequest, res: Response, next: NextFun
     return next();
   }
 
-  // Get CSRF token from header
-  const csrfToken = req.headers['x-csrf-token'] as string;
+  // Get CSRF token from header (set by frontend JS)
+  const headerToken = req.headers['x-csrf-token'] as string;
 
-  if (!csrfToken) {
+  if (!headerToken) {
     return res.status(403).json({
       error: 'CSRF Token Missing',
       message: 'CSRF token is required for this request. Include it in the X-CSRF-Token header.',
     });
   }
 
-  // Get session ID and validate token
-  const sessionId = getSessionId(req);
-  const storedData = tokenStore.get(sessionId);
+  // Get CSRF token from cookie (set by this middleware)
+  const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
 
-  if (!storedData || storedData.expiresAt < Date.now()) {
+  if (!cookieToken) {
     return res.status(403).json({
-      error: 'CSRF Token Invalid or Expired',
-      message: 'CSRF token is invalid or has expired. Please refresh and try again.',
+      error: 'CSRF Cookie Missing',
+      message: 'CSRF cookie is missing. Please refresh and try again.',
     });
   }
 
-  if (storedData.token !== csrfToken) {
+  // Double-submit check: cookie must match header
+  if (cookieToken !== headerToken) {
     return res.status(403).json({
       error: 'CSRF Token Mismatch',
       message: 'CSRF token does not match. This could indicate a cross-site request forgery attempt.',
@@ -130,27 +102,5 @@ export function validateCsrfToken(req: CsrfRequest, res: Response, next: NextFun
   }
 
   // Token is valid, proceed
-  next();
-}
-
-// Middleware to rotate CSRF token after use (optional, for higher security)
-export function rotateCsrfToken(req: CsrfRequest, res: Response, next: NextFunction) {
-  const authHeader = req.headers['authorization'];
-
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const sessionId = getSessionId(req);
-    const newToken = createCsrfToken();
-
-    // Update stored token
-    tokenStore.set(sessionId, {
-      token: newToken,
-      expiresAt: Date.now() + (60 * 60 * 1000), // 1 hour
-    });
-
-    // Send new token in response header
-    res.setHeader('X-CSRF-Token', newToken);
-    req.csrfToken = newToken;
-  }
-
   next();
 }

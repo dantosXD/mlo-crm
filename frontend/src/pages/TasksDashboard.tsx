@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Container,
   Title,
@@ -21,6 +21,7 @@ import {
   Menu,
   ScrollArea,
   Box,
+  Center,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
@@ -39,65 +40,19 @@ import {
   IconPlus,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { notifications } from '@mantine/notifications';
+import { api } from '../utils/api';
 import { TaskSnoozeButton } from '../components/tasks/TaskSnoozeButton';
 import TaskForm from '../components/tasks/TaskForm';
 import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
 import { PullToRefresh } from '../components/common/PullToRefresh';
 import { SimpleFab } from '../components/common/MobileFloatingActionButton';
+import { PRIORITY_COLORS } from '../utils/constants';
+import type { Task, TaskStatistics, TasksResponse } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
-interface Task {
-  id: string;
-  text: string;
-  description?: string;
-  status: string;
-  priority: string;
-  type?: string;
-  dueDate?: string;
-  completedAt?: string;
-  assignedTo?: { id: string; name: string } | null;
-  client?: { id: string; name: string } | null;
-  subtasks?: Array<{ id: string; text: string; isCompleted: boolean }>;
-  tags?: string[];
-  reminderEnabled?: boolean;
-  reminderTimes?: string[];
-  reminderMessage?: string;
-  snoozedUntil?: string;
-  isRecurring?: boolean;
-  recurringPattern?: string;
-  recurringInterval?: number;
-  recurringEndDate?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface TaskStatistics {
-  total: number;
-  dueToday: number;
-  overdue: number;
-  completed: number;
-  upcoming: number;
-}
-
-interface TasksResponse {
-  tasks: Task[];
-  pagination: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
-
-const priorityColors: Record<string, string> = {
-  LOW: 'gray',
-  MEDIUM: 'blue',
-  HIGH: 'orange',
-  URGENT: 'red',
-};
+const priorityColors = PRIORITY_COLORS;
 
 const statusColors: Record<string, string> = {
   TODO: 'gray',
@@ -137,13 +92,11 @@ const sortDirectionOptions = [
 
 export default function TasksDashboard() {
   const navigate = useNavigate();
-  const { user, accessToken } = useAuthStore();
+  const { user } = useAuthStore();
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   // State
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [statistics, setStatistics] = useState<TaskStatistics | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
@@ -152,21 +105,14 @@ export default function TasksDashboard() {
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortDirection, setSortDirection] = useState('desc');
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({
-    total: 0,
-    page: 1,
-    limit: 50,
-    totalPages: 0,
-  });
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [taskFormOpened, setTaskFormOpened] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
 
-  // Fetch tasks
-  const fetchTasks = async () => {
-    setLoading(true);
-    try {
+  const { data: tasksData, isLoading: loading } = useQuery({
+    queryKey: ['tasks', selectedFilter, selectedPriority, selectedStatus, sortBy, sortDirection, page],
+    queryFn: async () => {
       const params = new URLSearchParams();
       params.append('page', page.toString());
       params.append('limit', '50');
@@ -180,72 +126,40 @@ export default function TasksDashboard() {
       } else if (selectedFilter !== 'all') {
         params.append('due_date', selectedFilter);
       }
+      if (selectedPriority) params.append('priority', selectedPriority);
+      if (selectedStatus) params.append('status', selectedStatus);
 
-      if (selectedPriority) {
-        params.append('priority', selectedPriority);
-      }
-
-      if (selectedStatus) {
-        params.append('status', selectedStatus);
-      }
-
-      const response = await fetch(`${API_URL}/api/tasks?${params}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch tasks');
-      }
-
+      const response = await api.get(`/tasks?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch tasks');
       const data: TasksResponse = await response.json();
-      setTasks(data.tasks);
-      setPagination(data.pagination);
-      setSelectedTasks(new Set()); // Clear selection on new fetch
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load tasks',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
+      setSelectedTasks(new Set());
+      return data;
+    },
+  });
+
+  const tasks = tasksData?.tasks ?? [];
+  const pagination = tasksData?.pagination ?? { total: 0, page: 1, limit: 50, totalPages: 0 };
+
+  const { data: statistics = null } = useQuery({
+    queryKey: ['task-statistics'],
+    queryFn: async () => {
+      const response = await api.get('/tasks/statistics');
+      if (!response.ok) throw new Error('Failed to fetch statistics');
+      return response.json() as Promise<TaskStatistics>;
+    },
+  });
+
+  const refreshAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    queryClient.invalidateQueries({ queryKey: ['task-statistics'] });
   };
-
-  // Fetch statistics
-  const fetchStatistics = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/tasks/statistics`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch statistics');
-      }
-
-      const data: TaskStatistics = await response.json();
-      setStatistics(data);
-    } catch (error) {
-      console.error('Error fetching statistics:', error);
-    }
-  };
-
-  // Initial load
-  useEffect(() => {
-    fetchTasks();
-    fetchStatistics();
-  }, [selectedFilter, selectedPriority, selectedStatus, sortBy, sortDirection, page]);
 
   // Pull to refresh handler
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([fetchTasks(), fetchStatistics()]);
+      refreshAll();
+      await new Promise(r => setTimeout(r, 500));
     } finally {
       setRefreshing(false);
     }
@@ -256,28 +170,15 @@ export default function TasksDashboard() {
     try {
       const newStatus = task.status === 'COMPLETE' ? 'TODO' : 'COMPLETE';
 
-      const response = await fetch(`${API_URL}/api/tasks/${task.id}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      const response = await api.patch(`/tasks/${task.id}/status`, { status: newStatus });
 
       if (!response.ok) {
         throw new Error('Failed to update task');
       }
 
       // Update local state
-      setTasks(tasks.map(t =>
-        t.id === task.id
-          ? { ...t, status: newStatus, completedAt: newStatus === 'COMPLETE' ? new Date().toISOString() : undefined }
-          : t
-      ));
-
-      // Refresh statistics
-      fetchStatistics();
+      // Refresh tasks and statistics
+      refreshAll();
 
       notifications.show({
         title: 'Success',
@@ -301,19 +202,13 @@ export default function TasksDashboard() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/tasks/${taskId}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.delete(`/tasks/${taskId}`);
 
       if (!response.ok) {
         throw new Error('Failed to delete task');
       }
 
-      setTasks(tasks.filter(t => t.id !== taskId));
-      fetchStatistics();
+      refreshAll();
 
       notifications.show({
         title: 'Success',
@@ -343,25 +238,17 @@ export default function TasksDashboard() {
 
     setBulkLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/tasks/bulk`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
+      const response = await api.patch('/tasks/bulk', {
           taskIds: Array.from(selectedTasks),
           action,
           data,
-        }),
-      });
+        });
 
       if (!response.ok) {
         throw new Error('Failed to perform bulk action');
       }
 
-      await fetchTasks();
-      fetchStatistics();
+      refreshAll();
       setSelectedTasks(new Set());
 
       notifications.show({
@@ -382,7 +269,7 @@ export default function TasksDashboard() {
   };
 
   // Format date
-  const formatDate = (dateString?: string) => {
+  const formatDate = (dateString?: string | null) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
@@ -405,7 +292,7 @@ export default function TasksDashboard() {
     return (
       task.text.toLowerCase().includes(query) ||
       task.description?.toLowerCase().includes(query) ||
-      task.client?.name.toLowerCase().includes(query)
+      (task.client?.name ? task.client.name.toLowerCase().includes(query) : false)
     );
   });
 
@@ -458,7 +345,7 @@ export default function TasksDashboard() {
                   <Button
                     variant="light"
                     leftSection={<IconRefresh size={16} />}
-                    onClick={() => { fetchTasks(); fetchStatistics(); }}
+                    onClick={refreshAll}
                   >
                     Refresh
                   </Button>
@@ -468,7 +355,7 @@ export default function TasksDashboard() {
                 <ActionIcon
                   size="lg"
                   variant="light"
-                  onClick={() => { fetchTasks(); fetchStatistics(); }}
+                  onClick={refreshAll}
                   style={{ minHeight: '44px', minWidth: '44px' }}
                 >
                   <IconRefresh size={20} />
@@ -705,13 +592,13 @@ export default function TasksDashboard() {
                         </Stack>
                       </Table.Td>
                       <Table.Td>
-                        {task.client ? (
+                        {task.client?.id ? (
                           <Button
                             variant="subtle"
                             size="xs"
-                            onClick={() => navigate(`/clients/${task.client.id}`)}
+                            onClick={() => navigate(`/clients/${task.client!.id}`)}
                           >
-                            {task.client.name}
+                            {task.client?.name || 'Client'}
                           </Button>
                         ) : (
                           <Text c="dimmed" size="sm">
@@ -790,7 +677,7 @@ export default function TasksDashboard() {
                           {task.dueDate && task.status !== 'COMPLETE' && (
                             <TaskSnoozeButton
                               taskId={task.id}
-                              onSnooze={fetchTasks}
+                              onSnooze={refreshAll}
                             />
                           )}
                           <Menu shadow="md" width={200} position="bottom-end">
@@ -835,10 +722,7 @@ export default function TasksDashboard() {
         <TaskForm
           opened={taskFormOpened}
           onClose={() => setTaskFormOpened(false)}
-          onSuccess={() => {
-            fetchTasks();
-            fetchStatistics();
-          }}
+          onSuccess={refreshAll}
           editTask={editingTask}
         />
       </Stack>

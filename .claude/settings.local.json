@@ -4,7 +4,14 @@
       "Bash(npx tsc:*)",
       "Bash(curl:*)",
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI3YmIzMTI4Ny01ZTMzLTQyNTUtOTVmZS1kMjZjMzE5NDk4NWEiLCJlbWFpbCI6ImFkbWluQGV4YW1wbGUuY29tIiwicm9sZSI6IkFETUlOIiwiaWF0IjoxNzcwMjMwMDU0LCJleHAiOjE3NzAzMTY0NTR9.LApktGXW71nB7ctMxEofmO4WZBVXYuIIstArj726AQA\")",
-      "Bash(npx playwright test:*)"
+      "Bash(npx playwright test:*)",
+      "Bash(if [ -d \"$HOME/.config/superpowers/skills\" ])",
+      "Bash(then ls -la \"$HOME/.config/superpowers/skills\")",
+      "Bash(else echo \"Skills directory not found\")",
+      "Bash(fi)",
+      "Bash(if [ -d \"$HOME/.config/superpowers\" ])",
+      "Bash(then ls -la \"$HOME/.config/superpowers\")",
+      "Bash(else echo \"Superpowers config not found\")"
     ]
   }
 }

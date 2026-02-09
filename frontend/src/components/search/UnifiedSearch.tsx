@@ -19,7 +19,7 @@ import {
   IconBell,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import api from '../../utils/apiBase';
+import api from '../../utils/api';
 
 interface SearchResult {
   type: 'task' | 'event' | 'reminder';
@@ -80,7 +80,10 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = ({
       setLoading(true);
       try {
         const response = await api.get(`/integration/unified-search?q=${encodeURIComponent(debouncedQuery)}`);
-        setResults(response.data);
+        if (!response.ok) {
+          throw new Error('Failed to fetch search results');
+        }
+        setResults(await response.json());
       } catch (error) {
         console.error('Search error:', error);
       } finally {

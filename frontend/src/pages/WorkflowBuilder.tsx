@@ -15,9 +15,7 @@ import {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { notifications } from '@mantine/notifications';
-import { useAuthStore } from '../stores/authStore';
 import { useParams, useNavigate } from 'react-router-dom';
-import { API_URL } from '../utils/apiBase';
 import { api } from '../utils/api';
 import {
   Button,
@@ -179,8 +177,6 @@ export default function WorkflowBuilder() {
   const [testModalOpened, setTestModalOpened] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
-  const { accessToken } = useAuthStore();
-
   const isEditing = !!id;
 
   // Load workflow data when editing
@@ -188,11 +184,7 @@ export default function WorkflowBuilder() {
     const loadWorkflow = async () => {
       if (isEditing && id) {
         try {
-          const response = await fetch(`${API_URL}/workflows/${id}`, {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          });
+          const response = await api.get(`/workflows/${id}`);
 
           if (response.ok) {
             const workflow = await response.json();
@@ -440,11 +432,11 @@ export default function WorkflowBuilder() {
 
     // Clear validation errors and proceed with save
     setValidationErrors([]);
-    saveWorkflow.mutate();
+    saveWorkflow.mutate(false);
   };
 
   // Save workflow mutation
-  const saveWorkflow = useMutation({
+  const saveWorkflow = useMutation<void, Error, boolean>({
     mutationFn: async (saveAsNewVersion = false) => {
       // Validate workflow before saving
       const validation = validateWorkflow();

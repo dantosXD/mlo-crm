@@ -12,12 +12,24 @@
     "build:backend": "cd backend && npm run build",
     "start": "cd backend && npm start",
     "test": "npm run test:frontend && npm run test:backend",
+    "test:watch": "concurrently \"npm run test:frontend:watch\" \"npm run test:backend:watch\"",
     "test:frontend": "cd frontend && npm test",
+    "test:frontend:watch": "cd frontend && npm run test:watch",
     "test:backend": "cd backend && npm test",
+    "test:backend:watch": "cd backend && npm run test:watch",
     "test:e2e": "playwright test",
     "lint": "npm run lint:frontend && npm run lint:backend",
+    "lint:ci": "npm run lint:frontend:ci && npm run lint:backend:ci",
     "lint:frontend": "cd frontend && npm run lint",
+    "lint:frontend:ci": "cd frontend && npm run lint:ci",
     "lint:backend": "cd backend && npm run lint",
+    "lint:backend:ci": "cd backend && npm run lint:ci",
+    "typecheck": "npm run typecheck:frontend && npm run typecheck:backend",
+    "typecheck:frontend": "cd frontend && npm run typecheck",
+    "typecheck:backend": "cd backend && npm run typecheck",
+    "ops:staging-smoke": "node scripts/staging-smoke.mjs",
+    "ops:db:validate-integrity": "npm run db:validate-integrity --prefix backend",
+    "ops:configure-branch-protection": "node scripts/configure-branch-protection.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "prepare": "husky install"
   },
@@ -43,9 +55,7 @@
   },
   "dependencies": {
     "axios": "^1.13.4",
-    "better-sqlite3": "^12.6.2",
     "dotenv": "^17.2.3",
-    "node-fetch": "^2.7.0",
-    "sqlite3": "^5.1.7"
+    "node-fetch": "^2.7.0"
   }
 }

@@ -32,10 +32,23 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Rate limiter for token refresh - 30 attempts per 15 minutes per IP
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // Limit each IP to 30 refresh attempts per windowMs
+  message: {
+    error: 'Too many refresh attempts',
+    message: 'Too many token refresh attempts from this IP. Please try again later.',
+    retryAfter: 15,
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Public routes with rate limiting
 router.post('/login', loginLimiter, login);
 router.post('/register', registerLimiter, register);
-router.post('/refresh', refresh);
+router.post('/refresh', refreshLimiter, refresh);
 router.post('/logout', logout);
 
 // Protected routes

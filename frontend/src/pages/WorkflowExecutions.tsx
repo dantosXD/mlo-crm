@@ -35,9 +35,8 @@ import {
   IconPlayerPause,
   IconPlayerPlay,
 } from '@tabler/icons-react';
-import { useAuthStore } from '../stores/authStore';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { API_URL } from '../utils/apiBase';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../utils/api';
 
 interface WorkflowExecution {
@@ -130,22 +129,16 @@ const renderStatusIcon = (status: string) => {
 };
 
 export function WorkflowExecutions() {
-  const { accessToken } = useAuthStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [workflowFilter, setWorkflowFilter] = useState<string>('all');
   const [clientFilter, setClientFilter] = useState<string>('');
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0,
-  });
+  const [page, setPage] = useState(1);
+  const limit = 20;
 
   // Detail drawer
   const [drawerOpened, setDrawerOpened] = useState(false);
@@ -163,70 +156,32 @@ export function WorkflowExecutions() {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    fetchExecutions();
-  }, [pagination.page, statusFilter, workflowFilter, clientFilter]);
-
-  const fetchExecutions = async () => {
-    setLoading(true);
-    try {
+  const { data: executionsData, isLoading: loading } = useQuery({
+    queryKey: ['workflow-executions', page, statusFilter, workflowFilter, clientFilter],
+    queryFn: async () => {
       const params = new URLSearchParams({
-        page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
+        page: page.toString(),
+        limit: limit.toString(),
       });
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (workflowFilter !== 'all') params.append('workflow_id', workflowFilter);
+      if (clientFilter) params.append('client_id', clientFilter);
 
-      if (statusFilter !== 'all') {
-        params.append('status', statusFilter);
-      }
+      const response = await api.get(`/workflow-executions?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch executions');
+      return response.json() as Promise<ExecutionsResponse>;
+    },
+  });
 
-      if (workflowFilter !== 'all') {
-        params.append('workflow_id', workflowFilter);
-      }
-
-      if (clientFilter) {
-        params.append('client_id', clientFilter);
-      }
-
-      const response = await fetch(`${API_URL}/workflow-executions?${params}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch executions');
-      }
-
-      const data: ExecutionsResponse = await response.json();
-      setExecutions(data.executions);
-      setPagination({
-        page: data.pagination.page,
-        limit: data.pagination.limit,
-        total: data.pagination.total,
-        totalPages: data.pagination.totalPages,
-      });
-    } catch (error) {
-      console.error('Error fetching executions:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load workflow executions',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const executions = executionsData?.executions ?? [];
+  const pagination = executionsData?.pagination ?? { page: 1, limit, total: 0, totalPages: 0 };
 
   const viewExecutionDetails = async (executionId: string) => {
     setLoadingDetail(true);
     setDrawerOpened(true);
 
     try {
-      const response = await fetch(`${API_URL}/workflow-executions/${executionId}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.get(`/workflow-executions/${executionId}`);
 
       if (!response.ok) {
         throw new Error('Failed to fetch execution details');
@@ -267,7 +222,7 @@ export function WorkflowExecutions() {
       });
 
       // Refresh executions and detail
-      fetchExecutions();
+      queryClient.invalidateQueries({ queryKey: ['workflow-executions'] });
       if (selectedExecution && selectedExecution.id === executionId) {
         viewExecutionDetails(executionId);
       }
@@ -299,7 +254,7 @@ export function WorkflowExecutions() {
       });
 
       // Refresh executions and detail
-      fetchExecutions();
+      queryClient.invalidateQueries({ queryKey: ['workflow-executions'] });
       if (selectedExecution && selectedExecution.id === executionId) {
         viewExecutionDetails(executionId);
       }
@@ -331,7 +286,7 @@ export function WorkflowExecutions() {
       });
 
       // Refresh executions and detail
-      fetchExecutions();
+      queryClient.invalidateQueries({ queryKey: ['workflow-executions'] });
       if (selectedExecution && selectedExecution.id === executionId) {
         viewExecutionDetails(executionId);
       }
@@ -463,7 +418,7 @@ export function WorkflowExecutions() {
           <Title order={2}>Workflow Executions</Title>
           <Button
             leftSection={<IconRefresh size={14} />}
-            onClick={fetchExecutions}
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['workflow-executions'] })}
             loading={loading}
           >
             Refresh
@@ -526,7 +481,7 @@ export function WorkflowExecutions() {
               <Pagination
                 total={pagination.totalPages}
                 value={pagination.page}
-                onChange={(page) => setPagination({ ...pagination, page })}
+                onChange={(p) => setPage(p)}
               />
             </Group>
           )}

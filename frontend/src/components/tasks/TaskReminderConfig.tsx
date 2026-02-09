@@ -14,8 +14,7 @@ import {
 } from '@mantine/core';
 import { IconBell, IconInfoCircle } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { api } from '../../utils/api';
 
 interface TaskReminderConfigProps {
   taskId: string;
@@ -91,14 +90,7 @@ export function TaskReminderConfig({
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/tasks/${taskId}/reminders`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(settings),
-      });
+      const response = await api.patch(`/tasks/${taskId}/reminders`, settings);
 
       if (!response.ok) {
         const error = await response.json();

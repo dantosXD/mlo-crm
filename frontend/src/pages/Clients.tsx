@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Container,
@@ -28,34 +28,15 @@ import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, 
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
 import { canWriteClients } from '../utils/roleUtils';
-import { handleFetchError, fetchWithErrorHandling } from '../utils/errorHandler';
-import { API_URL } from '../utils/apiBase';
+import { useClientStatuses } from '../hooks';
+import { handleFetchError } from '../utils/errorHandler';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../utils/api';
-import { decryptData } from '../utils/encryption';
 import { BulkCommunicationComposer } from './BulkCommunicationComposer';
+import { CLIENT_STATUS_COLORS } from '../utils/constants';
+import type { Client } from '../types';
 
-interface Client {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  status: string;
-  tags: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-const statusColors: Record<string, string> = {
-  LEAD: 'gray',
-  PRE_QUALIFIED: 'blue',
-  ACTIVE: 'green',
-  PROCESSING: 'yellow',
-  UNDERWRITING: 'orange',
-  CLEAR_TO_CLOSE: 'lime',
-  CLOSED: 'green.9',
-  DENIED: 'red',
-  INACTIVE: 'gray',
-};
+const statusColors = CLIENT_STATUS_COLORS;
 
 // Mask email: show first 2 chars, mask middle, show domain
 function maskEmail(email: string): string {
@@ -109,12 +90,7 @@ export default function Clients() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { accessToken, user } = useAuthStore();
   const canWrite = canWriteClients(user?.role);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
   const isMobile = useMediaQuery('(max-width: 576px)');
-
-  // Status options fetched from backend
-  const [statusOptions, setStatusOptions] = useState<Array<{ value: string; label: string }>>([]);
 
   // Initialize filter state from URL search params for persistence on navigation
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
@@ -167,81 +143,26 @@ export default function Clients() {
     setSearchParams(params, { replace: true });
   }, [searchQuery, statusFilter, tagFilter, dateFilter, page, setSearchParams]);
 
-  // Fetch clients on mount and when location changes (handles back navigation) or sort changes
-  useEffect(() => {
-    fetchClients();
-    fetchStatuses();
-  }, [accessToken, location.key, sortColumn, sortDirection]);
+  const queryClient = useQueryClient();
 
-  const fetchStatuses = async () => {
-    try {
-      const response = await fetch(`${API_URL}/clients/statuses`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+  const statusOptions = useClientStatuses();
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch client statuses');
-      }
-
-      const data = await response.json();
-      setStatusOptions(data);
-    } catch (error) {
-      console.error('Error fetching client statuses:', error);
-      // Fallback to hardcoded options if fetch fails
-      setStatusOptions([
-        { value: 'LEAD', label: 'Lead' },
-        { value: 'PRE_QUALIFIED', label: 'Pre-Qualified' },
-        { value: 'ACTIVE', label: 'Active' },
-        { value: 'PROCESSING', label: 'Processing' },
-        { value: 'UNDERWRITING', label: 'Underwriting' },
-        { value: 'CLEAR_TO_CLOSE', label: 'Clear to Close' },
-        { value: 'CLOSED', label: 'Closed' },
-        { value: 'DENIED', label: 'Denied' },
-        { value: 'INACTIVE', label: 'Inactive' },
-      ]);
-    }
-  };
-
-  const fetchClients = async () => {
-    setLoading(true);
-    try {
-      // Build query parameters including sort
+  // Fetch clients
+  const { data: clients = [], isLoading: loading } = useQuery({
+    queryKey: ['clients', sortColumn, sortDirection, location.key],
+    queryFn: async () => {
       const params = new URLSearchParams();
       if (sortColumn) {
         params.append('sortBy', sortColumn);
         params.append('sortOrder', sortDirection);
       }
-
       const queryString = params.toString() ? `?${params.toString()}` : '';
-
-      // Minimum loading time to ensure skeleton is visible (better UX)
-      const [response] = await Promise.all([
-        fetchWithErrorHandling(`${API_URL}/clients${queryString}`, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }, 'loading clients'),
-        new Promise(resolve => setTimeout(resolve, 300)), // Minimum 300ms loading state for smooth UX
-      ]);
-
+      const response = await api.get(`/clients${queryString}`);
       const data = await response.json();
-      const normalized = Array.isArray(data) ? data : data.data || [];
-      const decrypted = normalized.map((client: Client) => ({
-        ...client,
-        name: decryptData(client.name),
-        email: decryptData(client.email),
-        phone: decryptData(client.phone),
-      }));
-      setClients(decrypted);
-    } catch (error) {
-      console.error('Error fetching clients:', error);
-      handleFetchError(error, 'loading clients');
-    } finally {
-      setLoading(false);
-    }
-  };
+      return (Array.isArray(data) ? data : data.data || []) as Client[];
+    },
+    enabled: !!accessToken,
+  });
 
   const handleCreateClient = async () => {
     // Validate required fields with specific error messages
@@ -271,8 +192,13 @@ export default function Clients() {
     try {
       const response = await api.post('/clients', newClient);
 
-      const createdClient = await response.json();
-      setClients([createdClient, ...clients]);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to create client');
+      }
+
+      await response.json();
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
       setCreateModalOpen(false);
       setNewClient({ name: '', email: '', phone: '', status: 'LEAD', tags: [] });
       setFormErrors({});
@@ -298,7 +224,12 @@ export default function Clients() {
     try {
       const response = await api.delete(`/clients/${id}`);
 
-      setClients(clients.filter(c => c.id !== id));
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to delete client');
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
       notifications.show({
         title: 'Success',
         message: 'Client deleted successfully',
@@ -325,11 +256,7 @@ export default function Clients() {
       const result = await response.json();
 
       // Refresh clients list
-      const clientsResponse = await fetchWithErrorHandling(`${API_URL}/clients`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }, 'loading clients');
-      const updatedClients = await clientsResponse.json();
-      setClients(updatedClients);
+      await queryClient.invalidateQueries({ queryKey: ['clients'] });
 
       setSelectedClientIds([]);
       setBulkStatusModalOpen(false);

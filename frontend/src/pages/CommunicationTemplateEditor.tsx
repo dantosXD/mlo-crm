@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Title,
@@ -28,6 +28,7 @@ import {
   IconInfoCircle,
   IconTag,
 } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../utils/api';
 
 interface CommunicationTemplate {
@@ -128,68 +129,58 @@ export function CommunicationTemplateEditor() {
   const [isActive, setIsActive] = useState(true);
   const [selectedPlaceholders, setSelectedPlaceholders] = useState<string[]>([]);
 
-  // Meta options
-  const [typeOptions, setTypeOptions] = useState<MetaOption[]>([]);
-  const [categoryOptions, setCategoryOptions] = useState<MetaOption[]>([]);
-
   const canManageTemplates = true; // Already checked in routing
 
-  useEffect(() => {
-    fetchMetaOptions();
-    if (isEditing || isDuplicate) {
-      fetchTemplate();
-    }
-  }, [id]);
-
-  const fetchMetaOptions = async () => {
-    try {
+  // Fetch meta options (shared query key with CommunicationTemplates)
+  const { data: metaData } = useQuery({
+    queryKey: ['comm-template-meta'],
+    queryFn: async () => {
       const [typesRes, categoriesRes] = await Promise.all([
         api.get('/communication-templates/meta/types'),
         api.get('/communication-templates/meta/categories'),
       ]);
+      const typeOpts = typesRes.ok ? ((await typesRes.json() as MetaResponse).data || []) : [];
+      const categoryOpts = categoriesRes.ok ? ((await categoriesRes.json() as MetaResponse).data || []) : [];
+      return { typeOptions: typeOpts, categoryOptions: categoryOpts };
+    },
+    staleTime: 300_000,
+  });
 
-      if (typesRes.ok && categoriesRes.ok) {
-        const typesData: MetaResponse = await typesRes.json();
-        const categoriesData: MetaResponse = await categoriesRes.json();
-        setTypeOptions(typesData.data || []);
-        setCategoryOptions(categoriesData.data || []);
+  const typeOptions = metaData?.typeOptions ?? [];
+  const categoryOptions = metaData?.categoryOptions ?? [];
+
+  // Fetch existing template for editing/duplicating
+  useQuery({
+    queryKey: ['comm-template', id],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/communication-templates/${id}`);
+        if (!response.ok) throw new Error('Failed to fetch template');
+        const data: CommunicationTemplate = await response.json();
+        setTemplate(data);
+        setName(isDuplicate ? `Copy of ${data.name}` : data.name);
+        setType(data.type);
+        setCategory(data.category);
+        setSubject(data.subject || '');
+        setBody(data.body);
+        setIsActive(isDuplicate ? true : data.isActive);
+        setSelectedPlaceholders(data.placeholders || []);
+        setLoading(false);
+        return data;
+      } catch (error) {
+        setLoading(false);
+        notifications.show({
+          title: 'Error',
+          message: 'Failed to load template',
+          color: 'red',
+        });
+        navigate('/communication-templates');
+        throw error;
       }
-    } catch (error) {
-      console.error('Error fetching meta options:', error);
-    }
-  };
-
-  const fetchTemplate = async () => {
-    try {
-      const response = await api.get(`/communication-templates/${id}`);
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch template');
-      }
-
-      const data: CommunicationTemplate = await response.json();
-      setTemplate(data);
-
-      // Populate form
-      setName(isDuplicate ? `Copy of ${data.name}` : data.name);
-      setType(data.type);
-      setCategory(data.category);
-      setSubject(data.subject || '');
-      setBody(data.body);
-      setIsActive(isDuplicate ? true : data.isActive);
-      setSelectedPlaceholders(data.placeholders || []);
-    } catch (error) {
-      console.error('Error fetching template:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load template',
-        color: 'red',
-      });
-      navigate('/communication-templates');
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    enabled: isEditing || isDuplicate,
+    retry: false,
+  });
 
   const insertPlaceholder = (placeholder: string) => {
     const textarea = document.getElementById('template-body') as HTMLTextAreaElement;

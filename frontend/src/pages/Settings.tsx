@@ -28,7 +28,6 @@ import {
   IconAlertCircle,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
-import { API_URL } from '../utils/apiBase';
 import { api } from '../utils/api';
 
 export default function Settings() {

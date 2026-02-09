@@ -183,17 +183,17 @@ export function MobileReminderCard({
               <Text size="sm">{formatDateTime(reminder.remindAt)}</Text>
             </Group>
 
-            {reminder.client && (
+            {reminder.client?.id && (
               <Text
                 size="sm"
                 c="blue"
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate(`/clients/${reminder.client.id}`);
+                  navigate(`/clients/${reminder.client!.id}`);
                 }}
                 style={{ textDecoration: 'underline' }}
               >
-                {reminder.client.name}
+                {reminder.client?.name || 'Client'}
               </Text>
             )}
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -18,109 +18,33 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconSearch, IconFilter, IconX, IconEye, IconFile, IconFileText, IconAlertTriangle } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
-import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
+import { DOCUMENT_STATUS_COLORS, DOCUMENT_CATEGORY_COLORS } from '../utils/constants';
+import { isDocumentExpired, isDocumentExpiringSoon } from '../utils/documentUtils';
+import type { ClientDocument } from '../types';
 
-interface Document {
-  id: string;
-  name: string;
-  fileName: string;
-  fileSize: number;
-  mimeType: string;
-  status: string;
-  category: string;
-  dueDate: string | null;
-  expiresAt: string | null;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-  clientId: string;
-  clientName: string;
-}
-
-const statusColors: Record<string, string> = {
-  REQUIRED: 'red',
-  REQUESTED: 'yellow',
-  UPLOADED: 'blue',
-  UNDER_REVIEW: 'orange',
-  APPROVED: 'green',
-  REJECTED: 'red',
-  EXPIRED: 'gray',
-};
-
-const categoryColors: Record<string, string> = {
-  INCOME: 'blue',
-  EMPLOYMENT: 'cyan',
-  ASSETS: 'green',
-  PROPERTY: 'orange',
-  INSURANCE: 'grape',
-  CREDIT: 'pink',
-  OTHER: 'gray',
-};
-
-// Helper function to check if a document is expired
-const isDocumentExpired = (doc: Document): boolean => {
-  if (!doc.expiresAt) return false;
-  const expiresAt = new Date(doc.expiresAt);
-  const today = new Date();
-  expiresAt.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  return expiresAt < today;
-};
-
-// Helper function to check if a document is expiring soon (within 30 days)
-const isDocumentExpiringSoon = (doc: Document): boolean => {
-  if (!doc.expiresAt) return false;
-  const expiresAt = new Date(doc.expiresAt);
-  const today = new Date();
-  const warningDate = new Date();
-  warningDate.setDate(warningDate.getDate() + 30);
-  expiresAt.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  warningDate.setHours(0, 0, 0, 0);
-  return expiresAt >= today && expiresAt <= warningDate;
-};
+const statusColors = DOCUMENT_STATUS_COLORS;
+const categoryColors = DOCUMENT_CATEGORY_COLORS;
 
 export default function Documents() {
   const navigate = useNavigate();
   const { accessToken } = useAuthStore();
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchDocuments();
-  }, [accessToken]);
-
-  const fetchDocuments = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/documents`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch documents');
-      }
-
-      const data = await response.json();
-      setDocuments(data);
-    } catch (error) {
-      console.error('Error fetching documents:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load documents',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: documents = [], isLoading: loading } = useQuery({
+    queryKey: ['documents'],
+    queryFn: async () => {
+      const response = await api.get('/documents');
+      if (!response.ok) throw new Error('Failed to fetch documents');
+      return response.json() as Promise<ClientDocument[]>;
+    },
+    enabled: !!accessToken,
+  });
 
   const handleClientClick = (clientId: string) => {
     navigate(`/clients/${clientId}?tab=documents`);
@@ -319,7 +243,7 @@ export default function Documents() {
                     </Table.Td>
                     <Table.Td>
                       <Text size="sm" c="dimmed">
-                        {formatFileSize(doc.fileSize)}
+                        {formatFileSize(doc.fileSize || 0)}
                       </Text>
                     </Table.Td>
                     <Table.Td>

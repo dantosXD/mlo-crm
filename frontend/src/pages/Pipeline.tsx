@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -17,11 +17,10 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconUser, IconMail, IconPhone, IconLayoutKanban, IconTable } from '@tabler/icons-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
-import { API_URL } from '../utils/apiBase';
 import { api } from '../utils/api';
-import { decryptData } from '../utils/encryption';
 import {
   DndContext,
   DragEndEvent,
@@ -35,36 +34,8 @@ import {
   useDraggable,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-
-interface Client {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  status: string;
-  tags: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface LoanScenario {
-  id: string;
-  clientId: string;
-  name: string;
-  amount: number;
-  isPreferred: boolean;
-}
-
-// Pipeline stages in order
-const PIPELINE_STAGES = [
-  { key: 'LEAD', label: 'Lead', color: 'gray' },
-  { key: 'PRE_QUALIFIED', label: 'Pre-Qualified', color: 'blue' },
-  { key: 'ACTIVE', label: 'Active', color: 'green' },
-  { key: 'PROCESSING', label: 'Processing', color: 'yellow' },
-  { key: 'UNDERWRITING', label: 'Underwriting', color: 'orange' },
-  { key: 'CLEAR_TO_CLOSE', label: 'Clear to Close', color: 'lime' },
-  { key: 'CLOSED', label: 'Closed', color: 'green.9' },
-];
+import { PIPELINE_STAGES } from '../utils/constants';
+import type { Client, LoanScenario } from '../types';
 
 // Draggable client card component
 function DraggableClientCard({ client, onClick }: { client: Client; onClick: () => void }) {
@@ -204,9 +175,7 @@ function PipelineColumn({
 export default function Pipeline() {
   const navigate = useNavigate();
   const { accessToken } = useAuthStore();
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loanScenarios, setLoanScenarios] = useState<LoanScenario[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -219,43 +188,24 @@ export default function Pipeline() {
     })
   );
 
-  useEffect(() => {
-    fetchData();
-  }, [accessToken]);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
+  const { data: pipelineData, isLoading: loading } = useQuery({
+    queryKey: ['pipeline-data'],
+    queryFn: async () => {
       const [clientsResponse, scenariosResponse] = await Promise.all([
-        fetch(`${API_URL}/clients`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
-        fetch(`${API_URL}/loan-scenarios`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
+        api.get('/clients'),
+        api.get('/loan-scenarios'),
       ]);
-
       if (!clientsResponse.ok) throw new Error('Failed to fetch clients');
       const clientsPayload = await clientsResponse.json();
-      const normalized = Array.isArray(clientsPayload) ? clientsPayload : clientsPayload.data || [];
-      const decrypted = normalized.map((client: Client) => ({
-        ...client,
-        name: decryptData(client.name),
-        email: decryptData(client.email),
-        phone: decryptData(client.phone),
-      }));
-      setClients(decrypted);
+      const clients = (Array.isArray(clientsPayload) ? clientsPayload : clientsPayload.data || []) as Client[];
+      const loanScenarios = scenariosResponse.ok ? ((await scenariosResponse.json()) as LoanScenario[]) : [];
+      return { clients, loanScenarios };
+    },
+    enabled: !!accessToken,
+  });
 
-      if (scenariosResponse.ok) {
-        setLoanScenarios(await scenariosResponse.json());
-      }
-    } catch (error) {
-      console.error('Error fetching pipeline data:', error);
-      notifications.show({ title: 'Error', message: 'Failed to load pipeline data', color: 'red' });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const clients = pipelineData?.clients ?? [];
+  const loanScenarios = pipelineData?.loanScenarios ?? [];
 
   // Handle drag start
   const handleDragStart = (event: DragStartEvent) => {
@@ -317,10 +267,16 @@ export default function Pipeline() {
 
       if (!response.ok) throw new Error('Failed to update client status');
 
-      // Update local state
-      setClients((prev) =>
-        prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c))
-      );
+      // Optimistic update in query cache
+      queryClient.setQueryData(['pipeline-data'], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          clients: old.clients.map((c: Client) =>
+            c.id === clientId ? { ...c, status: newStatus } : c
+          ),
+        };
+      });
 
       notifications.show({
         title: 'Status updated',

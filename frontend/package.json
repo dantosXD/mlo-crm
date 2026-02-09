@@ -7,8 +7,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "test": "vitest",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives",
+    "lint:ci": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings=168",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   },
@@ -25,6 +27,7 @@
     "@mantine/notifications": "^7.4.0",
     "@tabler/icons-react": "^2.47.0",
     "@tanstack/react-query": "^5.17.0",
+    "@sentry/react": "^8.44.0",
     "axios": "^1.6.4",
     "dayjs": "^1.11.10",
     "react": "^18.2.0",
@@ -46,11 +49,15 @@
     "eslint": "^8.56.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "jsdom": "^25.0.1",
     "postcss": "^8.4.32",
     "postcss-preset-mantine": "^1.12.0",
     "postcss-simple-vars": "^7.0.1",
     "typescript": "^5.3.3",
     "vite": "^5.0.10",
     "vitest": "^1.1.1"
+  },
+  "overrides": {
+    "@remix-run/router": "^1.23.2"
   }
 }

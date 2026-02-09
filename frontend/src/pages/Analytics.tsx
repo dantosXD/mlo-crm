@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Container,
   Title,
@@ -31,20 +31,13 @@ import {
   IconClock,
   IconMail,
 } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
-import { API_URL } from '../utils/apiBase';
+import { api } from '../utils/api';
+import { PIPELINE_STAGES as SHARED_PIPELINE_STAGES } from '../utils/constants';
 
-// Pipeline stages in order
-const PIPELINE_STAGES = [
-  { key: 'LEAD', label: 'Lead', color: '#868e96' },
-  { key: 'PRE_QUALIFIED', label: 'Pre-Qualified', color: '#339af0' },
-  { key: 'ACTIVE', label: 'Active', color: '#40c057' },
-  { key: 'PROCESSING', label: 'Processing', color: '#fab005' },
-  { key: 'UNDERWRITING', label: 'Underwriting', color: '#fd7e14' },
-  { key: 'CLEAR_TO_CLOSE', label: 'Clear to Close', color: '#69db7c' },
-  { key: 'CLOSED', label: 'Closed', color: '#2f9e44' },
-  { key: 'DENIED', label: 'Denied', color: '#fa5252' },
-];
+// Analytics uses hex colors from the shared stages
+const PIPELINE_STAGES = SHARED_PIPELINE_STAGES.map(s => ({ ...s, color: s.hex }));
 
 interface PipelineData {
   stage: string;
@@ -118,111 +111,64 @@ const DATE_RANGE_OPTIONS = [
 
 export default function Analytics() {
   const { accessToken } = useAuthStore();
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [workflowData, setWorkflowData] = useState<WorkflowAnalyticsData | null>(null);
-  const [communicationsData, setCommunicationsData] = useState<CommunicationsAnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<string>('all');
 
-  useEffect(() => {
-    fetchAnalytics();
-    fetchWorkflowAnalytics();
-    fetchCommunicationsAnalytics();
-  }, [accessToken, dateRange]);
+  const { data: analyticsBundle, isLoading: loading } = useQuery({
+    queryKey: ['analytics', dateRange],
+    queryFn: async () => {
+      const days = dateRange === 'all' ? '365' : dateRange;
 
-  const fetchAnalytics = async () => {
-    try {
-      setLoading(true);
+      const [clientsRes, workflowRes, commsRes] = await Promise.allSettled([
+        api.get('/clients'),
+        api.get(`/analytics/workflows?days=${days}`),
+        api.get(`/analytics/communications?days=${days}&group_by=day`),
+      ]);
 
-      // Fetch all clients
-      const clientsRes = await fetch(`${API_URL}/clients`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      if (!clientsRes.ok) throw new Error('Failed to fetch clients');
-      let clients = await clientsRes.json();
-
-      // Filter by date range
-      if (dateRange !== 'all') {
-        const days = parseInt(dateRange, 10);
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - days);
-        clients = clients.filter((client: { createdAt: string }) => {
-          const clientDate = new Date(client.createdAt);
-          return clientDate >= cutoffDate;
+      // Process clients analytics
+      let data: AnalyticsData | null = null;
+      if (clientsRes.status === 'fulfilled' && clientsRes.value.ok) {
+        let clients = await clientsRes.value.json();
+        if (dateRange !== 'all') {
+          const d = parseInt(dateRange, 10);
+          const cutoffDate = new Date();
+          cutoffDate.setDate(cutoffDate.getDate() - d);
+          clients = clients.filter((client: { createdAt: string }) => new Date(client.createdAt) >= cutoffDate);
+        }
+        const clientsByStatus: Record<string, number> = {};
+        clients.forEach((client: { status: string }) => {
+          clientsByStatus[client.status] = (clientsByStatus[client.status] || 0) + 1;
         });
+        const totalClients = clients.length;
+        const pipelineData: PipelineData[] = PIPELINE_STAGES.map((stage) => ({
+          stage: stage.key, label: stage.label, count: clientsByStatus[stage.key] || 0, color: stage.color,
+          percentage: totalClients > 0 ? ((clientsByStatus[stage.key] || 0) / totalClients) * 100 : 0,
+        }));
+        const closedCount = clientsByStatus['CLOSED'] || 0;
+        const deniedCount = clientsByStatus['DENIED'] || 0;
+        const totalNonDenied = totalClients - deniedCount;
+        const conversionRate = totalNonDenied > 0 ? (closedCount / totalNonDenied) * 100 : 0;
+        data = { totalClients, pipelineData, conversionRate, avgTimeInPipeline: 0 };
       }
 
-      // Calculate clients by status
-      const clientsByStatus: Record<string, number> = {};
-      clients.forEach((client: { status: string }) => {
-        clientsByStatus[client.status] = (clientsByStatus[client.status] || 0) + 1;
-      });
-
-      const totalClients = clients.length;
-
-      // Build pipeline data
-      const pipelineData: PipelineData[] = PIPELINE_STAGES.map((stage) => ({
-        stage: stage.key,
-        label: stage.label,
-        count: clientsByStatus[stage.key] || 0,
-        color: stage.color,
-        percentage: totalClients > 0 ? ((clientsByStatus[stage.key] || 0) / totalClients) * 100 : 0,
-      }));
-
-      // Calculate conversion rate (Closed / Total non-Denied)
-      const closedCount = clientsByStatus['CLOSED'] || 0;
-      const deniedCount = clientsByStatus['DENIED'] || 0;
-      const totalNonDenied = totalClients - deniedCount;
-      const conversionRate = totalNonDenied > 0 ? (closedCount / totalNonDenied) * 100 : 0;
-
-      setData({
-        totalClients,
-        pipelineData,
-        conversionRate,
-        avgTimeInPipeline: 0, // Would need date tracking to calculate
-      });
-    } catch (error) {
-      console.error('Error fetching analytics:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchWorkflowAnalytics = async () => {
-    try {
-      const days = dateRange === 'all' ? '365' : dateRange; // Default to 1 year for "all"
-
-      const response = await fetch(`${API_URL}/analytics/workflows?days=${days}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setWorkflowData(data);
+      let workflowData: WorkflowAnalyticsData | null = null;
+      if (workflowRes.status === 'fulfilled' && workflowRes.value.ok) {
+        workflowData = await workflowRes.value.json();
       }
-    } catch (error) {
-      console.error('Error fetching workflow analytics:', error);
-    }
-  };
 
-  const fetchCommunicationsAnalytics = async () => {
-    try {
-      const days = dateRange === 'all' ? '365' : dateRange; // Default to 1 year for "all"
-
-      const response = await fetch(`${API_URL}/analytics/communications?days=${days}&group_by=day`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCommunicationsData(data);
+      let communicationsData: CommunicationsAnalyticsData | null = null;
+      if (commsRes.status === 'fulfilled' && commsRes.value.ok) {
+        communicationsData = await commsRes.value.json();
       }
-    } catch (error) {
-      console.error('Error fetching communications analytics:', error);
-    }
-  };
+
+      return { data, workflowData, communicationsData };
+    },
+    enabled: !!accessToken,
+  });
+
+  const data = analyticsBundle?.data ?? null;
+  const workflowData = analyticsBundle?.workflowData ?? null;
+  const communicationsData = analyticsBundle?.communicationsData ?? null;
 
   if (loading) {
     return (

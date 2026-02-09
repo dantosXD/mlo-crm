@@ -1,0 +1,73 @@
+import { z } from 'zod';
+
+const baseEnvSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  PORT: z.coerce.number().int().positive().default(3000),
+  FRONTEND_URL: z.string().url().optional(),
+  API_URL: z.string().url().optional(),
+  DATABASE_URL: z.string().min(1).default('postgresql://postgres:postgres@localhost:5432/mlo_dashboard?schema=public'),
+  JWT_SECRET: z.string().min(1).default('dev-secret-key-change-in-production-min-32-chars'),
+  JWT_EXPIRES_IN: z.string().default('15m'),
+  REFRESH_TOKEN_EXPIRES_IN: z.string().default('30d'),
+  REFRESH_TOKEN_COOKIE_NAME: z.string().default('refresh_token'),
+  ENCRYPTION_KEY: z.string().min(32).default('default-encryption-key-32-bytes-min'),
+  WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
+  WEBHOOK_REPLAY_TTL_SECONDS: z.coerce.number().int().positive().default(600),
+  WORKER_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(3540),
+  S3_ENDPOINT: z.string().url().default('http://localhost:9000'),
+  S3_BUCKET: z.string().min(1).default('mlo-documents'),
+  S3_ACCESS_KEY: z.string().min(1).default('minio'),
+  S3_SECRET_KEY: z.string().min(1).default('minio123'),
+  REDIS_URL: z.union([z.literal(''), z.string().url()]).default(''),
+  SENTRY_DSN: z.string().optional().default(''),
+  SENTRY_ENVIRONMENT: z.string().optional().default('development'),
+  SENTRY_RELEASE: z.string().optional().default(''),
+});
+
+export type AppEnv = z.infer<typeof baseEnvSchema>;
+
+function validateProductionEnv(env: AppEnv): AppEnv {
+  if (env.NODE_ENV !== 'production') {
+    return env;
+  }
+
+  const requiredInProduction: Array<keyof AppEnv> = [
+    'DATABASE_URL',
+    'JWT_SECRET',
+    'ENCRYPTION_KEY',
+    'S3_ENDPOINT',
+    'S3_BUCKET',
+    'S3_ACCESS_KEY',
+    'S3_SECRET_KEY',
+    'REDIS_URL',
+    'FRONTEND_URL',
+  ];
+
+  const missing = requiredInProduction.filter((key) => !String(env[key] ?? '').trim());
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required production environment variables: ${missing.join(', ')}`
+    );
+  }
+
+  return env;
+}
+
+let cachedEnv: AppEnv | null = null;
+
+export function getEnv(): AppEnv {
+  if (cachedEnv) {
+    return cachedEnv;
+  }
+
+  const parsed = baseEnvSchema.safeParse(process.env);
+  if (!parsed.success) {
+    const details = parsed.error.issues
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join('; ');
+    throw new Error(`Invalid environment configuration: ${details}`);
+  }
+
+  cachedEnv = validateProductionEnv(parsed.data);
+  return cachedEnv;
+}

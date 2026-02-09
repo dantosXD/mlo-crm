@@ -21,6 +21,7 @@ import {
   IconEyeOff,
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '../../utils/api';
 
 interface SharedCalendar {
   id: string;
@@ -54,9 +55,7 @@ export const SharedCalendarsSidebar: React.FC<SharedCalendarsSidebarProps> = ({
   const { data: sharedCalendars = [], isLoading } = useQuery<SharedCalendar[]>({
     queryKey: ['calendar-shared-with-me'],
     queryFn: async () => {
-      const response = await fetch('/api/calendar/shared-with-me', {
-        credentials: 'include',
-      });
+      const response = await apiRequest('/calendar/shared-with-me');
       if (!response.ok) {
         throw new Error('Failed to fetch shared calendars');
       }

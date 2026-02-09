@@ -17,60 +17,17 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconSearch, IconPin, IconEye, IconNotes } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
-import { API_URL } from '../utils/apiBase';
-
-// Helper function to format relative time (e.g., "just now", "5 minutes ago", "2 hours ago")
-const formatRelativeTime = (dateString: string): string => {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) {
-    return 'just now';
-  }
-
-  const diffInMinutes = Math.floor(diffInSeconds / 60);
-  if (diffInMinutes < 60) {
-    return diffInMinutes === 1 ? '1 minute ago' : `${diffInMinutes} minutes ago`;
-  }
-
-  const diffInHours = Math.floor(diffInMinutes / 60);
-  if (diffInHours < 24) {
-    return diffInHours === 1 ? '1 hour ago' : `${diffInHours} hours ago`;
-  }
-
-  const diffInDays = Math.floor(diffInHours / 24);
-  if (diffInDays < 7) {
-    return diffInDays === 1 ? '1 day ago' : `${diffInDays} days ago`;
-  }
-
-  // For older dates, show the full date
-  return date.toLocaleDateString();
-};
-
-interface Note {
-  id: string;
-  clientId: string;
-  clientName: string;
-  text: string;
-  tags: string[];
-  isPinned: boolean;
-  createdBy: {
-    id: string;
-    name: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
+import { api } from '../utils/api';
+import { formatRelativeTime } from '../utils/dateUtils';
+import type { Note } from '../types';
 
 export default function Notes() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { accessToken } = useAuthStore();
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
 
   // Sync search to URL
@@ -80,41 +37,18 @@ export default function Notes() {
     setSearchParams(params, { replace: true });
   }, [searchQuery, setSearchParams]);
 
-  // Fetch notes
-  useEffect(() => {
-    fetchNotes();
-  }, [accessToken, searchQuery]);
-
-  const fetchNotes = async () => {
-    setLoading(true);
-    try {
+  const { data: notes = [], isLoading: loading } = useQuery({
+    queryKey: ['notes', searchQuery],
+    queryFn: async () => {
       const url = searchQuery
-        ? `${API_URL}/notes?search=${encodeURIComponent(searchQuery)}`
-        : `${API_URL}/notes`;
-
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch notes');
-      }
-
-      const data = await response.json();
-      setNotes(data);
-    } catch (error) {
-      console.error('Error fetching notes:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load notes',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+        ? `/notes?search=${encodeURIComponent(searchQuery)}`
+        : `/notes`;
+      const response = await api.get(url);
+      if (!response.ok) throw new Error('Failed to fetch notes');
+      return response.json() as Promise<Note[]>;
+    },
+    enabled: !!accessToken,
+  });
 
   // Sort notes: pinned first, then by date
   const sortedNotes = [...notes].sort((a, b) => {

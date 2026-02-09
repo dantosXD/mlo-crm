@@ -28,7 +28,7 @@ import {
   IconBolt,
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { API_URL } from '../../utils/apiBase';
+import { api } from '../../utils/api';
 
 interface TestWorkflowModalProps {
   opened: boolean;
@@ -56,12 +56,7 @@ export default function TestWorkflowModal({
   const { data: clients, isLoading: clientsLoading } = useQuery({
     queryKey: ['clients'],
     queryFn: async () => {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/clients?limit=50`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await api.get('/clients?limit=50');
       if (!response.ok) throw new Error('Failed to fetch clients');
       const data = await response.json();
       return data.clients || [];
@@ -81,18 +76,10 @@ export default function TestWorkflowModal({
     setTestResult(null);
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/workflows/${workflowId}/test`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
+      const response = await api.post(`/workflows/${workflowId}/test`, {
           clientId: selectedClientId,
           dryRun: true,
-        }),
-      });
+        });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -247,10 +234,10 @@ export default function TestWorkflowModal({
                       <Timeline.Item
                         key={index}
                         bullet={<IconBolt size={12} />}
-                        label={`Step ${index + 1}`}
                       >
                         <Paper withBorder p="sm" bg="gray.0">
                           <Stack gap="xs">
+                            <Text size="xs" c="dimmed">{`Step ${index + 1}`}</Text>
                             <Group justify="space-between">
                               <Badge color="cyan">{action.type}</Badge>
                               {action.wouldExecute ? (

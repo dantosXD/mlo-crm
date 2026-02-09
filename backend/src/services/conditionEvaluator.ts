@@ -51,13 +51,32 @@ async function getClientData(clientId: string) {
 }
 
 /**
+ * Shared numeric comparison helper — eliminates repeated operator switches.
+ * Returns { matched, message? } or throws with an error message for unknown operators.
+ */
+function compareWithOperator(
+  actual: number,
+  operator: string,
+  expected: number
+): { matched: boolean } | { matched: false; error: string } {
+  switch (operator) {
+    case 'greater_than': case 'gt': return { matched: actual > expected };
+    case 'less_than': case 'lt': return { matched: actual < expected };
+    case 'equals': case 'eq': return { matched: actual === expected };
+    case 'greater_than_or_equal': case 'gte': return { matched: actual >= expected };
+    case 'less_than_or_equal': case 'lte': return { matched: actual <= expected };
+    default: return { matched: false, error: `Unknown operator: ${operator}` };
+  }
+}
+
+/**
  * Evaluate a single condition
  */
 async function evaluateCondition(
   condition: Condition,
   context: ConditionContext
 ): Promise<ConditionResult> {
-  const { type, field, operator, value } = condition;
+  const { type } = condition;
 
   try {
     switch (type) {
@@ -190,40 +209,13 @@ async function evaluateClientAgeDays(
   const ageInMs = now.getTime() - createdDate.getTime();
   const ageInDays = Math.floor(ageInMs / (1000 * 60 * 60 * 24));
 
-  let matched = false;
-  switch (operator) {
-    case 'greater_than':
-    case 'gt':
-      matched = ageInDays > days;
-      break;
-    case 'less_than':
-    case 'lt':
-      matched = ageInDays < days;
-      break;
-    case 'equals':
-    case 'eq':
-      matched = ageInDays === days;
-      break;
-    case 'greater_than_or_equal':
-    case 'gte':
-      matched = ageInDays >= days;
-      break;
-    case 'less_than_or_equal':
-    case 'lte':
-      matched = ageInDays <= days;
-      break;
-    default:
-      return {
-        success: false,
-        matched: false,
-        message: `Unknown operator: ${operator}`,
-      };
-  }
+  const cmp = compareWithOperator(ageInDays, operator, days);
+  if ('error' in cmp) return { success: false, matched: false, message: cmp.error };
 
   return {
     success: true,
-    matched,
-    message: `Client is ${ageInDays} days old (${operator} ${days}: ${matched})`,
+    matched: cmp.matched,
+    message: `Client is ${ageInDays} days old (${operator} ${days}: ${cmp.matched})`,
   };
 }
 
@@ -318,7 +310,7 @@ async function evaluateUserRoleEquals(
  */
 async function evaluateTimeOfDay(
   condition: Condition,
-  context: ConditionContext
+  _context: ConditionContext
 ): Promise<ConditionResult> {
   const timeRange = condition.value;
 
@@ -371,7 +363,7 @@ async function evaluateTimeOfDay(
  */
 async function evaluateDayOfWeek(
   condition: Condition,
-  context: ConditionContext
+  _context: ConditionContext
 ): Promise<ConditionResult> {
   const allowedDays = condition.value;
 
@@ -505,42 +497,15 @@ async function evaluateDocumentCount(
 
   const docCount = filteredDocs.length;
 
-  let matched = false;
-  switch (operator) {
-    case 'greater_than':
-    case 'gt':
-      matched = docCount > count;
-      break;
-    case 'less_than':
-    case 'lt':
-      matched = docCount < count;
-      break;
-    case 'equals':
-    case 'eq':
-      matched = docCount === count;
-      break;
-    case 'greater_than_or_equal':
-    case 'gte':
-      matched = docCount >= count;
-      break;
-    case 'less_than_or_equal':
-    case 'lte':
-      matched = docCount <= count;
-      break;
-    default:
-      return {
-        success: false,
-        matched: false,
-        message: `Unknown operator: ${operator}`,
-      };
-  }
+  const cmp = compareWithOperator(docCount, operator, count);
+  if ('error' in cmp) return { success: false, matched: false, message: cmp.error };
 
   return {
     success: true,
-    matched,
+    matched: cmp.matched,
     message: `Client has ${docCount} document(s)${
       category ? ` in category: ${category}` : ''
-    } (${operator} ${count}: ${matched})`,
+    } (${operator} ${count}: ${cmp.matched})`,
   };
 }
 
@@ -609,42 +574,15 @@ async function evaluateTaskCount(
 
   const taskCount = filteredTasks.length;
 
-  let matched = false;
-  switch (operator) {
-    case 'greater_than':
-    case 'gt':
-      matched = taskCount > count;
-      break;
-    case 'less_than':
-    case 'lt':
-      matched = taskCount < count;
-      break;
-    case 'equals':
-    case 'eq':
-      matched = taskCount === count;
-      break;
-    case 'greater_than_or_equal':
-    case 'gte':
-      matched = taskCount >= count;
-      break;
-    case 'less_than_or_equal':
-    case 'lte':
-      matched = taskCount <= count;
-      break;
-    default:
-      return {
-        success: false,
-        matched: false,
-        message: `Unknown operator: ${operator}`,
-      };
-  }
+  const cmp = compareWithOperator(taskCount, operator, count);
+  if ('error' in cmp) return { success: false, matched: false, message: cmp.error };
 
   return {
     success: true,
-    matched,
+    matched: cmp.matched,
     message: `Client has ${taskCount} task(s)${
       status ? ` with status: ${status}` : ''
-    } (${operator} ${count}: ${matched})`,
+    } (${operator} ${count}: ${cmp.matched})`,
   };
 }
 
@@ -676,40 +614,13 @@ async function evaluateTaskOverdueExists(
     const threshold = condition.value;
     const operator = condition.operator || 'greater_than';
 
-    let matched = false;
-    switch (operator) {
-      case 'greater_than':
-      case 'gt':
-        matched = overdueTasks.length > threshold;
-        break;
-      case 'less_than':
-      case 'lt':
-        matched = overdueTasks.length < threshold;
-        break;
-      case 'equals':
-      case 'eq':
-        matched = overdueTasks.length === threshold;
-        break;
-      case 'greater_than_or_equal':
-      case 'gte':
-        matched = overdueTasks.length >= threshold;
-        break;
-      case 'less_than_or_equal':
-      case 'lte':
-        matched = overdueTasks.length <= threshold;
-        break;
-      default:
-        return {
-          success: false,
-          matched: false,
-          message: `Unknown operator: ${operator}`,
-        };
-    }
+    const cmp = compareWithOperator(overdueTasks.length, operator, threshold);
+    if ('error' in cmp) return { success: false, matched: false, message: cmp.error };
 
     return {
       success: true,
-      matched,
-      message: `Client has ${overdueTasks.length} overdue task(s) (${operator} ${threshold}: ${matched})`,
+      matched: cmp.matched,
+      message: `Client has ${overdueTasks.length} overdue task(s) (${operator} ${threshold}: ${cmp.matched})`,
     };
   }
 
@@ -758,43 +669,12 @@ async function evaluateLoanAmountThreshold(
 
   for (const scenario of client.loanScenarios) {
     const loanAmount = scenario.amount;
+    const cmp = compareWithOperator(loanAmount, operator, amount);
+    if ('error' in cmp) return { success: false, matched: false, message: cmp.error };
 
-    let scenarioMatches = false;
-    switch (operator) {
-      case 'greater_than':
-      case 'gt':
-        scenarioMatches = loanAmount > amount;
-        break;
-      case 'less_than':
-      case 'lt':
-        scenarioMatches = loanAmount < amount;
-        break;
-      case 'equals':
-      case 'eq':
-        scenarioMatches = loanAmount === amount;
-        break;
-      case 'greater_than_or_equal':
-      case 'gte':
-        scenarioMatches = loanAmount >= amount;
-        break;
-      case 'less_than_or_equal':
-      case 'lte':
-        scenarioMatches = loanAmount <= amount;
-        break;
-      default:
-        return {
-          success: false,
-          matched: false,
-          message: `Unknown operator: ${operator}`,
-        };
-    }
-
-    if (scenarioMatches) {
+    if (cmp.matched) {
       matched = true;
-      matchingScenarios.push({
-        name: scenario.name,
-        amount: loanAmount,
-      });
+      matchingScenarios.push({ name: scenario.name, amount: loanAmount });
     }
   }
 

@@ -34,6 +34,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import dayjs from 'dayjs';
+import { apiRequest } from '../../utils/api';
 
 interface CalendarShare {
   id: string;
@@ -77,9 +78,7 @@ export const CalendarShareModal: React.FC<CalendarShareModalProps> = ({ opened, 
   const { data: shares = [], isLoading } = useQuery<CalendarShare[]>({
     queryKey: ['calendar-shares'],
     queryFn: async () => {
-      const response = await fetch('/api/calendar/shares', {
-        credentials: 'include',
-      });
+      const response = await apiRequest('/calendar/shares');
       if (!response.ok) {
         throw new Error('Failed to fetch calendar shares');
       }
@@ -91,10 +90,9 @@ export const CalendarShareModal: React.FC<CalendarShareModalProps> = ({ opened, 
   // Create share mutation
   const createShareMutation = useMutation({
     mutationFn: async (shareData: any) => {
-      const response = await fetch('/api/calendar/shares', {
+      const response = await apiRequest('/calendar/shares', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(shareData),
       });
       if (!response.ok) {
@@ -131,9 +129,8 @@ export const CalendarShareModal: React.FC<CalendarShareModalProps> = ({ opened, 
   // Delete share mutation
   const deleteShareMutation = useMutation({
     mutationFn: async (shareId: string) => {
-      const response = await fetch(`/api/calendar/shares/${shareId}`, {
+      const response = await apiRequest(`/calendar/shares/${shareId}`, {
         method: 'DELETE',
-        credentials: 'include',
       });
       if (!response.ok) {
         throw new Error('Failed to revoke share');

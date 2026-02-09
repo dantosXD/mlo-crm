@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../utils/prisma.js';
+import { checkS3Health } from '../utils/s3.js';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 /**
  * Comprehensive API Health Check Endpoint
@@ -32,6 +32,11 @@ router.get('/', async (req: Request, res: Response) => {
         status: 'ok',
         message: 'API is running',
         version: '1.0.0',
+      },
+      objectStorage: {
+        status: 'unknown',
+        message: '',
+        responseTime: 0,
       },
     },
     environment: process.env.NODE_ENV || 'development',
@@ -64,6 +69,17 @@ router.get('/', async (req: Request, res: Response) => {
       message: error instanceof Error ? error.message : 'Unknown database error',
       responseTime: Date.now() - dbStartTime,
     };
+  }
+
+  const s3StartTime = Date.now();
+  const s3Healthy = await checkS3Health();
+  healthStatus.services.objectStorage = {
+    status: s3Healthy ? 'ok' : 'error',
+    message: s3Healthy ? 'Object storage connection successful' : 'Object storage check failed',
+    responseTime: Date.now() - s3StartTime,
+  };
+  if (!s3Healthy) {
+    healthStatus.status = 'degraded';
   }
 
   // Calculate overall response time

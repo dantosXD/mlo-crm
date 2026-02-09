@@ -13,8 +13,6 @@ interface User {
 interface AuthState {
   user: User | null;
   accessToken: string | null;
-  refreshToken: string | null;
-  csrfToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -30,7 +28,6 @@ interface AuthState {
   clearError: () => void;
   updateLastActivity: () => void;
   checkSessionTimeout: (timeoutMinutes: number) => boolean;
-  updateCsrfToken: (token: string) => void;
   setHasHydrated: (value: boolean) => void;
 }
 
@@ -39,8 +36,6 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       accessToken: null,
-      refreshToken: null,
-      csrfToken: null,
       isAuthenticated: false,
       isLoading: false,
       error: null,
@@ -56,6 +51,7 @@ export const useAuthStore = create<AuthState>()(
             headers: {
               'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify({ email, password }),
           });
 
@@ -65,38 +61,14 @@ export const useAuthStore = create<AuthState>()(
             throw new Error(data.message || 'Login failed');
           }
 
-          // Set auth data first (CSRF token will be null initially)
           set({
             user: data.user,
             accessToken: data.accessToken,
-            refreshToken: data.refreshToken,
-            csrfToken: null,
             isAuthenticated: true,
             isLoading: false,
             error: null,
             lastActivity: Date.now(),
           });
-
-          // Make an authenticated GET request to obtain CSRF token
-          // The backend's generateCsrfToken middleware will add it to response headers
-          try {
-            const csrfResponse = await fetch(`${API_URL}/auth/me`, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${data.accessToken}`,
-              },
-            });
-
-            // Extract CSRF token from response headers
-            const csrfToken = csrfResponse.headers.get('X-CSRF-Token');
-
-            if (csrfToken) {
-              set({ csrfToken });
-            }
-          } catch (csrfError) {
-            // Non-critical error - user is logged in but CSRF token fetch failed
-            console.warn('Failed to fetch CSRF token:', csrfError);
-          }
 
           return true;
         } catch (error) {
@@ -109,26 +81,32 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async () => {
-        const { refreshToken, csrfToken } = get();
+        const { accessToken } = get();
 
         try {
+          // Read CSRF token from cookie for the logout request
+          const csrfMatch = document.cookie.match(/(?:^|; )csrf-token=([^;]*)/);
+          const csrf = csrfMatch ? decodeURIComponent(csrfMatch[1]) : null;
+
           await fetch(`${API_URL}/auth/logout`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...(csrfToken && { 'X-CSRF-Token': csrfToken }),
+              ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
+              ...(csrf && { 'X-CSRF-Token': csrf }),
             },
-            body: JSON.stringify({ refreshToken }),
+            credentials: 'include',
           });
         } catch (error) {
           console.error('Logout error:', error);
         }
 
+        // Clear the CSRF cookie
+        document.cookie = 'csrf-token=; Max-Age=0; path=/';
+
         set({
           user: null,
           accessToken: null,
-          refreshToken: null,
-          csrfToken: null,
           isAuthenticated: false,
           error: null,
           lastActivity: null,
@@ -151,20 +129,13 @@ export const useAuthStore = create<AuthState>()(
       },
 
       refreshAuth: async () => {
-        const { refreshToken } = get();
-
-        if (!refreshToken) {
-          set({ isAuthenticated: false });
-          return false;
-        }
-
         try {
           const response = await fetch(`${API_URL}/auth/refresh`, {
             method: 'POST',
+            credentials: 'include',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ refreshToken }),
           });
 
           if (!response.ok) {
@@ -173,39 +144,17 @@ export const useAuthStore = create<AuthState>()(
 
           const data = await response.json();
 
-          // Set auth data first
           set({
             user: data.user,
             accessToken: data.accessToken,
-            refreshToken: data.refreshToken,
-            csrfToken: null,
             isAuthenticated: true,
           });
-
-          // Fetch CSRF token with authenticated request
-          try {
-            const csrfResponse = await fetch(`${API_URL}/auth/me`, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${data.accessToken}`,
-              },
-            });
-
-            const csrfToken = csrfResponse.headers.get('X-CSRF-Token');
-            if (csrfToken) {
-              set({ csrfToken });
-            }
-          } catch (csrfError) {
-            console.warn('Failed to fetch CSRF token during refresh:', csrfError);
-          }
 
           return true;
         } catch (error) {
           set({
             user: null,
             accessToken: null,
-            refreshToken: null,
-            csrfToken: null,
             isAuthenticated: false,
           });
           return false;
@@ -227,25 +176,23 @@ export const useAuthStore = create<AuthState>()(
         set({ error: null });
       },
 
-      updateCsrfToken: (token: string) => {
-        set({ csrfToken: token });
-      },
-
       setHasHydrated: (value: boolean) => {
         set({ hasHydrated: value });
       },
     }),
     {
       name: 'mlo-auth-storage',
+      version: 2,
       partialize: (state) => ({
-        user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
-        csrfToken: state.csrfToken,
-        isAuthenticated: state.isAuthenticated,
         lastActivity: state.lastActivity,
-        hasHydrated: state.hasHydrated,
       }),
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState as Partial<AuthState> | undefined) ?? {};
+        return {
+          ...currentState,
+          lastActivity: persisted.lastActivity ?? null,
+        };
+      },
       onRehydrateStorage: () => {
         return (state) => {
           if (state) {

@@ -23,7 +23,6 @@ async function loginApi(request: any, email: string, password: string) {
 
   return {
     accessToken: loginData.accessToken,
-    refreshToken: loginData.refreshToken,
     csrfToken,
     user: loginData.user,
   };
@@ -57,7 +56,6 @@ test('desktop regression smoke', async ({ page, request }) => {
   }, {
     user: adminAuth.user,
     accessToken: adminAuth.accessToken,
-    refreshToken: adminAuth.refreshToken,
     csrfToken: adminAuth.csrfToken,
     isAuthenticated: true,
     isLoading: false,
@@ -110,7 +108,6 @@ test('desktop regression smoke', async ({ page, request }) => {
   }, {
     user: viewerAuth.user,
     accessToken: viewerAuth.accessToken,
-    refreshToken: viewerAuth.refreshToken,
     csrfToken: viewerAuth.csrfToken,
     isAuthenticated: true,
     isLoading: false,

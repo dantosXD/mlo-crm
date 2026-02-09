@@ -34,7 +34,7 @@ A comprehensive CRM and loan origination system for Mortgage Loan Officers (MLOs
 ## Prerequisites
 
 - Node.js 20+
-- PostgreSQL 15+ (or use SQLite for development)
+- PostgreSQL 15+
 - npm or yarn
 
 ## Quick Start
@@ -66,12 +66,15 @@ A comprehensive CRM and loan origination system for Mortgage Loan Officers (MLOs
 
    # Terminal 2 - Frontend
    cd frontend && npm run dev
+
+   # Optional Terminal 3 - Worker
+   cd backend && npm run worker
    ```
 
 4. **Access the application**
    - Frontend: http://localhost:5173
    - Backend API: http://localhost:3000
-   - API Health Check: http://localhost:3000/health
+   - API Health Checks: http://localhost:3000/health/live and http://localhost:3000/health/ready
 
 ## Project Structure
 
@@ -126,6 +129,9 @@ ENCRYPTION_KEY=your-32-byte-base64-key
 S3_ENDPOINT=http://localhost:9000
 S3_BUCKET=mlo-documents
 
+# Shared cache (required in production)
+REDIS_URL=redis://localhost:6379
+
 # Application
 FRONTEND_URL=http://localhost:5173
 API_URL=http://localhost:3000
@@ -159,8 +165,11 @@ NODE_ENV=development
 # Run all tests
 npm test
 
-# Run with coverage
-npm run test:coverage
+# Run frontend tests
+npm run test:frontend
+
+# Run backend tests
+npm run test:backend
 
 # Run e2e tests
 npm run test:e2e
@@ -170,6 +179,9 @@ npm run test:e2e
 ```bash
 # Lint code
 npm run lint
+
+# CI lint gate (fails if warning budget regresses)
+npm run lint:ci
 
 # Format code
 npm run format
@@ -188,9 +200,21 @@ npx prisma migrate dev --name <migration-name>
 # Apply migrations
 npx prisma migrate deploy
 
+# One-time migration from legacy SQLite data
+npm run migrate:sqlite-to-postgres
+
 # Reset database
 npx prisma migrate reset
 ```
+
+## Production Operations
+
+- Deployment and rollback runbook: `docs/production-runbook.md`
+- Backend API runs as a stateless service (`npm start`)
+- Scheduled jobs run in dedicated worker process (`npm run worker`)
+- Staging smoke check: `npm run ops:staging-smoke -- --base-url=https://<staging-host>`
+- Restore integrity check: `DATABASE_URL=<restored-db-url> npm run ops:db:validate-integrity`
+- Branch protection bootstrap: `GITHUB_TOKEN=<token> GITHUB_REPOSITORY=<owner>/<repo> npm run ops:configure-branch-protection`
 
 ## Security
 

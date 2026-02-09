@@ -18,13 +18,13 @@ import {
   IconChevronRight,
   IconNotes,
   IconRobot,
-  IconTemplate,
   IconMail,
   IconCheck,
   IconCalendar,
   IconBell,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { QuickCapture } from './components/QuickCapture';
 import { NotificationCenter } from './components/NotificationCenter';
 import Login from './pages/Login';
@@ -36,21 +36,18 @@ import NotFound from './pages/NotFound';
 import Pipeline from './pages/Pipeline';
 import Documents from './pages/Documents';
 import Settings from './pages/Settings';
-import Dashboard from './pages/Dashboard';
+import DashboardHub from './pages/DashboardHub';
 import Notes from './pages/Notes';
 import Calculator from './pages/Calculator';
 import Analytics from './pages/Analytics';
-import { Workflows } from './pages/Workflows';
 import WorkflowBuilder from './pages/WorkflowBuilder';
-import { WorkflowExecutions } from './pages/WorkflowExecutions';
-import { CommunicationTemplates } from './pages/CommunicationTemplates';
+import WorkflowsHub from './pages/WorkflowsHub';
 import { CommunicationTemplateEditor } from './pages/CommunicationTemplateEditor';
-import { Communications } from './pages/Communications';
 import { CommunicationComposer } from './pages/CommunicationComposer';
+import CommunicationsHub from './pages/CommunicationsHub';
 import TasksDashboard from './pages/TasksDashboard';
 import Calendar from './pages/Calendar';
 import RemindersDashboard from './pages/RemindersDashboard';
-import Today from './pages/Today';
 
 const ForgotPassword = () => (
   <Center h="100vh">
@@ -82,24 +79,61 @@ function WriteRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Navigation items
-const navItems = [
-  { icon: IconDashboard, label: 'Dashboard', href: '/', adminOnly: false },
-  { icon: IconCalendar, label: 'Today', href: '/today', adminOnly: false },
-  { icon: IconUsers, label: 'Clients', href: '/clients', adminOnly: false },
-  { icon: IconCalendar, label: 'Calendar', href: '/calendar', adminOnly: false },
-  { icon: IconBell, label: 'Reminders', href: '/reminders', adminOnly: false },
-  { icon: IconLayoutKanban, label: 'Pipeline', href: '/pipeline', adminOnly: false },
-  { icon: IconCheck, label: 'Tasks', href: '/tasks', adminOnly: false },
-  { icon: IconNotes, label: 'Notes', href: '/notes', adminOnly: false },
-  { icon: IconFileText, label: 'Documents', href: '/documents', adminOnly: false },
-  { icon: IconTemplate, label: 'Templates', href: '/communication-templates', adminOnly: false },
-  { icon: IconMail, label: 'Communications', href: '/communications', adminOnly: false },
-  { icon: IconCalculator, label: 'Calculator', href: '/calculator', adminOnly: false },
-  { icon: IconChartBar, label: 'Analytics', href: '/analytics', adminOnly: false },
-  { icon: IconRobot, label: 'Workflows', href: '/workflows', adminOnly: false },
-  { icon: IconSettings, label: 'Settings', href: '/settings', adminOnly: false },
-  { icon: IconShield, label: 'Admin', href: '/admin', adminOnly: true },
+export function TabRedirect({ to, tab }: { to: string; tab: string }) {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  if (!params.has('tab')) {
+    params.set('tab', tab);
+  }
+
+  return <Navigate to={`${to}?${params.toString()}`} replace />;
+}
+
+// Navigation item type
+type NavItem = { icon: any; label: string; href: string; adminOnly: boolean };
+type NavGroup = { group: string; items: NavItem[] };
+
+// Navigation items organized by group
+const navGroups: NavGroup[] = [
+  {
+    group: 'Home',
+    items: [
+      { icon: IconDashboard, label: 'Dashboard', href: '/', adminOnly: false },
+      { icon: IconCalendar, label: 'Calendar', href: '/calendar', adminOnly: false },
+    ],
+  },
+  {
+    group: 'Client Management',
+    items: [
+      { icon: IconUsers, label: 'Clients', href: '/clients', adminOnly: false },
+      { icon: IconLayoutKanban, label: 'Pipeline', href: '/pipeline', adminOnly: false },
+      { icon: IconFileText, label: 'Documents', href: '/documents', adminOnly: false },
+      { icon: IconCalculator, label: 'Calculator', href: '/calculator', adminOnly: false },
+    ],
+  },
+  {
+    group: 'Productivity',
+    items: [
+      { icon: IconCheck, label: 'Tasks', href: '/tasks', adminOnly: false },
+      { icon: IconBell, label: 'Reminders', href: '/reminders', adminOnly: false },
+      { icon: IconNotes, label: 'Notes', href: '/notes', adminOnly: false },
+      { icon: IconMail, label: 'Communications', href: '/communications', adminOnly: false },
+    ],
+  },
+  {
+    group: 'Automation & Insights',
+    items: [
+      { icon: IconRobot, label: 'Workflows', href: '/workflows', adminOnly: false },
+      { icon: IconChartBar, label: 'Analytics', href: '/analytics', adminOnly: false },
+    ],
+  },
+  {
+    group: 'System',
+    items: [
+      { icon: IconSettings, label: 'Settings', href: '/settings', adminOnly: false },
+      { icon: IconShield, label: 'Admin', href: '/admin', adminOnly: true },
+    ],
+  },
 ];
 
 // Main navigation component
@@ -108,36 +142,51 @@ function MainNav({ currentPath, collapsed }: { currentPath: string; collapsed: b
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
 
-  // Filter out admin-only items for non-admin users
-  const visibleItems = navItems.filter(item => !item.adminOnly || isAdmin);
+  const isActive = (href: string) =>
+    currentPath === href || (href !== '/' && currentPath.startsWith(href));
 
   return (
     <Stack gap={4} p="xs">
-      {visibleItems.map((item) => (
-        collapsed ? (
-          <Tooltip key={item.href} label={item.label} position="right" withArrow>
-            <ActionIcon
-              variant={currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href)) ? 'filled' : 'subtle'}
-              color={currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href)) ? 'blue' : 'gray'}
-              size="lg"
-              onClick={() => navigate(item.href)}
-              style={{ width: '100%' }}
-              aria-label={item.label}
-            >
-              <item.icon size={20} stroke={1.5} aria-hidden="true" />
-            </ActionIcon>
-          </Tooltip>
-        ) : (
-          <NavLink
-            key={item.href}
-            label={item.label}
-            leftSection={<item.icon size={20} stroke={1.5} aria-hidden="true" />}
-            active={currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href))}
-            onClick={() => navigate(item.href)}
-            style={{ borderRadius: 8 }}
-          />
-        )
-      ))}
+      {navGroups.map((group, groupIdx) => {
+        const visibleItems = group.items.filter(item => !item.adminOnly || isAdmin);
+        if (visibleItems.length === 0) return null;
+
+        return (
+          <div key={group.group}>
+            {groupIdx > 0 && <Divider my={6} />}
+            {!collapsed && (
+              <Text size="xs" fw={600} c="dimmed" tt="uppercase" px="sm" mb={4}>
+                {group.group}
+              </Text>
+            )}
+            {visibleItems.map((item) => (
+              collapsed ? (
+                <Tooltip key={item.href} label={item.label} position="right" withArrow>
+                  <ActionIcon
+                    variant={isActive(item.href) ? 'filled' : 'subtle'}
+                    color={isActive(item.href) ? 'blue' : 'gray'}
+                    size="lg"
+                    onClick={() => navigate(item.href)}
+                    style={{ width: '100%' }}
+                    aria-label={item.label}
+                  >
+                    <item.icon size={20} stroke={1.5} aria-hidden="true" />
+                  </ActionIcon>
+                </Tooltip>
+              ) : (
+                <NavLink
+                  key={item.href}
+                  label={item.label}
+                  leftSection={<item.icon size={20} stroke={1.5} aria-hidden="true" />}
+                  active={isActive(item.href)}
+                  onClick={() => navigate(item.href)}
+                  style={{ borderRadius: 8 }}
+                />
+              )
+            ))}
+          </div>
+        );
+      })}
     </Stack>
   );
 }
@@ -202,7 +251,8 @@ function UserMenu() {
 
 // Protected layout component
 function ProtectedLayout() {
-  const currentPath = window.location.pathname;
+  const location = useLocation();
+  const currentPath = location.pathname;
   const navigate = useNavigate();
   const { user, logout, updateLastActivity, checkSessionTimeout } = useAuthStore();
   const isReadOnly = isReadOnlyRole(user?.role);
@@ -401,9 +451,9 @@ function ProtectedLayout() {
 
       <AppShell.Main>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/today" element={<Today />} />
+          <Route path="/" element={<DashboardHub />} />
+          <Route path="/dashboard" element={<DashboardHub />} />
+          <Route path="/today" element={<DashboardHub />} />
           <Route path="/clients" element={<Clients />} />
           <Route path="/clients/:id" element={<ClientDetails />} />
           <Route path="/calendar" element={<Calendar />} />
@@ -412,16 +462,16 @@ function ProtectedLayout() {
           <Route path="/tasks" element={<TasksDashboard />} />
           <Route path="/notes" element={<Notes />} />
           <Route path="/documents" element={<Documents />} />
-          <Route path="/communication-templates" element={<CommunicationTemplates />} />
+          <Route path="/communications" element={<CommunicationsHub />} />
+          <Route path="/communication-templates" element={<TabRedirect to="/communications" tab="templates" />} />
           <Route path="/communication-templates/new" element={<CommunicationTemplateEditor />} />
           <Route path="/communication-templates/:id/edit" element={<CommunicationTemplateEditor />} />
-          <Route path="/communications" element={<Communications />} />
           <Route path="/communications/compose" element={<WriteRoute><CommunicationComposer /></WriteRoute>} />
           <Route path="/communications/:clientId/compose" element={<WriteRoute><CommunicationComposer /></WriteRoute>} />
           <Route path="/calculator" element={<Calculator />} />
           <Route path="/analytics" element={<Analytics />} />
-          <Route path="/workflows" element={<Workflows />} />
-          <Route path="/workflows/executions" element={<WorkflowExecutions />} />
+          <Route path="/workflows" element={<WorkflowsHub />} />
+          <Route path="/workflows/executions" element={<TabRedirect to="/workflows" tab="executions" />} />
           <Route path="/workflows/builder" element={<WorkflowBuilder />} />
           <Route path="/workflows/:id/edit" element={<WorkflowBuilder />} />
           <Route path="/settings" element={<Settings />} />
@@ -442,10 +492,23 @@ function RequireAuth() {
 }
 
 function App() {
-  const { isAuthenticated, hasHydrated } = useAuthStore();
+  const { isAuthenticated, hasHydrated, refreshAuth } = useAuthStore();
+  const [authInitialized, setAuthInitialized] = useState(false);
+  const authInitRef = useRef(false);
+
+  useEffect(() => {
+    if (!hasHydrated || authInitRef.current) {
+      return;
+    }
+
+    authInitRef.current = true;
+    void refreshAuth().finally(() => {
+      setAuthInitialized(true);
+    });
+  }, [hasHydrated, refreshAuth]);
 
   // Wait for auth store to hydrate from persisted state before making routing decisions
-  if (!hasHydrated) {
+  if (!hasHydrated || !authInitialized) {
     return (
       <Center h="100vh">
         <Text size="lg" c="dimmed">Loading...</Text>
@@ -464,10 +527,10 @@ function App() {
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <QuickCapture />
       <ProtectedLayout />
-    </>
+    </ErrorBoundary>
   );
 }
 

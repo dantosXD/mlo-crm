@@ -12,10 +12,9 @@ import {
   NumberInput,
   Input,
 } from '@mantine/core';
-import { DatePicker } from '@mantine/dates';
-import { IconCalendar, IconClock } from '@tabler/icons-react';
+import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
-import api from '../../utils/apiBase';
+import api from '../../utils/api';
 import { getClients } from '../../utils/api';
 
 interface ReminderFormProps {
@@ -149,14 +148,22 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
       };
 
       if (reminder) {
-        await api.put(`/reminders/${reminder.id}`, payload);
+        const response = await api.put(`/reminders/${reminder.id}`, payload);
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({}));
+          throw new Error(errorBody.error || 'Failed to update reminder');
+        }
         notifications.show({
           title: 'Success',
           message: 'Reminder updated successfully',
           color: 'green',
         });
       } else {
-        await api.post('/reminders', payload);
+        const response = await api.post('/reminders', payload);
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({}));
+          throw new Error(errorBody.error || 'Failed to create reminder');
+        }
         notifications.show({
           title: 'Success',
           message: 'Reminder created successfully',
@@ -169,7 +176,7 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
       console.error('Error saving reminder:', error);
       notifications.show({
         title: 'Error',
-        message: error.response?.data?.error || 'Failed to save reminder',
+        message: error?.message || 'Failed to save reminder',
         color: 'red',
       });
     } finally {
@@ -242,12 +249,11 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
             />
           </Group>
 
-          <DatePicker
+          <DateInput
             label="Remind me on"
             placeholder="Pick date"
             value={remindAtDate}
             onChange={setRemindAtDate}
-            leftSection={<IconCalendar size={16} />}
             required
           />
 
@@ -256,23 +262,24 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
               type="time"
               value={remindAtTime || ''}
               onChange={(e) => setRemindAtTime(e.currentTarget.value)}
-              leftSection={<IconClock size={16} />}
             />
           </Input.Wrapper>
 
-          <DatePicker
+          <DateInput
             label="Due date (optional)"
             placeholder="Pick due date"
             value={dueDate}
             onChange={setDueDate}
-            leftSection={<IconCalendar size={16} />}
             clearable
           />
 
           <Select
             label="Associate with client (optional)"
             placeholder="Select client"
-            data={clients.map((c) => ({ value: c.id, label: c.name }))}
+            data={clients.map((c) => ({
+              value: String(c.id),
+              label: String(c.name ?? c.nameEncrypted ?? c.nameHash ?? 'Unknown Client'),
+            }))}
             value={clientId}
             onChange={setClientId}
             clearable
@@ -315,7 +322,7 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
                 max={365}
               />
 
-              <DatePicker
+              <DateInput
                 label="End date (optional)"
                 placeholder="No end date"
                 value={recurringEndDate}

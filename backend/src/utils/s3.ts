@@ -1,18 +1,28 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  HeadBucketCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { getEnv } from '../config/env.js';
+import { logger } from './logger.js';
+
+const env = getEnv();
 
 // Initialize S3 client
 const s3Client = new S3Client({
-  endpoint: process.env.S3_ENDPOINT || 'http://localhost:9000',
+  endpoint: env.S3_ENDPOINT,
   region: 'us-east-1', // MinIO default region
   credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY || 'minio',
-    secretAccessKey: process.env.S3_SECRET_KEY || 'minio123',
+    accessKeyId: env.S3_ACCESS_KEY,
+    secretAccessKey: env.S3_SECRET_KEY,
   },
   forcePathStyle: true, // Required for MinIO
 });
 
-const BUCKET_NAME = process.env.S3_BUCKET || 'mlo-documents';
+const BUCKET_NAME = env.S3_BUCKET;
 
 export interface UploadedFile {
   fileName: string;
@@ -60,7 +70,12 @@ export async function uploadFileToS3(
       mimeType: mimeType,
     };
   } catch (error) {
-    console.error('Error uploading file to S3:', error);
+    logger.error('s3_upload_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      fileName,
+      mimeType,
+      folder,
+    });
     throw new Error('Failed to upload file to storage');
   }
 }
@@ -84,7 +99,10 @@ export async function getPresignedDownloadUrl(
     const url = await getSignedUrl(s3Client, command, { expiresIn });
     return url;
   } catch (error) {
-    console.error('Error generating presigned URL:', error);
+    logger.error('s3_presign_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      filePath,
+    });
     throw new Error('Failed to generate download URL');
   }
 }
@@ -102,7 +120,10 @@ export async function deleteFileFromS3(filePath: string): Promise<void> {
 
     await s3Client.send(command);
   } catch (error) {
-    console.error('Error deleting file from S3:', error);
+    logger.error('s3_delete_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      filePath,
+    });
     throw new Error('Failed to delete file from storage');
   }
 }
@@ -115,8 +136,27 @@ export async function deleteMultipleFilesFromS3(filePaths: string[]): Promise<vo
   try {
     await Promise.all(filePaths.map(filePath => deleteFileFromS3(filePath)));
   } catch (error) {
-    console.error('Error deleting multiple files from S3:', error);
+    logger.error('s3_bulk_delete_failed', {
+      error: error instanceof Error ? error.message : String(error),
+      fileCount: filePaths.length,
+    });
     throw new Error('Failed to delete files from storage');
+  }
+}
+
+/**
+ * Check whether object storage is reachable.
+ */
+export async function checkS3Health(): Promise<boolean> {
+  try {
+    await s3Client.send(
+      new HeadBucketCommand({
+        Bucket: BUCKET_NAME,
+      })
+    );
+    return true;
+  } catch {
+    return false;
   }
 }
 

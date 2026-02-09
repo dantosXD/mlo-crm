@@ -33,7 +33,6 @@ import {
   IconCalendar,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
-import { API_URL } from '../utils/apiBase';
 import { api } from '../utils/api';
 
 interface Client {
@@ -294,11 +293,7 @@ export function QuickCapture() {
   const fetchClients = async () => {
     setIsLoadingClients(true);
     try {
-      const response = await fetch(`${API_URL}/clients`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.get('/clients');
       if (response.ok) {
         const data = await response.json();
         setClients(data);

@@ -15,8 +15,7 @@ import {
 } from '@mantine/core';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { API_URL } from '../../utils/apiBase';
-import { useAuthStore } from '../../stores/authStore';
+import { apiRequest } from '../../utils/api';
 
 interface ActionConfigPanelProps {
   actionType: string;
@@ -44,16 +43,13 @@ const COMMUNICATION_TEMPLATE_PLACEHOLDERS = {
 };
 
 export default function ActionConfigPanel({ actionType, config, onChange }: ActionConfigPanelProps) {
-  const { token } = useAuthStore();
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   // Fetch communication templates for communication actions
   const { data: emailTemplates } = useQuery({
     queryKey: ['email-templates'],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/communications/templates/email`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await apiRequest('/communications/templates/email');
       if (!response.ok) throw new Error('Failed to fetch email templates');
       return response.json();
     },
@@ -63,9 +59,7 @@ export default function ActionConfigPanel({ actionType, config, onChange }: Acti
   const { data: smsTemplates } = useQuery({
     queryKey: ['sms-templates'],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/communications/templates/sms`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await apiRequest('/communications/templates/sms');
       if (!response.ok) throw new Error('Failed to fetch SMS templates');
       return response.json();
     },
@@ -75,9 +69,7 @@ export default function ActionConfigPanel({ actionType, config, onChange }: Acti
   const { data: users } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/users`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await apiRequest('/users');
       if (!response.ok) throw new Error('Failed to fetch users');
       return response.json();
     },

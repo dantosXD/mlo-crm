@@ -6,8 +6,7 @@ import {
   IconChevronDown,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { api } from '../../utils/api';
 
 interface TaskSnoozeButtonProps {
   taskId: string;
@@ -28,14 +27,7 @@ export function TaskSnoozeButton({ taskId, onSnooze }: TaskSnoozeButtonProps) {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/tasks/${taskId}/snooze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ duration }),
-      });
+      const response = await api.post(`/tasks/${taskId}/snooze`, { duration });
 
       if (!response.ok) {
         const error = await response.json();

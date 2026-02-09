@@ -1,6 +1,7 @@
 import crypto from 'crypto';
+import { getEnv } from '../config/env.js';
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-key-32-bytes-long-here!';
+const ENCRYPTION_KEY = getEnv().ENCRYPTION_KEY;
 
 export function decrypt(encryptedData: string): string {
   try {

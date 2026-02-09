@@ -37,8 +37,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       const tasks = await prisma.task.findMany({
         where: {
           OR: [
-            { text: { contains: searchQuery, mode: 'insensitive' } },
-            { description: { contains: searchQuery, mode: 'insensitive' } },
+            { text: { contains: searchQuery } },
+            { description: { contains: searchQuery } },
             { tags: { contains: searchQuery } },
           ],
           deletedAt: null,
@@ -65,9 +65,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       const events = await prisma.event.findMany({
         where: {
           OR: [
-            { title: { contains: searchQuery, mode: 'insensitive' } },
-            { description: { contains: searchQuery, mode: 'insensitive' } },
-            { location: { contains: searchQuery, mode: 'insensitive' } },
+            { title: { contains: searchQuery } },
+            { description: { contains: searchQuery } },
+            { location: { contains: searchQuery } },
           ],
           createdById: userId,
         },
@@ -88,8 +88,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         where: {
           userId,
           OR: [
-            { title: { contains: searchQuery, mode: 'insensitive' } },
-            { description: { contains: searchQuery, mode: 'insensitive' } },
+            { title: { contains: searchQuery } },
+            { description: { contains: searchQuery } },
           ],
         },
         include: {

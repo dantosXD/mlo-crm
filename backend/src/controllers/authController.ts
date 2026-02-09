@@ -4,10 +4,16 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import prisma from '../utils/prisma.js';
+import { getEnv } from '../config/env.js';
+import { recordAuthAttempt } from '../monitoring/metrics.js';
+import { logger } from '../utils/logger.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production-min-32-chars';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
-const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '30d';
+const env = getEnv();
+const JWT_SECRET = env.JWT_SECRET;
+const JWT_EXPIRES_IN = env.JWT_EXPIRES_IN;
+const REFRESH_TOKEN_EXPIRES_IN = env.REFRESH_TOKEN_EXPIRES_IN;
+const REFRESH_TOKEN_COOKIE_NAME = env.REFRESH_TOKEN_COOKIE_NAME;
+const isProduction = env.NODE_ENV === 'production';
 
 interface JwtPayload {
   userId: string;
@@ -39,6 +45,29 @@ function parseExpiresIn(expiresIn: string): number {
   }
 }
 
+function setRefreshTokenCookie(res: Response, refreshToken: string) {
+  res.cookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'strict' : 'lax',
+    path: '/api/auth',
+    maxAge: parseExpiresIn(REFRESH_TOKEN_EXPIRES_IN),
+  });
+}
+
+function clearRefreshTokenCookie(res: Response) {
+  res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'strict' : 'lax',
+    path: '/api/auth',
+  });
+}
+
+function readRefreshTokenFromRequest(req: Request): string | null {
+  return req.cookies?.[REFRESH_TOKEN_COOKIE_NAME] || null;
+}
+
 export async function login(req: Request, res: Response) {
   try {
     const { email, password } = req.body;
@@ -56,6 +85,7 @@ export async function login(req: Request, res: Response) {
     });
 
     if (!user) {
+      recordAuthAttempt(false);
       return res.status(401).json({
         error: 'Authentication Failed',
         message: 'Invalid email or password',
@@ -64,6 +94,7 @@ export async function login(req: Request, res: Response) {
 
     // Check if user is active
     if (!user.isActive) {
+      recordAuthAttempt(false);
       return res.status(401).json({
         error: 'Authentication Failed',
         message: 'Account is deactivated. Please contact support.',
@@ -74,6 +105,7 @@ export async function login(req: Request, res: Response) {
     const isValidPassword = await bcrypt.compare(password, user.passwordHash);
 
     if (!isValidPassword) {
+      recordAuthAttempt(false);
       return res.status(401).json({
         error: 'Authentication Failed',
         message: 'Invalid email or password',
@@ -119,11 +151,13 @@ export async function login(req: Request, res: Response) {
     // Generate CSRF token for the session
     const csrfToken = crypto.randomBytes(32).toString('hex');
 
+    setRefreshTokenCookie(res, refreshToken);
+    recordAuthAttempt(true);
+
     return res
       .header('X-CSRF-Token', csrfToken)
       .json({
         accessToken,
-        refreshToken,
         user: {
           id: user.id,
           email: user.email,
@@ -132,7 +166,7 @@ export async function login(req: Request, res: Response) {
         },
       });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('auth_login_failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({
       error: 'Internal Server Error',
       message: 'An error occurred during login',
@@ -148,6 +182,13 @@ export async function register(req: Request, res: Response) {
       return res.status(400).json({
         error: 'Validation Error',
         message: 'Email, password, and name are required',
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Password must be at least 8 characters long',
       });
     }
 
@@ -206,9 +247,10 @@ export async function register(req: Request, res: Response) {
       },
     });
 
+    setRefreshTokenCookie(res, refreshToken);
+
     return res.status(201).json({
       accessToken,
-      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -217,7 +259,7 @@ export async function register(req: Request, res: Response) {
       },
     });
   } catch (error) {
-    console.error('Register error:', error);
+    logger.error('auth_register_failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({
       error: 'Internal Server Error',
       message: 'An error occurred during registration',
@@ -227,12 +269,13 @@ export async function register(req: Request, res: Response) {
 
 export async function refresh(req: Request, res: Response) {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = readRefreshTokenFromRequest(req);
 
     if (!refreshToken) {
+      recordAuthAttempt(false);
       return res.status(400).json({
         error: 'Validation Error',
-        message: 'Refresh token is required',
+        message: 'Refresh token cookie is required',
       });
     }
 
@@ -242,6 +285,8 @@ export async function refresh(req: Request, res: Response) {
     });
 
     if (!storedToken || storedToken.expiresAt < new Date()) {
+      clearRefreshTokenCookie(res);
+      recordAuthAttempt(false);
       return res.status(401).json({
         error: 'Authentication Failed',
         message: 'Invalid or expired refresh token',
@@ -254,6 +299,8 @@ export async function refresh(req: Request, res: Response) {
     });
 
     if (!user || !user.isActive) {
+      clearRefreshTokenCookie(res);
+      recordAuthAttempt(false);
       return res.status(401).json({
         error: 'Authentication Failed',
         message: 'User not found or inactive',
@@ -287,11 +334,13 @@ export async function refresh(req: Request, res: Response) {
     // Generate new CSRF token for the session
     const csrfToken = crypto.randomBytes(32).toString('hex');
 
+    setRefreshTokenCookie(res, newRefreshToken);
+    recordAuthAttempt(true);
+
     return res
       .header('X-CSRF-Token', csrfToken)
       .json({
         accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
         user: {
           id: user.id,
           email: user.email,
@@ -300,7 +349,7 @@ export async function refresh(req: Request, res: Response) {
         },
       });
   } catch (error) {
-    console.error('Refresh error:', error);
+    logger.error('auth_refresh_failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({
       error: 'Internal Server Error',
       message: 'An error occurred while refreshing token',
@@ -310,7 +359,7 @@ export async function refresh(req: Request, res: Response) {
 
 export async function logout(req: Request, res: Response) {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = readRefreshTokenFromRequest(req);
 
     if (refreshToken) {
       // Delete refresh token
@@ -319,9 +368,10 @@ export async function logout(req: Request, res: Response) {
       });
     }
 
+    clearRefreshTokenCookie(res);
     return res.json({ message: 'Logged out successfully' });
   } catch (error) {
-    console.error('Logout error:', error);
+    logger.error('auth_logout_failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({
       error: 'Internal Server Error',
       message: 'An error occurred during logout',
@@ -362,7 +412,7 @@ export async function getMe(req: Request, res: Response) {
 
     return res.json(user);
   } catch (error) {
-    console.error('GetMe error:', error);
+    logger.error('auth_get_me_failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({
       error: 'Internal Server Error',
       message: 'An error occurred while fetching user data',
@@ -443,7 +493,7 @@ export async function changePassword(req: Request, res: Response) {
 
     return res.json({ message: 'Password changed successfully' });
   } catch (error) {
-    console.error('ChangePassword error:', error);
+    logger.error('auth_change_password_failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({
       error: 'Internal Server Error',
       message: 'An error occurred while changing password',
@@ -532,7 +582,7 @@ export async function updateProfile(req: Request, res: Response) {
       },
     });
   } catch (error) {
-    console.error('UpdateProfile error:', error);
+    logger.error('auth_update_profile_failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({
       error: 'Internal Server Error',
       message: 'An error occurred while updating profile',

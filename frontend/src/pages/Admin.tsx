@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Title,
   Stack,
@@ -17,8 +17,8 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconUserPlus, IconUsers } from '@tabler/icons-react';
-import { useAuthStore } from '../stores/authStore';
-import { API_URL } from '../utils/apiBase';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '../utils/api';
 
 interface User {
   id: string;
@@ -32,9 +32,7 @@ interface User {
 }
 
 export function Admin() {
-  const { accessToken } = useAuthStore();
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newUser, setNewUser] = useState({
@@ -55,51 +53,14 @@ export function Admin() {
     isActive: true,
   });
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/users`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch users');
-      }
-
-      const data = await response.json();
-
-      // Security verification: Log to verify no password fields
-      console.log('Users API response fields:', Object.keys(data[0] || {}));
-
-      // Double-check that no password-related fields are present
-      const hasPasswordField = data.some((user: any) =>
-        'password' in user ||
-        'passwordHash' in user ||
-        'password_hash' in user
-      );
-
-      if (hasPasswordField) {
-        console.error('SECURITY ALERT: Password field detected in API response!');
-      }
-
-      setUsers(data);
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load users',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: users = [], isLoading: loading } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: async () => {
+      const response = await api.get('/users');
+      if (!response.ok) throw new Error('Failed to fetch users');
+      return response.json() as Promise<User[]>;
+    },
+  });
 
   const handleCreateUser = async () => {
     if (!newUser.name || !newUser.email || !newUser.password) {
@@ -113,22 +74,15 @@ export function Admin() {
 
     setCreating(true);
     try {
-      const response = await fetch(`${API_URL}/users`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(newUser),
-      });
+      const response = await api.post('/users', newUser);
 
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.message || 'Failed to create user');
       }
 
-      const createdUser = await response.json();
-      setUsers([createdUser, ...users]);
+      await response.json();
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       setCreateModalOpen(false);
       setNewUser({ name: '', email: '', password: '', role: 'MLO' });
 
@@ -155,19 +109,14 @@ export function Admin() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/users/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await api.delete(`/users/${id}`);
 
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.message || 'Failed to delete user');
       }
 
-      setUsers(users.filter(u => u.id !== id));
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       notifications.show({
         title: 'Success',
         message: 'User deleted successfully',
@@ -199,22 +148,15 @@ export function Admin() {
 
     setEditing(true);
     try {
-      const response = await fetch(`${API_URL}/users/${editUser.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(editForm),
-      });
+      const response = await api.put(`/users/${editUser.id}`, editForm);
 
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.message || 'Failed to update user');
       }
 
-      const updatedUser = await response.json();
-      setUsers(users.map(u => u.id === editUser.id ? updatedUser : u));
+      await response.json();
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       setEditModalOpen(false);
       setEditUser(null);
 

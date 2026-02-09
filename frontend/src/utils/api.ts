@@ -1,8 +1,44 @@
 import { API_URL } from './apiBase';
 
 /**
- * API client utility for making authenticated requests with CSRF protection
+ * API client utility for making authenticated requests with CSRF protection.
+ * CSRF uses the cookie-based double-submit pattern: the backend sets a
+ * non-HttpOnly cookie, and the frontend echoes it in the X-CSRF-Token header.
  */
+
+/**
+ * Read a cookie value by name from document.cookie.
+ */
+function getCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * Ensure the CSRF cookie exists before the first mutating request in a session.
+ * This avoids a deterministic 403 on the first write after login/refresh.
+ */
+async function ensureCsrfCookie(accessToken: string | null): Promise<string | null> {
+  let csrf = getCookie('csrf-token');
+  if (csrf || !accessToken) {
+    return csrf;
+  }
+
+  try {
+    await fetch(`${API_URL}/auth/me`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      credentials: 'include',
+    });
+  } catch {
+    // If priming fails, continue without blocking the request.
+  }
+
+  csrf = getCookie('csrf-token');
+  return csrf;
+}
 
 /**
  * Make an authenticated API request with CSRF token
@@ -13,7 +49,7 @@ export async function apiRequest(
 ): Promise<Response> {
   // Import auth store dynamically to avoid circular dependencies
   const { useAuthStore } = await import('../stores/authStore');
-  const { accessToken, csrfToken, updateCsrfToken } = useAuthStore.getState();
+  const { accessToken } = useAuthStore.getState();
 
   // Prepare headers
   const extraHeaders = options.headers instanceof Headers
@@ -32,47 +68,21 @@ export async function apiRequest(
     headers['Authorization'] = `Bearer ${accessToken}`;
   }
 
-  // Add CSRF token for state-changing methods
+  // Add CSRF token for state-changing methods (read from cookie)
   const method = (options.method || 'GET').toUpperCase();
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-    let csrf = csrfToken;
-
-    // If CSRF token is missing but we have an access token, fetch a fresh token
-    if (!csrf && accessToken) {
-      try {
-        const csrfResponse = await fetch(`${API_URL}/auth/me`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-
-        const newCsrfToken = csrfResponse.headers.get('X-CSRF-Token');
-        if (newCsrfToken) {
-          csrf = newCsrfToken;
-          updateCsrfToken(newCsrfToken);
-        }
-      } catch (error) {
-        console.warn('Failed to refresh CSRF token:', error);
-      }
-    }
-
+    const csrf = await ensureCsrfCookie(accessToken);
     if (csrf) {
       headers['X-CSRF-Token'] = csrf;
     }
   }
 
-  // Make the request
+  // Make the request — include credentials so the CSRF cookie is sent
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers,
+    credentials: 'include',
   });
-
-  // Update CSRF token from response headers if present
-  const newCsrfToken = response.headers.get('X-CSRF-Token');
-  if (newCsrfToken) {
-    updateCsrfToken(newCsrfToken);
-  }
 
   return response;
 }
@@ -114,13 +124,7 @@ export const api = {
  */
 export async function getClients() {
   const response = await api.get('/clients');
-  const data = await response.json();
-
-  // Decrypt client names
-  return data.map((client: any) => ({
-    ...client,
-    name: client.nameHash, // In production, use proper decryption
-  }));
+  return response.json();
 }
 
 export default api;

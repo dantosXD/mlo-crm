@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Title,
   Stack,
@@ -28,153 +28,83 @@ import {
   IconPlus,
   IconTemplate,
 } from '@tabler/icons-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
-import { API_URL } from '../utils/apiBase';
 import { api } from '../utils/api';
-
-interface CommunicationTemplate {
-  id: string;
-  name: string;
-  type: string;
-  category: string;
-  subject: string | null;
-  body: string;
-  placeholders: string[];
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+import { COMM_TYPE_CONFIG } from '../utils/constants';
+import type { CommunicationTemplate, PaginationInfo, MetaOption } from '../types';
 
 interface TemplateResponse {
   data: CommunicationTemplate[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
+  pagination: PaginationInfo;
 }
 
-interface MetaOption {
-  value: string;
-  label: string;
-  description: string;
-}
-
-// Type labels and colors
-const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
-  EMAIL: { label: 'Email', color: 'blue' },
-  SMS: { label: 'SMS', color: 'cyan' },
-  LETTER: { label: 'Letter', color: 'grape' },
-};
+const TYPE_CONFIG = COMM_TYPE_CONFIG;
 
 export function CommunicationTemplates() {
   const { accessToken, user } = useAuthStore();
   const navigate = useNavigate();
 
-  const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [isActiveFilter, setIsActiveFilter] = useState<string>('all');
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0,
-  });
+  const [page, setPage] = useState(1);
+  const limit = 20;
   const [deleting, setDeleting] = useState<string | null>(null);
 
   // Preview modal state
   const [previewOpened, setPreviewOpened] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<CommunicationTemplate | null>(null);
 
-  // Meta options
-  const [typeOptions, setTypeOptions] = useState<MetaOption[]>([]);
-  const [categoryOptions, setCategoryOptions] = useState<MetaOption[]>([]);
-
   const canManageTemplates = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  useEffect(() => {
-    fetchTemplates();
-    fetchMetaOptions();
-  }, [pagination.page, typeFilter, categoryFilter, isActiveFilter]);
-
-  const fetchMetaOptions = async () => {
-    try {
+  // Fetch meta options
+  const { data: metaData } = useQuery({
+    queryKey: ['comm-template-meta'],
+    queryFn: async () => {
       const [typesRes, categoriesRes] = await Promise.all([
-        fetch(`${API_URL}/communication-templates/meta/types`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
-        fetch(`${API_URL}/communication-templates/meta/categories`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
+        api.get('/communication-templates/meta/types'),
+        api.get('/communication-templates/meta/categories'),
       ]);
+      const typeOptions = typesRes.ok ? ((await typesRes.json()).data || []) as MetaOption[] : [];
+      const categoryOptions = categoriesRes.ok ? ((await categoriesRes.json()).data || []) as MetaOption[] : [];
+      return { typeOptions, categoryOptions };
+    },
+    staleTime: 300_000,
+  });
 
-      if (typesRes.ok && categoriesRes.ok) {
-        const typesData = await typesRes.json();
-        const categoriesData = await categoriesRes.json();
-        setTypeOptions(typesData.data || []);
-        setCategoryOptions(categoriesData.data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching meta options:', error);
-    }
-  };
+  const typeOptions = metaData?.typeOptions ?? [];
+  const categoryOptions = metaData?.categoryOptions ?? [];
 
-  const fetchTemplates = async () => {
-    setLoading(true);
-    try {
+  // Fetch templates
+  const { data: templateData, isLoading: loading } = useQuery({
+    queryKey: ['comm-templates', page, typeFilter, categoryFilter, isActiveFilter, searchTerm],
+    queryFn: async () => {
       const params = new URLSearchParams({
-        page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
+        page: page.toString(),
+        limit: limit.toString(),
       });
+      if (typeFilter !== 'all') params.append('type', typeFilter);
+      if (categoryFilter !== 'all') params.append('category', categoryFilter);
+      if (isActiveFilter !== 'all') params.append('is_active', isActiveFilter);
+      if (searchTerm) params.append('search', searchTerm);
 
-      if (typeFilter !== 'all') {
-        params.append('type', typeFilter);
-      }
-      if (categoryFilter !== 'all') {
-        params.append('category', categoryFilter);
-      }
-      if (isActiveFilter !== 'all') {
-        params.append('is_active', isActiveFilter);
-      }
-      if (search) {
-        params.append('search', search);
-      }
+      const response = await api.get(`/communication-templates?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch templates');
+      return response.json() as Promise<TemplateResponse>;
+    },
+  });
 
-      const response = await fetch(`${API_URL}/communication-templates?${params}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch templates');
-      }
-
-      const data: TemplateResponse = await response.json();
-      setTemplates(data.data || []);
-      setPagination(prev => ({
-        ...prev,
-        total: data.pagination.total,
-        totalPages: data.pagination.totalPages,
-      }));
-    } catch (error) {
-      console.error('Error fetching templates:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load communication templates',
-        color: 'red',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const templates = templateData?.data ?? [];
+  const pagination = templateData?.pagination ?? { page: 1, limit, total: 0, totalPages: 0 };
 
   const handleSearch = () => {
-    setPagination(prev => ({ ...prev, page: 1 }));
-    fetchTemplates();
+    setPage(1);
+    setSearchTerm(search);
   };
 
   const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -203,7 +133,7 @@ export function CommunicationTemplates() {
         color: 'green',
       });
 
-      fetchTemplates();
+      queryClient.invalidateQueries({ queryKey: ['comm-templates'] });
     } catch (error: any) {
       console.error('Error deleting template:', error);
       notifications.show({
@@ -339,7 +269,7 @@ export function CommunicationTemplates() {
               value={typeFilter}
               onChange={(value: string | null) => {
                 setTypeFilter(value || 'all');
-                setPagination(prev => ({ ...prev, page: 1 }));
+                setPage(1);
               }}
               style={{ minWidth: 150 }}
               clearable
@@ -354,7 +284,7 @@ export function CommunicationTemplates() {
               value={categoryFilter}
               onChange={(value: string | null) => {
                 setCategoryFilter(value || 'all');
-                setPagination(prev => ({ ...prev, page: 1 }));
+                setPage(1);
               }}
               style={{ minWidth: 180 }}
               clearable
@@ -370,7 +300,7 @@ export function CommunicationTemplates() {
               value={isActiveFilter}
               onChange={(value: string | null) => {
                 setIsActiveFilter(value || 'all');
-                setPagination(prev => ({ ...prev, page: 1 }));
+                setPage(1);
               }}
               style={{ minWidth: 140 }}
               clearable
@@ -379,7 +309,7 @@ export function CommunicationTemplates() {
             <ActionIcon
               variant="light"
               color="blue"
-              onClick={fetchTemplates}
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['comm-templates'] })}
               title="Refresh"
             >
               <IconRefresh size={16} />
@@ -447,7 +377,7 @@ export function CommunicationTemplates() {
             <Pagination
               total={pagination.totalPages}
               value={pagination.page}
-              onChange={page => setPagination(prev => ({ ...prev, page }))}
+              onChange={(p) => setPage(p)}
             />
           </Group>
         )}
@@ -518,7 +448,7 @@ export function CommunicationTemplates() {
                   Category: <strong>{previewTemplate.category}</strong>
                 </Text>
                 <Text size="sm" c="dimmed">
-                  Created: <strong>{new Date(previewTemplate.createdAt).toLocaleDateString()}</strong>
+                  Created: <strong>{previewTemplate.createdAt ? new Date(previewTemplate.createdAt).toLocaleDateString() : '-'}</strong>
                 </Text>
               </Group>
 

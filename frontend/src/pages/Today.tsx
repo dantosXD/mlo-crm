@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   Container,
   Title,
@@ -12,7 +12,6 @@ import {
   Button,
   ThemeIcon,
   ActionIcon,
-  Menu,
   ScrollArea,
   Loader,
   Alert,
@@ -23,28 +22,16 @@ import {
   IconBell,
   IconAlertTriangle,
   IconCheck,
-  IconX,
   IconClock,
-  IconDots,
   IconRefresh,
-  IconSearch,
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import dayjs from 'dayjs';
-import api from '../utils/apiBase';
+import api, { apiRequest } from '../utils/api';
 
 interface TodayData {
-  date: string;
-  summary: {
-    tasksDueToday: number;
-    eventsToday: number;
-    remindersToday: number;
-    overdueTasks: number;
-    overdueReminders: number;
-    totalPending: number;
-  };
   tasks: Array<{
     id: string;
     text: string;
@@ -52,7 +39,7 @@ interface TodayData {
     priority: string;
     dueDate: string;
     status: string;
-    client?: { id: string; nameEncrypted: string };
+    client?: { id: string; nameEncrypted: string; name?: string };
   }>;
   events: Array<{
     id: string;
@@ -63,7 +50,7 @@ interface TodayData {
     endTime?: string;
     allDay: boolean;
     location?: string;
-    client?: { id: string; nameEncrypted: string };
+    client?: { id: string; nameEncrypted: string; name?: string };
   }>;
   reminders: Array<{
     id: string;
@@ -72,35 +59,29 @@ interface TodayData {
     priority: string;
     remindAt: string;
     category: string;
-    client?: { id: string; nameEncrypted: string };
+    client?: { id: string; nameEncrypted: string; name?: string };
   }>;
-  overdue: {
-    tasks: Array<{
-      id: string;
-      text: string;
-      dueDate: string;
-      priority: string;
-      client?: { id: string; nameEncrypted: string };
-    }>;
-    reminders: Array<{
-      id: string;
-      title: string;
-      remindAt: string;
-      priority: string;
-      client?: { id: string; nameEncrypted: string };
-    }>;
+  statistics: {
+    totalTasks: number;
+    overdueTasks: number;
+    completedTasksToday: number;
+    tasksDueToday: number;
+    eventsToday: number;
+    remindersToday: number;
   };
 }
 
 const Today: React.FC = () => {
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
 
   const { data: todayData, isLoading, error, refetch } = useQuery<TodayData>({
     queryKey: ['today-view'],
     queryFn: async () => {
       const response = await api.get('/integration/today');
-      return response.data;
+      if (!response.ok) {
+        throw new Error('Failed to load today view');
+      }
+      return response.json();
     },
   });
 
@@ -130,10 +111,9 @@ const Today: React.FC = () => {
 
   const handleCompleteTask = async (taskId: string) => {
     try {
-      const response = await fetch(`/api/tasks/${taskId}/status`, {
+      const response = await apiRequest(`/tasks/${taskId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ status: 'COMPLETE' }),
       });
 
@@ -156,9 +136,8 @@ const Today: React.FC = () => {
 
   const handleCompleteReminder = async (reminderId: string) => {
     try {
-      const response = await fetch(`/api/reminders/${reminderId}/complete`, {
+      const response = await apiRequest(`/reminders/${reminderId}/complete`, {
         method: 'POST',
-        credentials: 'include',
       });
 
       if (!response.ok) throw new Error('Failed to complete reminder');
@@ -218,7 +197,7 @@ const Today: React.FC = () => {
               <div>
                 <Title order={2}>Today</Title>
                 <Text size="sm" c="dimmed">
-                  {dayjs(todayData.date).format('dddd, MMMM D, YYYY')}
+                  {dayjs().format('dddd, MMMM D, YYYY')}
                 </Text>
               </div>
             </Group>
@@ -244,7 +223,7 @@ const Today: React.FC = () => {
                     Pending
                   </Text>
                   <Text size="xl" fw={700} mt="xs">
-                    {todayData.summary.totalPending}
+                    {todayData.statistics.tasksDueToday + todayData.statistics.remindersToday}
                   </Text>
                 </div>
                 <ThemeIcon color="blue" size={36} radius="md">
@@ -261,7 +240,7 @@ const Today: React.FC = () => {
                     Tasks Due
                   </Text>
                   <Text size="xl" fw={700} mt="xs">
-                    {todayData.summary.tasksDueToday}
+                    {todayData.statistics.tasksDueToday}
                   </Text>
                 </div>
                 <ThemeIcon color="grape" size={36} radius="md">
@@ -278,7 +257,7 @@ const Today: React.FC = () => {
                     Events
                   </Text>
                   <Text size="xl" fw={700} mt="xs">
-                    {todayData.summary.eventsToday}
+                    {todayData.statistics.eventsToday}
                   </Text>
                 </div>
                 <ThemeIcon color="green" size={36} radius="md">
@@ -295,7 +274,7 @@ const Today: React.FC = () => {
                     Reminders
                   </Text>
                   <Text size="xl" fw={700} mt="xs">
-                    {todayData.summary.remindersToday}
+                    {todayData.statistics.remindersToday}
                   </Text>
                 </div>
                 <ThemeIcon color="red" size={36} radius="md">
@@ -312,7 +291,7 @@ const Today: React.FC = () => {
                     Overdue
                   </Text>
                   <Text size="xl" fw={700} mt="xs" c="red">
-                    {todayData.summary.overdueTasks + todayData.summary.overdueReminders}
+                    {todayData.statistics.overdueTasks}
                   </Text>
                 </div>
                 <ThemeIcon color="red" size={36} radius="md">
@@ -362,7 +341,7 @@ const Today: React.FC = () => {
                             </Group>
                             {task.client && (
                               <Text size="xs" c="blue">
-                                {task.client.nameEncrypted}
+                                {task.client.name || task.client.nameEncrypted}
                               </Text>
                             )}
                           </Stack>
@@ -431,7 +410,7 @@ const Today: React.FC = () => {
                           </Group>
                           {event.client && (
                             <Text size="xs" c="blue">
-                              {event.client.nameEncrypted}
+                              {event.client.name || event.client.nameEncrypted}
                             </Text>
                           )}
                         </Stack>
@@ -484,7 +463,7 @@ const Today: React.FC = () => {
                             </Group>
                             {reminder.client && (
                               <Text size="xs" c="blue">
-                                {reminder.client.nameEncrypted}
+                                {reminder.client.name || reminder.client.nameEncrypted}
                               </Text>
                             )}
                           </Stack>
@@ -507,7 +486,7 @@ const Today: React.FC = () => {
 
           {/* Overdue */}
           <Grid.Col span={{ base: 12, md: 6 }}>
-            <Paper p="md" withBorder h="100%" style={{ borderColor: '#fa5252' }}>
+            <Paper p="md" withBorder h="100%" style={{ borderColor: todayData.statistics.overdueTasks > 0 ? '#fa5252' : undefined }}>
               <Group justify="space-between" mb="md">
                 <Group>
                   <ThemeIcon color="red" variant="light">
@@ -515,49 +494,30 @@ const Today: React.FC = () => {
                   </ThemeIcon>
                   <Text fw={600} c="red">Overdue</Text>
                   <Badge color="red" size="sm">
-                    {todayData.overdue.tasks.length + todayData.overdue.reminders.length}
+                    {todayData.statistics.overdueTasks}
                   </Badge>
                 </Group>
+                {todayData.statistics.overdueTasks > 0 && (
+                  <Button
+                    size="xs"
+                    variant="light"
+                    color="red"
+                    onClick={() => navigate('/tasks?filter=overdue')}
+                  >
+                    View All
+                  </Button>
+                )}
               </Group>
               <ScrollArea.Autosize mah={400}>
                 <Stack gap="sm">
-                  {todayData.overdue.tasks.length === 0 && todayData.overdue.reminders.length === 0 ? (
+                  {todayData.statistics.overdueTasks === 0 ? (
                     <Text size="sm" c="dimmed" ta="center" py="md">
                       No overdue items 🎉
                     </Text>
                   ) : (
-                    <>
-                      {todayData.overdue.tasks.map((task) => (
-                        <Card key={task.id} padding="sm" radius="md" withBorder style={{ borderColor: '#fa5252' }}>
-                          <Group justify="space-between" align="flex-start">
-                            <Stack gap={0}>
-                              <Text size="sm" fw={500}>{task.text}</Text>
-                              <Text size="xs" c="red">
-                                Due {dayjs(task.dueDate).format('MMM D')}
-                              </Text>
-                            </Stack>
-                            <Badge size="xs" color={getPriorityColor(task.priority)}>
-                              {task.priority}
-                            </Badge>
-                          </Group>
-                        </Card>
-                      ))}
-                      {todayData.overdue.reminders.map((reminder) => (
-                        <Card key={reminder.id} padding="sm" radius="md" withBorder style={{ borderColor: '#fa5252' }}>
-                          <Group justify="space-between" align="flex-start">
-                            <Stack gap={0}>
-                              <Text size="sm" fw={500}>{reminder.title}</Text>
-                              <Text size="xs" c="red">
-                                {dayjs(reminder.remindAt).format('MMM D')}
-                              </Text>
-                            </Stack>
-                            <Badge size="xs" color={getPriorityColor(reminder.priority)}>
-                              {reminder.priority}
-                            </Badge>
-                          </Group>
-                        </Card>
-                      ))}
-                    </>
+                    <Text size="sm" c="red" ta="center" py="md">
+                      You have {todayData.statistics.overdueTasks} overdue task{todayData.statistics.overdueTasks !== 1 ? 's' : ''}. View the Tasks page for details.
+                    </Text>
                   )}
                 </Stack>
               </ScrollArea.Autosize>

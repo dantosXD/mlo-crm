@@ -1,16 +1,7 @@
 import { Paper, Title, Group, Card, Text, Badge, Checkbox, Stack } from '@mantine/core';
 import { IconChecklist } from '@tabler/icons-react';
 import { EmptyState } from '../components/EmptyState';
-
-interface Task {
-  id: string;
-  text: string;
-  status: string;
-  priority: string;
-  dueDate: string | null;
-  clientId: string | null;
-  clientName?: string;
-}
+import type { Task } from '../types';
 
 interface PendingTasksWidgetProps {
   pendingTasksList: Task[];
