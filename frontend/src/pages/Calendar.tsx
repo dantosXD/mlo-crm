@@ -485,9 +485,9 @@ const MonthView: React.FC<{
   return (
     <Box>
       {/* Day headers */}
-      <Grid>
+      <Grid gutter={2}>
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-          <Grid.Col key={day} span={1}>
+          <Grid.Col key={day} span={12 / 7}>
             <Text ta="center" fw={500} size="sm">
               {day}
             </Text>
