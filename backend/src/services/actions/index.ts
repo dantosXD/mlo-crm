@@ -1,5 +1,6 @@
 // Barrel re-export for all action modules
-export { ExecutionContext, ActionResult, replacePlaceholders, getClientData, sleep } from './types.js';
+export type { ExecutionContext, ActionResult } from './types.js';
+export { replacePlaceholders, getClientData, sleep } from './types.js';
 export { executeSendEmail, executeSendSms, executeGenerateLetter, executeCommunicationAction } from './communicationActions.js';
 export { executeCreateTask, executeCompleteTask, executeAssignTask, executeTaskAction } from './taskActions.js';
 export { executeUpdateClientStatus, executeAddTag, executeRemoveTag, executeAssignClient, executeClientAction } from './clientActions.js';

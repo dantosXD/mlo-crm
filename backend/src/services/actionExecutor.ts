@@ -1,7 +1,6 @@
 // Thin re-export barrel - all logic now lives in services/actions/ modules
+export type { ExecutionContext, ActionResult } from './actions/index.js';
 export {
-  ExecutionContext,
-  ActionResult,
   replacePlaceholders,
   getClientData,
   sleep,
