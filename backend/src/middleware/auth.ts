@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { getEnv } from '../config/env.js';
+import { setRequestContextUserId } from '../utils/requestContext.js';
 
 const JWT_SECRET = getEnv().JWT_SECRET;
 
@@ -31,6 +32,7 @@ export function authenticateToken(req: AuthRequest, res: Response, next: NextFun
     };
 
     req.user = decoded;
+    setRequestContextUserId(decoded.userId);
     next();
   } catch (error) {
     return res.status(403).json({

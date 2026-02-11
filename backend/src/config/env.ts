@@ -22,6 +22,13 @@ const baseEnvSchema = z.object({
   SENTRY_DSN: z.string().optional().default(''),
   SENTRY_ENVIRONMENT: z.string().optional().default('development'),
   SENTRY_RELEASE: z.string().optional().default(''),
+  // AI Agent Configuration — provider-agnostic
+  AI_PROVIDER: z.enum(['openai', 'anthropic', 'google', 'openai-compatible']).optional().default('openai'),
+  AI_MODEL: z.string().optional().default('gpt-4o'),
+  AI_API_KEY: z.string().optional().default(''),
+  AI_BASE_URL: z.string().optional().default(''), // For local LLMs (Ollama, LM Studio, vLLM, etc.)
+  AI_MODEL_NAME: z.string().optional().default(''), // Override model name for openai-compatible providers
+  OPENAI_API_KEY: z.string().optional().default(''), // Deprecated: use AI_API_KEY instead (kept for backward compat)
 });
 
 export type AppEnv = z.infer<typeof baseEnvSchema>;

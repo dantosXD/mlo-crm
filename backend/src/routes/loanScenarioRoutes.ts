@@ -482,12 +482,12 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
       data: {
         clientId: existingScenario.clientId,
         userId: userId!,
-        type: 'LOAN_SCENARIO_DELETED',
-        description: `Loan scenario "${existingScenario.name}" deleted`,
+        type: 'LOAN_SCENARIO_ARCHIVED',
+        description: `Loan scenario "${existingScenario.name}" archived`,
       },
     });
 
-    res.json({ message: 'Loan scenario deleted successfully' });
+    res.json({ message: 'Loan scenario archived successfully' });
   } catch (error) {
     console.error('Error deleting loan scenario:', error);
     res.status(500).json({

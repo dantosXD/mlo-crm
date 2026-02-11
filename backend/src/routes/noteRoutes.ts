@@ -246,12 +246,12 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
       data: {
         clientId: existingNote.clientId,
         userId: userId!,
-        type: 'NOTE_DELETED',
-        description: 'Note deleted',
+        type: 'NOTE_ARCHIVED',
+        description: 'Note archived',
       },
     });
 
-    res.json({ message: 'Note deleted successfully' });
+    res.json({ message: 'Note archived successfully' });
   } catch (error) {
     console.error('Error deleting note:', error);
     res.status(500).json({

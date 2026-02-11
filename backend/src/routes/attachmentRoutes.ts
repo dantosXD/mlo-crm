@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
-import { uploadFileToS3, deleteFileFromS3, getPresignedDownloadUrl } from '../utils/s3.js';
+import { uploadFileToS3, getPresignedDownloadUrl } from '../utils/s3.js';
 
 const router = Router();
 
@@ -21,6 +21,10 @@ function canAccessCommunicationAttachments(userRole: string, userId: string, com
   }
 
   return false;
+}
+
+function getActiveAttachments(attachments: any[]): any[] {
+  return attachments.filter((attachment) => !attachment?.isArchived);
 }
 
 // POST /api/attachments/upload - Upload attachment to a communication
@@ -93,7 +97,13 @@ router.post('/upload', async (req: AuthRequest, res: Response) => {
       : [];
 
     // Add new attachment
-    const updatedAttachments = [...currentAttachments, uploadedFile];
+    const updatedAttachments = [
+      ...currentAttachments,
+      {
+        ...uploadedFile,
+        isArchived: false,
+      },
+    ];
 
     // Update communication with new attachment
     const updatedCommunication = await prisma.communication.update({
@@ -111,7 +121,7 @@ router.post('/upload', async (req: AuthRequest, res: Response) => {
       message: 'Attachment uploaded successfully',
       attachment: uploadedFile,
       attachments: updatedCommunication.attachments
-        ? JSON.parse(updatedCommunication.attachments)
+        ? getActiveAttachments(JSON.parse(updatedCommunication.attachments))
         : [],
     });
   } catch (error) {
@@ -154,7 +164,7 @@ router.get('/:communicationId/download/:fileName', async (req: AuthRequest, res:
     const attachments = communication.attachments ? JSON.parse(communication.attachments) : [];
 
     // Find the requested attachment
-    const attachment = attachments.find((a: any) => a.fileName === fileName);
+    const attachment = attachments.find((a: any) => a.fileName === fileName && !a.isArchived);
 
     if (!attachment) {
       return res.status(404).json({
@@ -231,11 +241,18 @@ router.delete('/:communicationId/:fileName', async (req: AuthRequest, res: Respo
       });
     }
 
-    // Delete file from S3
-    await deleteFileFromS3(attachmentToDelete.filePath);
+    const updatedAttachments = currentAttachments.map((attachment: any) => {
+      if (attachment.fileName !== fileName) {
+        return attachment;
+      }
 
-    // Remove attachment from communication
-    const updatedAttachments = currentAttachments.filter((a: any) => a.fileName !== fileName);
+      return {
+        ...attachment,
+        isArchived: true,
+        archivedAt: new Date().toISOString(),
+        archivedById: userId,
+      };
+    });
 
     // Update communication
     await prisma.communication.update({
@@ -246,8 +263,8 @@ router.delete('/:communicationId/:fileName', async (req: AuthRequest, res: Respo
     });
 
     res.json({
-      message: 'Attachment deleted successfully',
-      attachments: updatedAttachments,
+      message: 'Attachment archived successfully',
+      attachments: getActiveAttachments(updatedAttachments),
     });
   } catch (error) {
     console.error('Error deleting attachment:', error);
@@ -298,21 +315,23 @@ router.delete('/:communicationId', async (req: AuthRequest, res: Response) => {
       ? JSON.parse(communication.attachments)
       : [];
 
-    // Delete all files from S3
-    await Promise.all(
-      currentAttachments.map((attachment: any) => deleteFileFromS3(attachment.filePath))
-    );
+    // Non-destructive policy: mark all attachments as archived and keep files in storage.
+    const updatedAttachments = currentAttachments.map((attachment: any) => ({
+      ...attachment,
+      isArchived: true,
+      archivedAt: new Date().toISOString(),
+      archivedById: userId,
+    }));
 
-    // Clear attachments from communication
     await prisma.communication.update({
       where: { id: communicationId },
       data: {
-        attachments: null,
+        attachments: JSON.stringify(updatedAttachments),
       },
     });
 
     res.json({
-      message: 'All attachments deleted successfully',
+      message: 'All attachments archived successfully',
     });
   } catch (error) {
     console.error('Error deleting attachments:', error);

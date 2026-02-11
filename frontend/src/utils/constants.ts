@@ -41,20 +41,66 @@ export const DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
 };
 
 export const ACTIVITY_TYPE_LABELS: Record<string, string> = {
-  NOTE_ADDED: 'Note Added', NOTE_UPDATED: 'Note Updated', NOTE_DELETED: 'Note Deleted',
-  TASK_CREATED: 'Task Created', TASK_COMPLETED: 'Task Completed', TASK_DELETED: 'Task Deleted',
+  NOTE_ADDED: 'Note Added', NOTE_UPDATED: 'Note Updated', NOTE_DELETED: 'Note Deleted', NOTE_ARCHIVED: 'Note Archived',
+  TASK_CREATED: 'Task Created', TASK_COMPLETED: 'Task Completed', TASK_DELETED: 'Task Deleted', TASK_ARCHIVED: 'Task Archived',
   DOCUMENT_UPLOADED: 'Document Uploaded', DOCUMENT_STATUS_CHANGED: 'Document Status Changed',
-  DOCUMENT_DELETED: 'Document Deleted', STATUS_CHANGED: 'Status Changed',
-  CLIENT_CREATED: 'Client Created', CLIENT_UPDATED: 'Client Updated',
-  LOAN_SCENARIO_CREATED: 'Loan Scenario Created', LOAN_SCENARIO_DELETED: 'Loan Scenario Deleted',
+  DOCUMENT_DELETED: 'Document Deleted', DOCUMENT_ARCHIVED: 'Document Archived', STATUS_CHANGED: 'Status Changed',
+  CLIENT_CREATED: 'Client Created', CLIENT_UPDATED: 'Client Updated', CLIENT_ARCHIVED: 'Client Archived',
+  LOAN_SCENARIO_CREATED: 'Loan Scenario Created', LOAN_SCENARIO_DELETED: 'Loan Scenario Deleted', LOAN_SCENARIO_ARCHIVED: 'Loan Scenario Archived',
+  CALL_PLACED: 'Call Placed', CALL_RECEIVED: 'Call Received',
+  EMAIL_SENT: 'Email Sent', EMAIL_RECEIVED: 'Email Received',
+  MEETING: 'Meeting', TEXT_SENT: 'Text Sent', TEXT_RECEIVED: 'Text Received',
+  INTERACTION_OTHER: 'Other Interaction',
 };
 
 export const ACTIVITY_TYPE_COLORS: Record<string, string> = {
-  NOTE_ADDED: 'blue', NOTE_UPDATED: 'cyan', NOTE_DELETED: 'gray',
-  TASK_CREATED: 'green', TASK_COMPLETED: 'teal', TASK_DELETED: 'gray',
-  DOCUMENT_UPLOADED: 'violet', DOCUMENT_STATUS_CHANGED: 'orange', DOCUMENT_DELETED: 'gray',
-  STATUS_CHANGED: 'yellow', CLIENT_CREATED: 'green', CLIENT_UPDATED: 'blue',
-  LOAN_SCENARIO_CREATED: 'pink', LOAN_SCENARIO_DELETED: 'gray',
+  NOTE_ADDED: 'blue', NOTE_UPDATED: 'cyan', NOTE_DELETED: 'gray', NOTE_ARCHIVED: 'gray',
+  TASK_CREATED: 'green', TASK_COMPLETED: 'teal', TASK_DELETED: 'gray', TASK_ARCHIVED: 'gray',
+  DOCUMENT_UPLOADED: 'violet', DOCUMENT_STATUS_CHANGED: 'orange', DOCUMENT_DELETED: 'gray', DOCUMENT_ARCHIVED: 'gray',
+  STATUS_CHANGED: 'yellow', CLIENT_CREATED: 'green', CLIENT_UPDATED: 'blue', CLIENT_ARCHIVED: 'gray',
+  LOAN_SCENARIO_CREATED: 'pink', LOAN_SCENARIO_DELETED: 'gray', LOAN_SCENARIO_ARCHIVED: 'gray',
+  CALL_PLACED: 'lime', CALL_RECEIVED: 'teal',
+  EMAIL_SENT: 'indigo', EMAIL_RECEIVED: 'cyan',
+  MEETING: 'grape', TEXT_SENT: 'blue', TEXT_RECEIVED: 'cyan',
+  INTERACTION_OTHER: 'orange',
+};
+
+export const INTERACTION_TYPES = [
+  { value: 'CALL_PLACED', label: 'Call Placed' },
+  { value: 'CALL_RECEIVED', label: 'Call Received' },
+  { value: 'EMAIL_SENT', label: 'Email Sent' },
+  { value: 'EMAIL_RECEIVED', label: 'Email Received' },
+  { value: 'MEETING', label: 'Meeting' },
+  { value: 'TEXT_SENT', label: 'Text Sent' },
+  { value: 'TEXT_RECEIVED', label: 'Text Received' },
+  { value: 'INTERACTION_OTHER', label: 'Other' },
+];
+
+export const INTERACTION_OUTCOMES = [
+  { value: 'SUCCESSFUL', label: 'Successful' },
+  { value: 'NO_ANSWER', label: 'No Answer' },
+  { value: 'LEFT_VOICEMAIL', label: 'Left Voicemail' },
+  { value: 'FOLLOW_UP_NEEDED', label: 'Follow-up Needed' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+  { value: 'RESCHEDULED', label: 'Rescheduled' },
+];
+
+export const ACTIVITY_FILTER_GROUPS = [
+  { value: 'all', label: 'All' },
+  { value: 'interactions', label: 'Interactions' },
+  { value: 'notes', label: 'Notes' },
+  { value: 'tasks', label: 'Tasks' },
+  { value: 'documents', label: 'Documents' },
+  { value: 'system', label: 'System' },
+];
+
+export const ACTIVITY_FILTER_TYPE_MAP: Record<string, string[]> = {
+  all: [],
+  interactions: ['CALL_PLACED', 'CALL_RECEIVED', 'EMAIL_SENT', 'EMAIL_RECEIVED', 'MEETING', 'TEXT_SENT', 'TEXT_RECEIVED', 'INTERACTION_OTHER'],
+  notes: ['NOTE_ADDED', 'NOTE_UPDATED', 'NOTE_DELETED', 'NOTE_ARCHIVED'],
+  tasks: ['TASK_CREATED', 'TASK_COMPLETED', 'TASK_DELETED', 'TASK_ARCHIVED'],
+  documents: ['DOCUMENT_UPLOADED', 'DOCUMENT_STATUS_CHANGED', 'DOCUMENT_DELETED', 'DOCUMENT_ARCHIVED'],
+  system: ['STATUS_CHANGED', 'CLIENT_CREATED', 'CLIENT_UPDATED', 'CLIENT_ARCHIVED', 'LOAN_SCENARIO_CREATED', 'LOAN_SCENARIO_DELETED', 'LOAN_SCENARIO_ARCHIVED'],
 };
 
 export const COMM_TYPE_CONFIG: Record<string, { label: string; color: string }> = {

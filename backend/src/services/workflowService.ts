@@ -253,7 +253,7 @@ export async function deleteWorkflow(id: string) {
   const existing = await prisma.workflow.findUnique({ where: { id } });
   assertFound(existing, 'Workflow');
   await prisma.workflow.delete({ where: { id } });
-  return { message: 'Workflow deleted successfully' };
+  return { message: 'Workflow archived successfully' };
 }
 
 // ─── toggle / clone ─────────────────────────────────────────────────────────

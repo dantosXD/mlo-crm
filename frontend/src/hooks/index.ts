@@ -6,4 +6,5 @@ export {
   useClientLoanScenarios,
   useClientDocuments,
   useClientActivities,
+  useLogInteraction,
 } from './useClientData';

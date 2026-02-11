@@ -12,22 +12,17 @@ import {
   Text,
   Badge,
   Container,
-  LoadingOverlay,
   Alert,
   Box,
-  MultiSelect,
-  FileInput,
-  TagsInput,
+  Loader,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   IconDeviceFloppy,
   IconArrowLeft,
   IconSend,
-  IconTemplate,
   IconInfoCircle,
   IconTag,
-  IconPaperclip,
   IconEye,
 } from '@tabler/icons-react';
 import { DateInput } from '@mantine/dates';
@@ -36,12 +31,32 @@ import { AttachmentManager } from '../components/attachments/AttachmentManager';
 import type { Attachment } from '../utils/attachments';
 import { useAuthStore } from '../stores/authStore';
 import { PLACEHOLDER_INFO, PLACEHOLDER_KEYS } from '../utils/constants';
-import type { CommunicationTemplate, MetaOption } from '../types';
+import type { CommunicationTemplate } from '../types';
 
 interface ComposerClient {
   id: string;
   nameEncrypted: string;
   name?: string;
+}
+
+interface RenderedCommunicationPreview {
+  body: {
+    original: string;
+    filled: string;
+    placeholders: string[];
+    missing: string[];
+  };
+  subject: {
+    original: string;
+    filled: string;
+    placeholders: string[];
+    missing: string[];
+  } | null;
+  context: Record<string, unknown>;
+}
+
+function hasHtmlContent(content: string): boolean {
+  return /<\/?[a-z][\s\S]*>/i.test(content);
 }
 
 export function CommunicationComposer() {
@@ -50,7 +65,6 @@ export function CommunicationComposer() {
   const location = useLocation();
   const { accessToken, hasHydrated } = useAuthStore();
 
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
@@ -71,8 +85,9 @@ export function CommunicationComposer() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   // Preview state
-  const [previewBody, setPreviewBody] = useState('');
-
+  const [renderedPreview, setRenderedPreview] = useState<RenderedCommunicationPreview | null>(null);
+  const [loadingRenderedPreview, setLoadingRenderedPreview] = useState(false);
+  const [renderedPreviewError, setRenderedPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasHydrated || !accessToken) return;
@@ -106,9 +121,21 @@ export function CommunicationComposer() {
   }, [location.state]);
 
   useEffect(() => {
-    // Update preview when body or template changes
-    updatePreview();
-  }, [body, selectedTemplate, templates]);
+    if (!previewMode) return;
+
+    const resolvedClientId = selectedClient || clientId || null;
+    if (!resolvedClientId || !body.trim()) {
+      setRenderedPreview(null);
+      setRenderedPreviewError(null);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      void loadRenderedPreview(resolvedClientId, body, subject);
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [previewMode, selectedClient, clientId, body, subject]);
 
   const fetchClients = async () => {
     try {
@@ -146,26 +173,30 @@ export function CommunicationComposer() {
     }
   };
 
-  const updatePreview = () => {
-    let previewText = body;
+  const loadRenderedPreview = async (resolvedClientId: string, messageBody: string, messageSubject: string) => {
+    setLoadingRenderedPreview(true);
+    setRenderedPreviewError(null);
 
-    // If template is selected, use template body as base
-    if (selectedTemplate) {
-      const template = templates.find(t => t.id === selectedTemplate);
-      if (template) {
-        previewText = template.body;
+    try {
+      const response = await api.post('/communications/preview', {
+        clientId: resolvedClientId,
+        body: messageBody,
+        subject: messageSubject || undefined,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate rendered preview');
       }
+
+      const data = await response.json() as RenderedCommunicationPreview;
+      setRenderedPreview(data);
+    } catch (error) {
+      console.error('Error generating rendered preview:', error);
+      setRenderedPreview(null);
+      setRenderedPreviewError('Unable to generate rendered preview');
+    } finally {
+      setLoadingRenderedPreview(false);
     }
-
-    // Replace placeholders with example values
-    PLACEHOLDER_KEYS.forEach(key => {
-      previewText = previewText.replace(
-        new RegExp(key, 'g'),
-        PLACEHOLDER_INFO[key].example
-      );
-    });
-
-    setPreviewBody(previewText);
   };
 
   const handleTemplateChange = (templateId: string | null) => {
@@ -544,11 +575,92 @@ export function CommunicationComposer() {
             {previewMode ? (
               <Stack gap="sm">
                 <Text size="sm" fw={500} c="dimmed">
-                  Preview (placeholders replaced with example values):
+                  Final rendered preview (real client context):
                 </Text>
-                <Paper withBorder p="sm" style={{ whiteSpace: 'pre-wrap', minHeight: '200px' }}>
-                  {previewBody || body}
-                </Paper>
+
+                {!resolveClientId() ? (
+                  <Alert color="yellow" title="Select a client">
+                    Choose a client to generate the final rendered communication.
+                  </Alert>
+                ) : loadingRenderedPreview ? (
+                  <Group justify="center" py="lg">
+                    <Loader size="sm" />
+                  </Group>
+                ) : renderedPreviewError ? (
+                  <Alert color="red" title="Preview Error">
+                    {renderedPreviewError}
+                  </Alert>
+                ) : renderedPreview ? (
+                  (() => {
+                    const renderedSubject = renderedPreview.subject?.filled || subject;
+                    const renderedBody = renderedPreview.body.filled || body;
+                    const missing = Array.from(
+                      new Set([
+                        ...renderedPreview.body.missing,
+                        ...(renderedPreview.subject?.missing || []),
+                      ]),
+                    );
+
+                    return (
+                      <Stack gap="md">
+                        {missing.length > 0 && (
+                          <Alert color="yellow" title="Missing Placeholder Values">
+                            <Group gap="xs" mt="xs">
+                              {missing.map((key) => (
+                                <Badge key={key} variant="light" color="yellow">
+                                  {key}
+                                </Badge>
+                              ))}
+                            </Group>
+                          </Alert>
+                        )}
+
+                        {renderedSubject && (
+                          <Stack gap="xs">
+                            <Text size="sm" fw={500} c="dimmed">
+                              Final Subject:
+                            </Text>
+                            <Paper withBorder p="sm">
+                              <Text>{renderedSubject}</Text>
+                            </Paper>
+                          </Stack>
+                        )}
+
+                        <Stack gap="xs">
+                          <Text size="sm" fw={500} c="dimmed">
+                            Final Message:
+                          </Text>
+
+                          {type === 'SMS' ? (
+                            <Paper withBorder p="sm" style={{ whiteSpace: 'pre-wrap', minHeight: '180px' }}>
+                              {renderedBody}
+                            </Paper>
+                          ) : hasHtmlContent(renderedBody) ? (
+                            <Paper withBorder p={0} style={{ overflow: 'hidden' }}>
+                              <iframe
+                                title="Rendered communication preview"
+                                srcDoc={renderedBody}
+                                sandbox="allow-popups allow-popups-to-escape-sandbox"
+                                referrerPolicy="no-referrer"
+                                style={{ width: '100%', minHeight: 360, border: 'none' }}
+                              />
+                            </Paper>
+                          ) : (
+                            <Paper withBorder p="md" bg="gray.0">
+                              <Paper withBorder p="md" bg="white" style={{ minHeight: '220px' }}>
+                                <Text style={{ whiteSpace: 'pre-wrap' }}>{renderedBody}</Text>
+                              </Paper>
+                            </Paper>
+                          )}
+                        </Stack>
+                      </Stack>
+                    );
+                  })()
+                ) : (
+                  <Paper withBorder p="sm" style={{ whiteSpace: 'pre-wrap', minHeight: '200px' }}>
+                    {body}
+                  </Paper>
+                )}
               </Stack>
             ) : (
               <Stack gap="sm">

@@ -18,6 +18,9 @@ import {
   Modal,
   Checkbox,
   Tooltip,
+  Tabs,
+  Alert,
+  Loader,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
@@ -26,10 +29,10 @@ import {
   IconRefresh,
   IconEye,
   IconCalendar,
-  IconBell,
   IconBellOff,
   IconPlus,
   IconPaperclip,
+  IconSparkles,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
@@ -41,8 +44,28 @@ import type { Communication, CommunicationsResponse } from '../types';
 const TYPE_CONFIG = COMM_TYPE_CONFIG;
 const STATUS_CONFIG = COMM_STATUS_CONFIG;
 
+interface RenderedCommunicationPreview {
+  body: {
+    original: string;
+    filled: string;
+    placeholders: string[];
+    missing: string[];
+  };
+  subject: {
+    original: string;
+    filled: string;
+    placeholders: string[];
+    missing: string[];
+  } | null;
+  context: Record<string, unknown>;
+}
+
+function hasHtmlContent(content: string): boolean {
+  return /<\/?[a-z][\s\S]*>/i.test(content);
+}
+
 export function Communications() {
-  const { accessToken, user } = useAuthStore();
+  const { user } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const isReadOnly = ['VIEWER', 'PROCESSOR', 'UNDERWRITER'].includes((user?.role || '').toUpperCase());
@@ -62,10 +85,12 @@ export function Communications() {
   // Preview modal state
   const [previewOpened, setPreviewOpened] = useState(false);
   const [previewCommunication, setPreviewCommunication] = useState<Communication | null>(null);
+  const [previewTab, setPreviewTab] = useState('details');
+  const [renderedPreview, setRenderedPreview] = useState<RenderedCommunicationPreview | null>(null);
+  const [loadingRenderedPreview, setLoadingRenderedPreview] = useState(false);
+  const [renderedPreviewError, setRenderedPreviewError] = useState<string | null>(null);
   const [editingFollowUpDate, setEditingFollowUpDate] = useState<Date | null>(null);
   const [isSavingFollowUp, setIsSavingFollowUp] = useState(false);
-
-  const canViewAll = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   useEffect(() => {
     const state = location.state as { toast?: { title: string; message: string; color?: string } } | null;
@@ -127,7 +152,40 @@ export function Communications() {
   const handlePreview = (communication: Communication) => {
     setPreviewCommunication(communication);
     setEditingFollowUpDate(communication.followUpDate ? new Date(communication.followUpDate) : null);
+    setPreviewTab('details');
+    void loadRenderedPreview(communication);
     setPreviewOpened(true);
+  };
+
+  const loadRenderedPreview = async (communication: Communication) => {
+    if (!communication.clientId || !communication.body) {
+      setRenderedPreview(null);
+      return;
+    }
+
+    setLoadingRenderedPreview(true);
+    setRenderedPreviewError(null);
+
+    try {
+      const response = await api.post('/communications/preview', {
+        clientId: communication.clientId,
+        body: communication.body,
+        subject: communication.subject || undefined,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load rendered preview');
+      }
+
+      const data = await response.json() as RenderedCommunicationPreview;
+      setRenderedPreview(data);
+    } catch (error) {
+      console.error('Error loading rendered preview:', error);
+      setRenderedPreviewError('Unable to generate rendered preview');
+      setRenderedPreview(null);
+    } finally {
+      setLoadingRenderedPreview(false);
+    }
   };
 
   const handleUpdateFollowUpDate = async () => {
@@ -418,7 +476,11 @@ export function Communications() {
         {/* Preview Modal */}
         <Modal
           opened={previewOpened}
-          onClose={() => setPreviewOpened(false)}
+          onClose={() => {
+            setPreviewOpened(false);
+            setPreviewTab('details');
+            setRenderedPreviewError(null);
+          }}
           title={
             <Group gap="sm">
               <IconEye size={20} />
@@ -428,131 +490,243 @@ export function Communications() {
           size="lg"
         >
           {previewCommunication && (
-            <Stack gap="md">
-              <Group justify="space-between">
-                <Text size="xl" fw={600}>
-                  {previewCommunication.clientName}
-                </Text>
-                <Group gap="xs">
-                  <Badge
-                    color={
-                      TYPE_CONFIG[previewCommunication.type]?.color || 'gray'
-                    }
-                  >
-                    {TYPE_CONFIG[previewCommunication.type]?.label || previewCommunication.type}
-                  </Badge>
-                  <Badge
-                    color={
-                      STATUS_CONFIG[previewCommunication.status]?.color || 'gray'
-                    }
-                  >
-                    {STATUS_CONFIG[previewCommunication.status]?.label || previewCommunication.status}
-                  </Badge>
-                </Group>
-              </Group>
+            <Tabs value={previewTab} onChange={(value) => setPreviewTab(value || 'details')}>
+              <Tabs.List>
+                <Tabs.Tab value="details" leftSection={<IconEye size={14} />}>
+                  Details
+                </Tabs.Tab>
+                <Tabs.Tab value="rendered" leftSection={<IconSparkles size={14} />}>
+                  Final Rendered
+                </Tabs.Tab>
+              </Tabs.List>
 
-              {previewCommunication.subject && (
-                <Stack gap="xs">
-                  <Text size="sm" fw={500} c="dimmed">
-                    Subject:
-                  </Text>
-                  <Text>{previewCommunication.subject}</Text>
-                </Stack>
-              )}
-
-              <Stack gap="xs">
-                <Text size="sm" fw={500} c="dimmed">
-                  Message:
-                </Text>
-                <Paper withBorder p="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                  {previewCommunication.body}
-                </Paper>
-              </Stack>
-
-              {previewCommunication.recipient && (
-                <Stack gap="xs">
-                  <Text size="sm" fw={500} c="dimmed">
-                    Recipient:
-                  </Text>
-                  <Text>{previewCommunication.recipient}</Text>
-                </Stack>
-              )}
-
-              <Group gap="md">
-                <Text size="sm" c="dimmed">
-                  Template: <strong>{previewCommunication.templateName || 'None'}</strong>
-                </Text>
-                <Text size="sm" c="dimmed">
-                  Created: <strong>{new Date(previewCommunication.createdAt).toLocaleString()}</strong>
-                </Text>
-                <Text size="sm" c="dimmed">
-                  By: <strong>{previewCommunication.createdBy.name}</strong>
-                </Text>
-              </Group>
-
-              {previewCommunication.scheduledAt && (
-                <Text size="sm" c="dimmed">
-                  Scheduled: <strong>{new Date(previewCommunication.scheduledAt).toLocaleString()}</strong>
-                </Text>
-              )}
-
-              {previewCommunication.sentAt && (
-                <Text size="sm" c="dimmed">
-                  Sent: <strong>{new Date(previewCommunication.sentAt).toLocaleString()}</strong>
-                </Text>
-              )}
-
-              {/* Follow-up Date Section */}
-              {previewCommunication.status !== 'SENT' && (
-                <Stack gap="xs" mt="md">
-                  <Group gap="sm" justify="space-between">
-                    <Text size="sm" fw={500} c="dimmed">
-                      Follow-up Reminder
+              <Tabs.Panel value="details" pt="md">
+                <Stack gap="md">
+                  <Group justify="space-between">
+                    <Text size="xl" fw={600}>
+                      {previewCommunication.clientName}
                     </Text>
-                    {(previewCommunication.followUpDate || editingFollowUpDate) && (
-                      <Tooltip label="Clear follow-up">
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          size="sm"
-                          onClick={handleClearFollowUp}
-                          disabled={isSavingFollowUp}
-                        >
-                          <IconBellOff size={14} />
-                        </ActionIcon>
-                      </Tooltip>
-                    )}
+                    <Group gap="xs">
+                      <Badge
+                        color={
+                          TYPE_CONFIG[previewCommunication.type]?.color || 'gray'
+                        }
+                      >
+                        {TYPE_CONFIG[previewCommunication.type]?.label || previewCommunication.type}
+                      </Badge>
+                      <Badge
+                        color={
+                          STATUS_CONFIG[previewCommunication.status]?.color || 'gray'
+                        }
+                      >
+                        {STATUS_CONFIG[previewCommunication.status]?.label || previewCommunication.status}
+                      </Badge>
+                    </Group>
                   </Group>
-                  <Group gap="sm">
-                    <DateInput
-                      placeholder="Set follow-up date"
-                      value={editingFollowUpDate}
-                      onChange={setEditingFollowUpDate}
-                      leftSection={<IconCalendar size={14} />}
-                      minDate={new Date()}
-                      clearable
-                      style={{ flex: 1 }}
-                      disabled={isSavingFollowUp}
-                    />
+
+                  {previewCommunication.subject && (
+                    <Stack gap="xs">
+                      <Text size="sm" fw={500} c="dimmed">
+                        Subject:
+                      </Text>
+                      <Text>{previewCommunication.subject}</Text>
+                    </Stack>
+                  )}
+
+                  <Stack gap="xs">
+                    <Text size="sm" fw={500} c="dimmed">
+                      Message:
+                    </Text>
+                    <Paper withBorder p="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                      {previewCommunication.body}
+                    </Paper>
+                  </Stack>
+
+                  {previewCommunication.recipient && (
+                    <Stack gap="xs">
+                      <Text size="sm" fw={500} c="dimmed">
+                        Recipient:
+                      </Text>
+                      <Text>{previewCommunication.recipient}</Text>
+                    </Stack>
+                  )}
+
+                  <Group gap="md">
+                    <Text size="sm" c="dimmed">
+                      Template: <strong>{previewCommunication.templateName || 'None'}</strong>
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      Created: <strong>{new Date(previewCommunication.createdAt).toLocaleString()}</strong>
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      By: <strong>{previewCommunication.createdBy.name}</strong>
+                    </Text>
+                  </Group>
+
+                  {previewCommunication.scheduledAt && (
+                    <Text size="sm" c="dimmed">
+                      Scheduled: <strong>{new Date(previewCommunication.scheduledAt).toLocaleString()}</strong>
+                    </Text>
+                  )}
+
+                  {previewCommunication.sentAt && (
+                    <Text size="sm" c="dimmed">
+                      Sent: <strong>{new Date(previewCommunication.sentAt).toLocaleString()}</strong>
+                    </Text>
+                  )}
+
+                  {/* Follow-up Date Section */}
+                  {previewCommunication.status !== 'SENT' && (
+                    <Stack gap="xs" mt="md">
+                      <Group gap="sm" justify="space-between">
+                        <Text size="sm" fw={500} c="dimmed">
+                          Follow-up Reminder
+                        </Text>
+                        {(previewCommunication.followUpDate || editingFollowUpDate) && (
+                          <Tooltip label="Clear follow-up">
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              size="sm"
+                              onClick={handleClearFollowUp}
+                              disabled={isSavingFollowUp}
+                            >
+                              <IconBellOff size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                      </Group>
+                      <Group gap="sm">
+                        <DateInput
+                          placeholder="Set follow-up date"
+                          value={editingFollowUpDate}
+                          onChange={setEditingFollowUpDate}
+                          leftSection={<IconCalendar size={14} />}
+                          minDate={new Date()}
+                          clearable
+                          style={{ flex: 1 }}
+                          disabled={isSavingFollowUp}
+                        />
+                        <Button
+                          size="sm"
+                          onClick={handleUpdateFollowUpDate}
+                          loading={isSavingFollowUp}
+                          disabled={!editingFollowUpDate || editingFollowUpDate.getTime() === new Date(previewCommunication.followUpDate || 0).getTime()}
+                        >
+                          Set
+                        </Button>
+                      </Group>
+                      {previewCommunication.followUpDate && (
+                        <Text size="xs" c="blue">
+                          {editingFollowUpDate && editingFollowUpDate.getTime() === new Date(previewCommunication.followUpDate).getTime()
+                            ? `Follow-up set for ${new Date(previewCommunication.followUpDate).toLocaleDateString()}`
+                            : `Current: ${new Date(previewCommunication.followUpDate).toLocaleDateString()}`}
+                        </Text>
+                      )}
+                    </Stack>
+                  )}
+                </Stack>
+              </Tabs.Panel>
+
+              <Tabs.Panel value="rendered" pt="md">
+                <Stack gap="md">
+                  <Group justify="space-between">
+                    <Text size="sm" c="dimmed">
+                      Preview of final content with placeholders resolved for this client.
+                    </Text>
                     <Button
-                      size="sm"
-                      onClick={handleUpdateFollowUpDate}
-                      loading={isSavingFollowUp}
-                      disabled={!editingFollowUpDate || editingFollowUpDate.getTime() === new Date(previewCommunication.followUpDate || 0).getTime()}
+                      size="xs"
+                      variant="light"
+                      leftSection={<IconRefresh size={14} />}
+                      onClick={() => void loadRenderedPreview(previewCommunication)}
+                      loading={loadingRenderedPreview}
                     >
-                      Set
+                      Refresh
                     </Button>
                   </Group>
-                  {previewCommunication.followUpDate && (
-                    <Text size="xs" c="blue">
-                      {editingFollowUpDate && editingFollowUpDate.getTime() === new Date(previewCommunication.followUpDate).getTime()
-                        ? `Follow-up set for ${new Date(previewCommunication.followUpDate).toLocaleDateString()}`
-                        : `Current: ${new Date(previewCommunication.followUpDate).toLocaleDateString()}`}
+
+                  {loadingRenderedPreview ? (
+                    <Group justify="center" py="lg">
+                      <Loader size="sm" />
+                    </Group>
+                  ) : renderedPreviewError ? (
+                    <Alert color="red" title="Preview Error">
+                      {renderedPreviewError}
+                    </Alert>
+                  ) : renderedPreview ? (
+                    (() => {
+                      const renderedSubject = renderedPreview.subject?.filled || previewCommunication.subject || '';
+                      const renderedBody = renderedPreview.body.filled || previewCommunication.body;
+                      const missing = Array.from(
+                        new Set([
+                          ...renderedPreview.body.missing,
+                          ...(renderedPreview.subject?.missing || []),
+                        ]),
+                      );
+
+                      return (
+                        <Stack gap="md">
+                          {missing.length > 0 && (
+                            <Alert color="yellow" title="Missing Placeholder Values">
+                              <Group gap="xs" mt="xs">
+                                {missing.map((key) => (
+                                  <Badge key={key} variant="light" color="yellow">
+                                    {key}
+                                  </Badge>
+                                ))}
+                              </Group>
+                            </Alert>
+                          )}
+
+                          {renderedSubject && (
+                            <Stack gap="xs">
+                              <Text size="sm" fw={500} c="dimmed">
+                                Final Subject:
+                              </Text>
+                              <Paper withBorder p="sm">
+                                <Text>{renderedSubject}</Text>
+                              </Paper>
+                            </Stack>
+                          )}
+
+                          <Stack gap="xs">
+                            <Text size="sm" fw={500} c="dimmed">
+                              Final Message:
+                            </Text>
+
+                            {previewCommunication.type === 'SMS' ? (
+                              <Paper withBorder p="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                                {renderedBody}
+                              </Paper>
+                            ) : hasHtmlContent(renderedBody) ? (
+                              <Paper withBorder p={0} style={{ overflow: 'hidden' }}>
+                                <iframe
+                                  title="Rendered communication preview"
+                                  srcDoc={renderedBody}
+                                  sandbox="allow-popups allow-popups-to-escape-sandbox"
+                                  referrerPolicy="no-referrer"
+                                  style={{ width: '100%', minHeight: 360, border: 'none' }}
+                                />
+                              </Paper>
+                            ) : (
+                              <Paper withBorder p="md" bg="gray.0">
+                                <Paper withBorder p="md" bg="white">
+                                  <Text style={{ whiteSpace: 'pre-wrap' }}>{renderedBody}</Text>
+                                </Paper>
+                              </Paper>
+                            )}
+                          </Stack>
+                        </Stack>
+                      );
+                    })()
+                  ) : (
+                    <Text size="sm" c="dimmed">
+                      No rendered preview available.
                     </Text>
                   )}
                 </Stack>
-              )}
-            </Stack>
+              </Tabs.Panel>
+            </Tabs>
           )}
         </Modal>
       </Stack>

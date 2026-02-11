@@ -12,3 +12,4 @@ export { DeleteDocumentModal } from './DeleteDocumentModal';
 export { AssignPackageModal } from './AssignPackageModal';
 export { RequestDocumentModal } from './RequestDocumentModal';
 export { CommunicationPreviewModal } from './CommunicationPreviewModal';
+export { LogInteractionModal } from './LogInteractionModal';

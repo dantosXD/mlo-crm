@@ -30,7 +30,6 @@ import {
   IconFiles,
   IconChecklist,
   IconCalculator,
-  IconTimeline,
   IconAlertCircle,
   IconLock,
   IconChevronRight,
@@ -46,15 +45,15 @@ import { api } from '../utils/api';
 import {
   CLIENT_STATUS_COLORS,
 } from '../utils/constants';
-import type { Client, Note, Task, LoanScenario, ClientDocument, Activity } from '../types';
-import { OverviewTab, NotesTab, DocumentsTab, TasksTab, LoansTab, CommunicationsTab, ActivityTab } from '../components/client';
-import { EditClientModal, DeleteClientModal, UnsavedChangesModal, AddNoteModal, EditNoteModal, AddTaskModal, AddScenarioModal, CompareModal, DeleteScenarioModal, AddDocumentModal, DeleteDocumentModal, AssignPackageModal, RequestDocumentModal, CommunicationPreviewModal } from '../components/client/modals';
+import type { Note, Task, LoanScenario, ClientDocument } from '../types';
+import { OverviewTab, NotesTab, DocumentsTab, TasksTab, LoansTab, CommunicationsTab, ActivitySidebar } from '../components/client';
+import { EditClientModal, DeleteClientModal, UnsavedChangesModal, AddNoteModal, EditNoteModal, AddTaskModal, AddScenarioModal, CompareModal, DeleteScenarioModal, AddDocumentModal, DeleteDocumentModal, AssignPackageModal, RequestDocumentModal, CommunicationPreviewModal, LogInteractionModal } from '../components/client/modals';
 import { useClientStatuses, useClient, useClientNotes, useClientTasks, useClientLoanScenarios, useClientDocuments, useClientActivities } from '../hooks';
 
 const statusColors = CLIENT_STATUS_COLORS;
 
 // Define valid tab values
-const validTabs = ['overview', 'notes', 'documents', 'tasks', 'loans', 'activity'];
+const validTabs = ['overview', 'notes', 'documents', 'tasks', 'loans', 'communications'];
 
 export default function ClientDetails() {
   const { id } = useParams<{ id: string }>();
@@ -210,6 +209,9 @@ export default function ClientDetails() {
   const [documentToDelete, setDocumentToDelete] = useState<ClientDocument | null>(null);
   const [assignPackageModalOpen, setAssignPackageModalOpen] = useState(false);
   const [requestDocumentModalOpen, setRequestDocumentModalOpen] = useState(false);
+
+  // Log Interaction UI state
+  const [logInteractionModalOpen, setLogInteractionModalOpen] = useState(false);
 
   // Communications UI state
   const [previewCommunicationOpened, setPreviewCommunicationOpened] = useState(false);
@@ -1035,124 +1037,128 @@ export default function ClientDetails() {
         />
       </Paper>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onChange={handleTabChange}>
-        <Tabs.List>
-          <Tabs.Tab value="overview" leftSection={<IconUser size={16} aria-hidden="true" />}>
-            Overview
-          </Tabs.Tab>
-          <Tabs.Tab value="notes" leftSection={<IconNotes size={16} aria-hidden="true" />}>
-            Notes ({notes.length})
-          </Tabs.Tab>
-          <Tabs.Tab value="documents" leftSection={<IconFiles size={16} aria-hidden="true" />}>
-            Documents ({documents.length})
-          </Tabs.Tab>
-          <Tabs.Tab value="tasks" leftSection={<IconChecklist size={16} aria-hidden="true" />}>
-            Tasks ({tasks.length})
-          </Tabs.Tab>
-          <Tabs.Tab value="loans" leftSection={<IconCalculator size={16} aria-hidden="true" />}>
-            Loan Scenarios ({loanScenarios.length})
-          </Tabs.Tab>
-          <Tabs.Tab value="communications" leftSection={<IconMail size={16} aria-hidden="true" />}>
-            Communications ({communications.length})
-          </Tabs.Tab>
-          <Tabs.Tab value="activity" leftSection={<IconTimeline size={16} aria-hidden="true" />}>
-            Activity
-          </Tabs.Tab>
-        </Tabs.List>
+      {/* Two-column layout: Tabs + Activity Sidebar */}
+      <Grid gutter="md" align="stretch">
+        {/* Left column: Tabs */}
+        <Grid.Col span={{ base: 12, lg: 8 }}>
+          <Tabs value={activeTab} onChange={handleTabChange}>
+            <Tabs.List>
+              <Tabs.Tab value="overview" leftSection={<IconUser size={16} aria-hidden="true" />}>
+                Overview
+              </Tabs.Tab>
+              <Tabs.Tab value="notes" leftSection={<IconNotes size={16} aria-hidden="true" />}>
+                Notes ({notes.length})
+              </Tabs.Tab>
+              <Tabs.Tab value="documents" leftSection={<IconFiles size={16} aria-hidden="true" />}>
+                Documents ({documents.length})
+              </Tabs.Tab>
+              <Tabs.Tab value="tasks" leftSection={<IconChecklist size={16} aria-hidden="true" />}>
+                Tasks ({tasks.length})
+              </Tabs.Tab>
+              <Tabs.Tab value="loans" leftSection={<IconCalculator size={16} aria-hidden="true" />}>
+                Loan Scenarios ({loanScenarios.length})
+              </Tabs.Tab>
+              <Tabs.Tab value="communications" leftSection={<IconMail size={16} aria-hidden="true" />}>
+                Communications ({communications.length})
+              </Tabs.Tab>
+            </Tabs.List>
 
-        <Tabs.Panel value="overview" pt="md">
-          <OverviewTab client={client} />
-        </Tabs.Panel>
+            <Tabs.Panel value="overview" pt="md">
+              <OverviewTab client={client} />
+            </Tabs.Panel>
 
-        <Tabs.Panel value="notes" pt="md">
-          <NotesTab
-            notes={notes}
-            sortedNotes={sortedNotes}
-            loadingNotes={loadingNotes}
-            onAddNote={() => setAddNoteModalOpen(true)}
-            onTogglePin={handleTogglePin}
-            onEditNote={handleEditNote}
-            onDeleteNote={handleDeleteNote}
-          />
-        </Tabs.Panel>
+            <Tabs.Panel value="notes" pt="md">
+              <NotesTab
+                notes={notes}
+                sortedNotes={sortedNotes}
+                loadingNotes={loadingNotes}
+                onAddNote={() => setAddNoteModalOpen(true)}
+                onTogglePin={handleTogglePin}
+                onEditNote={handleEditNote}
+                onDeleteNote={handleDeleteNote}
+              />
+            </Tabs.Panel>
 
-        <Tabs.Panel value="documents" pt="md">
-          <DocumentsTab
-            documents={documents}
-            loadingDocuments={loadingDocuments}
-            onAddDocument={() => setAddDocumentModalOpen(true)}
-            onAssignPackage={async () => {
-              await refetchPackages();
-              setAssignPackageModalOpen(true);
-            }}
-            onRequestDocument={() => setRequestDocumentModalOpen(true)}
-            onUpdateStatus={handleUpdateDocumentStatus}
-            onDownload={handleDownloadDocument}
-            onDelete={handleDeleteDocument}
-          />
-        </Tabs.Panel>
+            <Tabs.Panel value="documents" pt="md">
+              <DocumentsTab
+                documents={documents}
+                loadingDocuments={loadingDocuments}
+                onAddDocument={() => setAddDocumentModalOpen(true)}
+                onAssignPackage={async () => {
+                  await refetchPackages();
+                  setAssignPackageModalOpen(true);
+                }}
+                onRequestDocument={() => setRequestDocumentModalOpen(true)}
+                onUpdateStatus={handleUpdateDocumentStatus}
+                onDownload={handleDownloadDocument}
+                onDelete={handleDeleteDocument}
+              />
+            </Tabs.Panel>
 
-        <Tabs.Panel value="tasks" pt="md">
-          <TasksTab
-            tasks={tasks}
-            loadingTasks={loadingTasks}
-            togglingTaskId={togglingTaskId}
-            onAddTask={() => setAddTaskModalOpen(true)}
-            onToggleTaskStatus={handleToggleTaskStatus}
-            onDeleteTask={handleDeleteTask}
-            onSubtasksChange={(taskId, updatedSubtasks) => {
-              queryClient.setQueryData(['client-tasks', id], (old: Task[] = []) => old.map(t =>
-                t.id === taskId ? { ...t, subtasks: updatedSubtasks } : t
-              ));
-            }}
-          />
-        </Tabs.Panel>
+            <Tabs.Panel value="tasks" pt="md">
+              <TasksTab
+                tasks={tasks}
+                loadingTasks={loadingTasks}
+                togglingTaskId={togglingTaskId}
+                onAddTask={() => setAddTaskModalOpen(true)}
+                onToggleTaskStatus={handleToggleTaskStatus}
+                onDeleteTask={handleDeleteTask}
+                onSubtasksChange={(taskId, updatedSubtasks) => {
+                  queryClient.setQueryData(['client-tasks', id], (old: Task[] = []) => old.map(t =>
+                    t.id === taskId ? { ...t, subtasks: updatedSubtasks } : t
+                  ));
+                }}
+              />
+            </Tabs.Panel>
 
-        <Tabs.Panel value="loans" pt="md">
-          <LoansTab
-            loanScenarios={loanScenarios}
-            loadingScenarios={loadingScenarios}
-            onAddScenario={() => { setEditingScenario(null); setAddScenarioModalOpen(true); }}
-            onEditScenario={handleEditScenario}
-            onCompare={() => setCompareModalOpen(true)}
-            onToggleSelection={handleToggleScenarioSelection}
-            onSetPreferred={handleSetPreferred}
-            onDelete={handleDeleteScenario}
-            onStatusChange={handleScenarioStatusChange}
-            onExportPDF={handleExportScenarioPDF}
-            onExportAmortization={handleExportAmortizationSchedule}
-            selectedScenarios={selectedScenarios}
-            formatCurrency={formatCurrency}
-            formatPercent={formatPercent}
-          />
-        </Tabs.Panel>
+            <Tabs.Panel value="loans" pt="md">
+              <LoansTab
+                loanScenarios={loanScenarios}
+                loadingScenarios={loadingScenarios}
+                onAddScenario={() => { setEditingScenario(null); setAddScenarioModalOpen(true); }}
+                onEditScenario={handleEditScenario}
+                onCompare={() => setCompareModalOpen(true)}
+                onToggleSelection={handleToggleScenarioSelection}
+                onSetPreferred={handleSetPreferred}
+                onDelete={handleDeleteScenario}
+                onStatusChange={handleScenarioStatusChange}
+                onExportPDF={handleExportScenarioPDF}
+                onExportAmortization={handleExportAmortizationSchedule}
+                selectedScenarios={selectedScenarios}
+                formatCurrency={formatCurrency}
+                formatPercent={formatPercent}
+              />
+            </Tabs.Panel>
 
-        <Tabs.Panel value="communications" pt="md">
-          <CommunicationsTab
-            clientId={id!}
-            communications={communications}
-            loadingCommunications={loadingCommunications}
-            communicationsTypeFilter={communicationsTypeFilter}
-            communicationsStatusFilter={communicationsStatusFilter}
-            onTypeFilterChange={setCommunicationsTypeFilter}
-            onStatusFilterChange={setCommunicationsStatusFilter}
-            onPreview={(comm) => {
-              setPreviewCommunication(comm);
-              setPreviewCommunicationOpened(true);
-            }}
-          />
-        </Tabs.Panel>
+            <Tabs.Panel value="communications" pt="md">
+              <CommunicationsTab
+                clientId={id!}
+                communications={communications}
+                loadingCommunications={loadingCommunications}
+                communicationsTypeFilter={communicationsTypeFilter}
+                communicationsStatusFilter={communicationsStatusFilter}
+                onTypeFilterChange={setCommunicationsTypeFilter}
+                onStatusFilterChange={setCommunicationsStatusFilter}
+                onPreview={(comm) => {
+                  setPreviewCommunication(comm);
+                  setPreviewCommunicationOpened(true);
+                }}
+              />
+            </Tabs.Panel>
+          </Tabs>
+        </Grid.Col>
 
-        <Tabs.Panel value="activity" pt="md">
-          <ActivityTab
+        {/* Right column: Activity Sidebar (always visible) */}
+        <Grid.Col span={{ base: 12, lg: 4 }} style={{ display: 'flex', minHeight: 500 }}>
+          <ActivitySidebar
             activities={activities}
             loadingActivities={loadingActivities}
-            workflowExecutions={workflowExecutions}
-            loadingWorkflowExecutions={loadingWorkflowExecutions}
+            onLogInteraction={() => setLogInteractionModalOpen(true)}
+            onAddNote={() => setAddNoteModalOpen(true)}
+            onAddTask={() => setAddTaskModalOpen(true)}
           />
-        </Tabs.Panel>
-      </Tabs>
+        </Grid.Col>
+      </Grid>
 
       {/* Edit Client Modal */}
       <EditClientModal
@@ -1251,6 +1257,13 @@ export default function ClientDetails() {
         opened={previewCommunicationOpened}
         onClose={() => setPreviewCommunicationOpened(false)}
         communication={previewCommunication}
+        clientId={id!}
+      />
+
+      {/* Log Interaction Modal */}
+      <LogInteractionModal
+        opened={logInteractionModalOpen}
+        onClose={() => setLogInteractionModalOpen(false)}
         clientId={id!}
       />
 

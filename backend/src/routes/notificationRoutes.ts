@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import {
   markNotificationAsRead,
@@ -7,9 +6,9 @@ import {
   getUnreadCount,
   deleteNotification,
 } from '../services/notificationService';
+import prisma from '../utils/prisma.js';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // GET /api/notifications - Get all notifications for the current user
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
@@ -82,7 +81,7 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
     const userId = req.user!.userId;
 
     await deleteNotification(id, userId);
-    res.json({ message: 'Notification deleted successfully' });
+    res.json({ message: 'Notification archived successfully' });
   } catch (error: any) {
     console.error('Error deleting notification:', error);
     if (error.message === 'Notification not found') {

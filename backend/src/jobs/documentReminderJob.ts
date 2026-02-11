@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import { createDocumentReminderNotification } from '../services/notificationService';
-
-const prisma = new PrismaClient();
+import prisma from '../utils/prisma.js';
 
 /**
  * Check for documents due within 3 days or overdue and create reminder notifications

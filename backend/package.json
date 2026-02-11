@@ -24,11 +24,16 @@
     "migrate:sqlite-to-postgres": "tsx scripts/migrate-sqlite-to-postgres.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.41",
+    "@ai-sdk/google": "^3.0.24",
+    "@ai-sdk/openai": "^3.0.26",
+    "@ai-sdk/openai-compatible": "^2.0.28",
     "@aws-sdk/client-s3": "^3.981.0",
     "@aws-sdk/s3-request-presigner": "^3.981.0",
-    "@sentry/node": "^8.44.0",
     "@prisma/client": "^5.7.1",
+    "@sentry/node": "^8.44.0",
     "@types/cookie-parser": "^1.4.10",
+    "ai": "^6.0.79",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
