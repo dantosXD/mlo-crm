@@ -28,6 +28,7 @@ import { useAuthStore } from './stores/authStore';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { QuickCapture } from './components/QuickCapture';
 import { NotificationCenter } from './components/NotificationCenter';
+import { AiChatSidebar } from './components/AiChatSidebar';
 import Login from './pages/Login';
 import Admin from './pages/Admin';
 import AccessDenied from './pages/AccessDenied';
@@ -547,6 +548,7 @@ function App() {
     <ErrorBoundary>
       <QuickCapture />
       <ProtectedLayout />
+      <AiChatSidebar />
     </ErrorBoundary>
   );
 }
