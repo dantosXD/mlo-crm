@@ -640,6 +640,8 @@ export function CommunicationComposer() {
                               <iframe
                                 title="Rendered communication preview"
                                 srcDoc={renderedBody}
+                                sandbox="allow-popups allow-popups-to-escape-sandbox"
+                                referrerPolicy="no-referrer"
                                 style={{ width: '100%', minHeight: 360, border: 'none' }}
                               />
                             </Paper>

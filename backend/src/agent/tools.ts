@@ -1,7 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import prisma from '../utils/prisma.js';
-import { decodeClientPiiField } from '../utils/clientPiiCodec.js';
+import { PiiRedactor } from './piiRedactor.js';
 
 function parseTags(tagsStr: string | null | undefined): string[] {
   if (!tagsStr) return [];
@@ -13,11 +13,18 @@ function parseTags(tagsStr: string | null | undefined): string[] {
   }
 }
 
+/**
+ * Create all AI agent tools scoped to a user.
+ * A PiiRedactor instance is shared across all tools in a single request so
+ * placeholder labels (e.g. [[Member 1]]) stay consistent within one response.
+ */
 export function createAgentTools(userId: string) {
+  const pii = new PiiRedactor();
+
   return {
     getClientList: tool({
       description:
-        'Get a list of clients for the current user. Returns id, name, email, phone, status, and tags for each client.',
+        'Get a list of clients for the current user. Returns id, redacted label, status, and tags. PII (name/email/phone) is replaced with [[Member N]] placeholders.',
       inputSchema: z.object({
         status: z
           .string()
@@ -43,9 +50,7 @@ export function createAgentTools(userId: string) {
 
         return clients.map((c) => ({
           id: c.id,
-          name: decodeClientPiiField(c.nameEncrypted),
-          email: decodeClientPiiField(c.emailEncrypted),
-          phone: decodeClientPiiField(c.phoneEncrypted),
+          label: pii.redactName(c.id),
           status: c.status,
           tags: parseTags(c.tags),
           createdAt: c.createdAt.toISOString(),
@@ -55,7 +60,7 @@ export function createAgentTools(userId: string) {
 
     getClientContext: tool({
       description:
-        'Get full context for a specific client including their profile, recent notes, open tasks, documents, loan scenarios, and recent activity.',
+        'Get full context for a specific client including profile, recent notes, open tasks, documents, loan scenarios, and recent activity. PII is redacted.',
       inputSchema: z.object({
         clientId: z.string().describe('The UUID of the client'),
       }),
@@ -80,9 +85,7 @@ export function createAgentTools(userId: string) {
 
         return {
           id: client.id,
-          name: decodeClientPiiField(client.nameEncrypted),
-          email: decodeClientPiiField(client.emailEncrypted),
-          phone: decodeClientPiiField(client.phoneEncrypted),
+          label: pii.redactName(client.id),
           status: client.status,
           tags: parseTags(client.tags),
           createdAt: client.createdAt.toISOString(),
@@ -135,7 +138,7 @@ export function createAgentTools(userId: string) {
 
     getDailyBriefing: tool({
       description:
-        "Get today's briefing including tasks due today, today's events, reminders, and overdue items.",
+        "Get today's briefing including tasks due today, today's events, reminders, and overdue items. Client names are redacted.",
       inputSchema: z.object({}),
       execute: async () => {
         const today = new Date();
@@ -153,7 +156,7 @@ export function createAgentTools(userId: string) {
                 status: { not: 'COMPLETE' },
               },
               include: {
-                client: { select: { id: true, nameEncrypted: true } },
+                client: { select: { id: true } },
               },
               orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }],
             }),
@@ -163,7 +166,7 @@ export function createAgentTools(userId: string) {
                 createdById: userId,
               },
               include: {
-                client: { select: { id: true, nameEncrypted: true } },
+                client: { select: { id: true } },
               },
               orderBy: { startTime: 'asc' },
             }),
@@ -209,9 +212,7 @@ export function createAgentTools(userId: string) {
             id: t.id,
             text: t.text,
             priority: t.priority,
-            clientName: t.client
-              ? decodeClientPiiField(t.client.nameEncrypted)
-              : null,
+            clientLabel: t.client ? pii.redactName(t.client.id) : null,
             clientId: t.client?.id ?? null,
           })),
           events: eventsToday.map((e) => ({
@@ -219,9 +220,7 @@ export function createAgentTools(userId: string) {
             title: e.title,
             startTime: e.startTime.toISOString(),
             endTime: e.endTime?.toISOString() ?? null,
-            clientName: e.client
-              ? decodeClientPiiField(e.client.nameEncrypted)
-              : null,
+            clientLabel: e.client ? pii.redactName(e.client.id) : null,
           })),
           reminders: remindersToday.map((r) => ({
             id: r.id,
@@ -259,7 +258,7 @@ export function createAgentTools(userId: string) {
 
     searchEntities: tool({
       description:
-        'Search across clients, tasks, events, reminders, and notes by a text query.',
+        'Search across tasks, events, reminders, and notes by a text query. Client names are redacted in results.',
       inputSchema: z.object({
         query: z
           .string()
@@ -312,7 +311,7 @@ export function createAgentTools(userId: string) {
               client: { createdById: userId },
             },
             include: {
-              client: { select: { id: true, nameEncrypted: true } },
+              client: { select: { id: true } },
             },
             take: 10,
             orderBy: { createdAt: 'desc' },
@@ -340,9 +339,7 @@ export function createAgentTools(userId: string) {
           notes: notes.map((n) => ({
             id: n.id,
             text: n.text.substring(0, 200),
-            clientName: n.client
-              ? decodeClientPiiField(n.client.nameEncrypted)
-              : null,
+            clientLabel: n.client ? pii.redactName(n.client.id) : null,
           })),
         };
       },
@@ -388,7 +385,7 @@ export function createAgentTools(userId: string) {
           priority: task.priority,
           status: task.status,
           dueDate: task.dueDate?.toISOString() ?? null,
-          message: `Task "${text}" created successfully.`,
+          message: `Task created successfully.`,
         };
       },
     }),
@@ -467,7 +464,7 @@ export function createAgentTools(userId: string) {
 
         return {
           clientId,
-          name: decodeClientPiiField(client.nameEncrypted),
+          label: pii.redactName(clientId),
           oldStatus,
           newStatus,
           message: `Client moved from ${oldStatus} to ${newStatus}.`,
@@ -508,7 +505,7 @@ export function createAgentTools(userId: string) {
           id: comm.id,
           type: comm.type,
           status: comm.status,
-          message: `Draft ${type.toLowerCase()} created for ${decodeClientPiiField(client.nameEncrypted)}.`,
+          message: `Draft ${type.toLowerCase()} created for ${pii.redactName(clientId)}.`,
         };
       },
     }),
