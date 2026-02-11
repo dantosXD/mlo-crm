@@ -9,6 +9,25 @@ async function assertHeading(page: { getByRole: Function }, heading: string) {
   await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
 }
 
+async function assertDashboard(page: {
+  getByRole: Function;
+  locator: Function;
+}) {
+  await expect(page.getByRole('tab', { name: 'Dashboard', exact: true })).toBeVisible();
+  await expect(page.locator('nav')).toBeVisible();
+}
+
+async function loginUi(page: {
+  goto: Function;
+  getByTestId: Function;
+}, email: string) {
+  await page.goto(`${baseUrl}/login`);
+  await page.getByTestId('email-input').fill(email);
+  await page.getByTestId('password-input').fill('password123');
+  await page.getByTestId('sign-in-button').click();
+  await expect(page as any).not.toHaveURL(/\/login/, { timeout: 20000 });
+}
+
 async function loginApi(request: any, email: string, password: string) {
   const loginRes = await request.post(`${apiBaseUrl}/auth/login`, {
     data: { email, password },
@@ -28,7 +47,7 @@ async function loginApi(request: any, email: string, password: string) {
   };
 }
 
-test('desktop regression smoke', async ({ page, request }) => {
+test('desktop regression smoke', async ({ page, request, browser }) => {
   // Seed minimal test client via API
   const adminAuth = await loginApi(request, 'admin@example.com', 'password123');
   const now = Date.now();
@@ -50,22 +69,10 @@ test('desktop regression smoke', async ({ page, request }) => {
   expect(createClientRes.ok()).toBeTruthy();
   const createdClient = await createClientRes.json();
 
-  // Admin auth via storage (stabilizes UI flows)
-  await page.addInitScript((state) => {
-    localStorage.setItem('mlo-auth-storage', JSON.stringify({ state, version: 0 }));
-  }, {
-    user: adminAuth.user,
-    accessToken: adminAuth.accessToken,
-    csrfToken: adminAuth.csrfToken,
-    isAuthenticated: true,
-    isLoading: false,
-    error: null,
-    lastActivity: Date.now(),
-    hasHydrated: true,
-  });
-
+  // Admin auth through real login flow
+  await loginUi(page, 'admin@example.com');
   await page.goto(baseUrl);
-  await assertHeading(page, 'Dashboard');
+  await assertDashboard(page);
 
   // Client Details should render (no crash)
   const clientDetailsResponse = page.waitForResponse((resp) => {
@@ -101,26 +108,15 @@ test('desktop regression smoke', async ({ page, request }) => {
   await expect(page.getByText(/Workflow Executed|Failed to execute workflow|CSRF|Error/i)).toBeVisible();
 
   // Switch to Viewer and confirm compose is blocked
-  const viewerAuth = await loginApi(request, 'viewer@example.com', 'password123');
-  const viewerPage = await page.context().newPage();
-  await viewerPage.addInitScript((state) => {
-    localStorage.setItem('mlo-auth-storage', JSON.stringify({ state, version: 0 }));
-  }, {
-    user: viewerAuth.user,
-    accessToken: viewerAuth.accessToken,
-    csrfToken: viewerAuth.csrfToken,
-    isAuthenticated: true,
-    isLoading: false,
-    error: null,
-    lastActivity: Date.now(),
-    hasHydrated: true,
-  });
+  const viewerContext = await browser.newContext();
+  const viewerPage = await viewerContext.newPage();
+  await loginUi(viewerPage, 'viewer@example.com');
   await viewerPage.goto(baseUrl);
-  await assertHeading(viewerPage, 'Dashboard');
+  await assertDashboard(viewerPage);
 
   await viewerPage.goto(`${baseUrl}/communications`);
   await expect(viewerPage.getByRole('button', { name: 'Compose' })).toHaveCount(0);
   await viewerPage.goto(`${baseUrl}/communications/compose`);
   await assertHeading(viewerPage, 'Access Denied');
-  await viewerPage.close();
+  await viewerContext.close();
 });
