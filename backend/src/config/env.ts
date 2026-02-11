@@ -28,7 +28,7 @@ const baseEnvSchema = z.object({
   AI_API_KEY: z.string().optional().default(''),
   AI_BASE_URL: z.string().optional().default(''), // For local LLMs (Ollama, LM Studio, vLLM, etc.)
   AI_MODEL_NAME: z.string().optional().default(''), // Override model name for openai-compatible providers
-  OPENAI_API_KEY: z.string().optional().default(''),
+  OPENAI_API_KEY: z.string().optional().default(''), // Deprecated: use AI_API_KEY instead (kept for backward compat)
 });
 
 export type AppEnv = z.infer<typeof baseEnvSchema>;

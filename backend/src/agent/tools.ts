@@ -267,12 +267,16 @@ export function createAgentTools(userId: string) {
           .describe('Search query (minimum 2 characters)'),
       }),
       execute: async ({ query }) => {
+        // Note: SQLite LIKE is case-insensitive for ASCII by default.
+        // For PostgreSQL production, add `mode: 'insensitive'` to contains filters.
+        const lowerQuery = query.toLowerCase();
+
         const [tasks, events, reminders, notes] = await Promise.all([
           prisma.task.findMany({
             where: {
               OR: [
-                { text: { contains: query } },
-                { description: { contains: query } },
+                { text: { contains: lowerQuery } },
+                { description: { contains: lowerQuery } },
               ],
               deletedAt: null,
               client: { createdById: userId },
@@ -283,8 +287,8 @@ export function createAgentTools(userId: string) {
           prisma.event.findMany({
             where: {
               OR: [
-                { title: { contains: query } },
-                { description: { contains: query } },
+                { title: { contains: lowerQuery } },
+                { description: { contains: lowerQuery } },
               ],
               createdById: userId,
             },
@@ -295,8 +299,8 @@ export function createAgentTools(userId: string) {
             where: {
               userId,
               OR: [
-                { title: { contains: query } },
-                { description: { contains: query } },
+                { title: { contains: lowerQuery } },
+                { description: { contains: lowerQuery } },
               ],
             },
             take: 10,
@@ -304,7 +308,7 @@ export function createAgentTools(userId: string) {
           }),
           prisma.note.findMany({
             where: {
-              text: { contains: query },
+              text: { contains: lowerQuery },
               client: { createdById: userId },
             },
             include: {

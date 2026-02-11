@@ -78,7 +78,7 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
       stopWhen: stepCountIs(5),
     });
 
-    return result.toUIMessageStreamResponse();
+    result.pipeUIMessageStreamToResponse(res);
   } catch (error) {
     console.error('Agent chat error:', error);
     return res.status(500).json({

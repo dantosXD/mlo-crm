@@ -20,18 +20,80 @@ import {
   IconUser,
   IconSparkles,
   IconTrash,
+  IconPlayerStop,
+  IconTool,
 } from '@tabler/icons-react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
+import ReactMarkdown from 'react-markdown';
 import { useAuthStore } from '../stores/authStore';
 import { API_URL } from '../utils/apiBase';
 
-function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> }): string {
-  if (!msg.parts) return '';
-  return msg.parts
-    .filter((p) => p.type === 'text' && p.text)
-    .map((p) => p.text)
-    .join('');
+const TOOL_LABELS: Record<string, string> = {
+  getClientList: 'Looking up clients',
+  getClientContext: 'Fetching client details',
+  getDailyBriefing: 'Preparing daily briefing',
+  getPipelineSummary: 'Analyzing pipeline',
+  searchEntities: 'Searching',
+  createTask: 'Creating task',
+  addNote: 'Adding note',
+  updateClientStatus: 'Updating client status',
+  draftCommunication: 'Drafting communication',
+};
+
+const QUICK_ACTIONS = [
+  "What's my daily briefing?",
+  'Show my pipeline summary',
+  'What tasks are overdue?',
+  'Search for recent activity',
+];
+
+interface MessagePart {
+  type: string;
+  text?: string;
+  toolInvocation?: {
+    toolName: string;
+    state: string;
+  };
+  toolName?: string;
+  state?: string;
+}
+
+function MessageContent({ parts }: { parts: MessagePart[] }) {
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.type === 'text' && part.text) {
+          return (
+            <Box
+              key={i}
+              className="chat-markdown"
+              style={{ fontSize: 'var(--mantine-font-size-sm)', wordBreak: 'break-word' }}
+            >
+              <ReactMarkdown>{part.text}</ReactMarkdown>
+            </Box>
+          );
+        }
+        if (part.type === 'tool-invocation') {
+          const toolName = part.toolInvocation?.toolName ?? part.toolName ?? 'tool';
+          const state = part.toolInvocation?.state ?? part.state ?? 'running';
+          const label = TOOL_LABELS[toolName] ?? toolName;
+          return (
+            <Group key={i} gap={4} py={2}>
+              <ThemeIcon variant="light" color="violet" size="xs" radius="xl">
+                <IconTool size={10} />
+              </ThemeIcon>
+              <Text size="xs" c="dimmed" fs="italic">
+                {label}
+                {state === 'running' || state === 'call' ? '...' : ' — done'}
+              </Text>
+            </Group>
+          );
+        }
+        return null;
+      })}
+    </>
+  );
 }
 
 export function AiChatSidebar() {
@@ -52,7 +114,7 @@ export function AiChatSidebar() {
     [accessToken]
   );
 
-  const { messages, sendMessage, status, error, setMessages } = useChat({ transport });
+  const { messages, sendMessage, status, error, setMessages, stop } = useChat({ transport });
 
   const isBusy = status === 'submitted' || status === 'streaming';
 
@@ -63,7 +125,7 @@ export function AiChatSidebar() {
         behavior: 'smooth',
       });
     }
-  }, [messages]);
+  }, [messages, status]);
 
   useEffect(() => {
     if (opened) {
@@ -81,13 +143,6 @@ export function AiChatSidebar() {
     sendMessage({ text: trimmed });
     setInput('');
   };
-
-  const quickActions = [
-    "What's my daily briefing?",
-    'Show my pipeline summary',
-    'What tasks are overdue?',
-    'Search for recent activity',
-  ];
 
   return (
     <>
@@ -164,7 +219,7 @@ export function AiChatSidebar() {
                     can also create tasks, add notes, and draft communications.
                   </Text>
                   <Stack gap="xs">
-                    {quickActions.map((action) => (
+                    {QUICK_ACTIONS.map((action) => (
                       <Paper
                         key={action}
                         withBorder
@@ -214,12 +269,16 @@ export function AiChatSidebar() {
                           : 'var(--mantine-color-gray-light)',
                     }}
                   >
-                    <Text
-                      size="sm"
-                      style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-                    >
-                      {getMessageText(msg as any)}
-                    </Text>
+                    {msg.role === 'user' ? (
+                      <Text size="sm" style={{ wordBreak: 'break-word' }}>
+                        {(msg.parts as MessagePart[])
+                          ?.filter((p) => p.type === 'text')
+                          .map((p) => p.text)
+                          .join('') ?? ''}
+                      </Text>
+                    ) : (
+                      <MessageContent parts={msg.parts as MessagePart[]} />
+                    )}
                   </Paper>
                 </Group>
               ))}
@@ -286,17 +345,30 @@ export function AiChatSidebar() {
                   size="sm"
                   radius="md"
                   rightSection={
-                    <ActionIcon
-                      type="submit"
-                      variant="filled"
-                      color="blue"
-                      size="sm"
-                      radius="xl"
-                      disabled={!input.trim() || isBusy}
-                      aria-label="Send message"
-                    >
-                      <IconSend size={14} />
-                    </ActionIcon>
+                    isBusy ? (
+                      <ActionIcon
+                        variant="filled"
+                        color="red"
+                        size="sm"
+                        radius="xl"
+                        onClick={() => stop()}
+                        aria-label="Stop generation"
+                      >
+                        <IconPlayerStop size={14} />
+                      </ActionIcon>
+                    ) : (
+                      <ActionIcon
+                        type="submit"
+                        variant="filled"
+                        color="blue"
+                        size="sm"
+                        radius="xl"
+                        disabled={!input.trim()}
+                        aria-label="Send message"
+                      >
+                        <IconSend size={14} />
+                      </ActionIcon>
+                    )
                   }
                 />
               </Group>

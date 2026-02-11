@@ -1,6 +1,6 @@
-import { openai } from '@ai-sdk/openai';
-import { anthropic } from '@ai-sdk/anthropic';
-import { google } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { getEnv } from '../config/env.js';
 import type { LanguageModel } from 'ai';
@@ -28,8 +28,16 @@ export function getAgentConfig(): AgentProviderConfig {
   };
 }
 
+let _cachedModel: LanguageModel | null = null;
+let _cachedConfigHash: string | null = null;
+
+function configHash(cfg: AgentProviderConfig): string {
+  return `${cfg.provider}:${cfg.model}:${cfg.apiKey}:${cfg.baseUrl}:${cfg.modelName}`;
+}
+
 /**
  * Resolve the configured provider + model into an AI SDK LanguageModel.
+ * Result is cached as a singleton (config is static from env).
  *
  * Supported providers:
  *  - openai          → OpenAI (GPT-4o, GPT-4o-mini, o1, etc.)
@@ -41,27 +49,31 @@ export function getAgentConfig(): AgentProviderConfig {
  */
 export function resolveModel(config?: AgentProviderConfig): LanguageModel {
   const cfg = config ?? getAgentConfig();
+  const hash = configHash(cfg);
+
+  if (_cachedModel && _cachedConfigHash === hash) {
+    return _cachedModel;
+  }
+
+  let model: LanguageModel;
 
   switch (cfg.provider) {
     case 'openai': {
-      if (cfg.apiKey) {
-        process.env.OPENAI_API_KEY = cfg.apiKey;
-      }
-      return openai(cfg.model) as LanguageModel;
+      const provider = createOpenAI({ apiKey: cfg.apiKey });
+      model = provider(cfg.model);
+      break;
     }
 
     case 'anthropic': {
-      if (cfg.apiKey) {
-        process.env.ANTHROPIC_API_KEY = cfg.apiKey;
-      }
-      return anthropic(cfg.model) as LanguageModel;
+      const provider = createAnthropic({ apiKey: cfg.apiKey });
+      model = provider(cfg.model);
+      break;
     }
 
     case 'google': {
-      if (cfg.apiKey) {
-        process.env.GOOGLE_GENERATIVE_AI_API_KEY = cfg.apiKey;
-      }
-      return google(cfg.model) as LanguageModel;
+      const provider = createGoogleGenerativeAI({ apiKey: cfg.apiKey });
+      model = provider(cfg.model);
+      break;
     }
 
     case 'openai-compatible': {
@@ -75,11 +87,12 @@ export function resolveModel(config?: AgentProviderConfig): LanguageModel {
       const provider = createOpenAICompatible({
         name: 'custom-llm',
         baseURL: cfg.baseUrl,
-        apiKey: cfg.apiKey || 'not-needed', // local LLMs often don't require a key
+        apiKey: cfg.apiKey || 'not-needed',
       });
 
       const modelId = cfg.modelName || cfg.model;
-      return provider.chatModel(modelId) as LanguageModel;
+      model = provider.chatModel(modelId);
+      break;
     }
 
     default:
@@ -88,6 +101,10 @@ export function resolveModel(config?: AgentProviderConfig): LanguageModel {
           'Supported: openai, anthropic, google, openai-compatible'
       );
   }
+
+  _cachedModel = model;
+  _cachedConfigHash = hash;
+  return model;
 }
 
 /**
