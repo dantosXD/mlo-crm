@@ -1,8 +1,15 @@
 import { Router, Response } from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
+import { decodeClientPiiField } from '../utils/clientPiiCodec.js';
 
 const router = Router();
+
+function decodeClientName(encrypted: string | null): string {
+  if (!encrypted) return 'Unknown';
+  const decoded = decodeClientPiiField(encrypted).trim();
+  return decoded || 'Unknown';
+}
 
 // All routes require authentication
 router.use(authenticateToken);
@@ -63,24 +70,13 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       },
     });
 
-    // Helper to decrypt client name
-    const decryptName = (encrypted: string | null): string => {
-      if (!encrypted) return 'Unknown';
-      try {
-        const parsed = JSON.parse(encrypted);
-        return parsed.data || 'Unknown';
-      } catch {
-        return encrypted;
-      }
-    };
-
     const formattedExecutions = executions.map((execution) => ({
       id: execution.id,
       workflowId: execution.workflowId,
       workflowName: execution.workflow.name,
       workflowTriggerType: execution.workflow.triggerType,
       clientId: execution.clientId,
-      clientName: execution.client ? decryptName(execution.client.nameEncrypted) : null,
+      clientName: execution.client ? decodeClientName(execution.client.nameEncrypted) : null,
       status: execution.status,
       triggerData: execution.triggerData ? JSON.parse(execution.triggerData) : null,
       currentStep: execution.currentStep,
@@ -142,17 +138,6 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Helper to decrypt client name
-    const decryptName = (encrypted: string | null): string => {
-      if (!encrypted) return 'Unknown';
-      try {
-        const parsed = JSON.parse(encrypted);
-        return parsed.data || 'Unknown';
-      } catch {
-        return encrypted;
-      }
-    };
-
     res.json({
       id: execution.id,
       workflowId: execution.workflowId,
@@ -161,7 +146,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
       client: execution.client
         ? {
             id: execution.client.id,
-            name: decryptName(execution.client.nameEncrypted),
+            name: decodeClientName(execution.client.nameEncrypted),
             status: execution.client.status,
           }
         : null,

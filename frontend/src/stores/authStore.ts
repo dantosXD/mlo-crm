@@ -31,6 +31,34 @@ interface AuthState {
   setHasHydrated: (value: boolean) => void;
 }
 
+type PersistedAuthState = {
+  lastActivity: number | null;
+};
+
+export function normalizeLastActivity(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+export function migratePersistedAuthState(
+  persistedState: unknown
+): PersistedAuthState {
+  const persisted = (persistedState as Partial<AuthState> | undefined) ?? {};
+  return {
+    lastActivity: normalizeLastActivity(persisted.lastActivity),
+  };
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -139,7 +167,16 @@ export const useAuthStore = create<AuthState>()(
           });
 
           if (!response.ok) {
-            throw new Error('Token refresh failed');
+            if (response.status === 400 || response.status === 401) {
+              set({
+                user: null,
+                accessToken: null,
+                isAuthenticated: false,
+                error: null,
+                lastActivity: null,
+              });
+            }
+            return false;
           }
 
           const data = await response.json();
@@ -148,15 +185,12 @@ export const useAuthStore = create<AuthState>()(
             user: data.user,
             accessToken: data.accessToken,
             isAuthenticated: true,
+            error: null,
+            lastActivity: Date.now(),
           });
 
           return true;
-        } catch (error) {
-          set({
-            user: null,
-            accessToken: null,
-            isAuthenticated: false,
-          });
+        } catch {
           return false;
         }
       },
@@ -183,11 +217,14 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'mlo-auth-storage',
       version: 2,
+      migrate: (persistedState) => {
+        return migratePersistedAuthState(persistedState);
+      },
       partialize: (state) => ({
         lastActivity: state.lastActivity,
       }),
       merge: (persistedState, currentState) => {
-        const persisted = (persistedState as Partial<AuthState> | undefined) ?? {};
+        const persisted = migratePersistedAuthState(persistedState);
         return {
           ...currentState,
           lastActivity: persisted.lastActivity ?? null,

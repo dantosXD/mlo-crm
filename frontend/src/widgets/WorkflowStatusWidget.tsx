@@ -153,11 +153,11 @@ export function WorkflowStatusWidget({
                     </ThemeIcon>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <Text size="xs" fw={500} truncate>
-                        {execution.workflow.name}
+                        {execution.workflow?.name ?? 'Unknown Workflow'}
                       </Text>
                       {execution.client && (
                         <Text size="xs" c="dimmed" truncate>
-                          {execution.client.name}
+                          {execution.client.name ?? 'Unknown Client'}
                         </Text>
                       )}
                     </div>

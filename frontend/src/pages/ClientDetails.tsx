@@ -198,6 +198,7 @@ export default function ClientDetails() {
 
   // Loan scenario UI state
   const [addScenarioModalOpen, setAddScenarioModalOpen] = useState(false);
+  const [editingScenario, setEditingScenario] = useState<LoanScenario | null>(null);
   const [selectedScenarios, setSelectedScenarios] = useState<string[]>([]);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [deleteScenarioModalOpen, setDeleteScenarioModalOpen] = useState(false);
@@ -548,6 +549,27 @@ export default function ClientDetails() {
     setDeleteScenarioModalOpen(true);
   };
 
+  const handleEditScenario = (scenario: LoanScenario) => {
+    setEditingScenario(scenario);
+    setAddScenarioModalOpen(true);
+  };
+
+  const handleScenarioStatusChange = async (scenarioId: string, status: string) => {
+    try {
+      const response = await api.patch(`/loan-scenarios/${scenarioId}/status`, { status });
+      if (!response.ok) throw new Error('Failed to update status');
+      queryClient.invalidateQueries({ queryKey: ['client-loan-scenarios', id] });
+      queryClient.invalidateQueries({ queryKey: ['client-activities', id] });
+      notifications.show({
+        title: 'Status Updated',
+        message: `Scenario ${status === 'SHARED' ? 'shared with client' : status === 'PROPOSED' ? 'proposed' : status === 'ARCHIVED' ? 'archived' : 'updated'}`,
+        color: status === 'SHARED' ? 'green' : status === 'PROPOSED' ? 'blue' : 'gray',
+      });
+    } catch (error) {
+      console.error('Error updating scenario status:', error);
+      notifications.show({ title: 'Error', message: 'Failed to update scenario status', color: 'red' });
+    }
+  };
 
   const handleExportScenarioPDF = (scenario: LoanScenario) => {
     const content = `
@@ -1091,11 +1113,13 @@ export default function ClientDetails() {
           <LoansTab
             loanScenarios={loanScenarios}
             loadingScenarios={loadingScenarios}
-            onAddScenario={() => setAddScenarioModalOpen(true)}
+            onAddScenario={() => { setEditingScenario(null); setAddScenarioModalOpen(true); }}
+            onEditScenario={handleEditScenario}
             onCompare={() => setCompareModalOpen(true)}
             onToggleSelection={handleToggleScenarioSelection}
             onSetPreferred={handleSetPreferred}
             onDelete={handleDeleteScenario}
+            onStatusChange={handleScenarioStatusChange}
             onExportPDF={handleExportScenarioPDF}
             onExportAmortization={handleExportAmortizationSchedule}
             selectedScenarios={selectedScenarios}
@@ -1207,11 +1231,12 @@ export default function ClientDetails() {
         clientId={id!}
       />
 
-      {/* Add Loan Scenario Modal */}
+      {/* Add/Edit Loan Scenario Modal */}
       <AddScenarioModal
         opened={addScenarioModalOpen}
-        onClose={() => setAddScenarioModalOpen(false)}
+        onClose={() => { setAddScenarioModalOpen(false); setEditingScenario(null); }}
         clientId={id!}
+        editingScenario={editingScenario}
       />
 
       {/* Compare Loan Scenarios Modal */}

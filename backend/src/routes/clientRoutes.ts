@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticateToken, authorizeRoles, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
+import { decodeClientPiiField } from '../utils/clientPiiCodec.js';
 import {
   fireClientCreatedTrigger,
   fireClientUpdatedTrigger,
@@ -69,10 +70,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     // Decrypt client data would happen here in production
     const decryptedClients = clients.map(client => ({
       id: client.id,
-      // In production, these would be decrypted
-      name: client.nameEncrypted,
-      email: client.emailEncrypted,
-      phone: client.phoneEncrypted,
+      name: decodeClientPiiField(client.nameEncrypted),
+      email: decodeClientPiiField(client.emailEncrypted),
+      phone: decodeClientPiiField(client.phoneEncrypted),
       status: client.status,
       tags: parseTags(client.tags),
       createdAt: client.createdAt,
@@ -158,9 +158,9 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
 
     res.json({
       id: client.id,
-      name: client.nameEncrypted,
-      email: client.emailEncrypted,
-      phone: client.phoneEncrypted,
+      name: decodeClientPiiField(client.nameEncrypted),
+      email: decodeClientPiiField(client.emailEncrypted),
+      phone: decodeClientPiiField(client.phoneEncrypted),
       status: client.status,
       tags: parseTags(client.tags),
       createdAt: client.createdAt,
@@ -255,9 +255,9 @@ router.post('/', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest,
 
     res.status(201).json({
       id: client.id,
-      name: client.nameEncrypted,
-      email: client.emailEncrypted,
-      phone: client.phoneEncrypted,
+      name: decodeClientPiiField(client.nameEncrypted),
+      email: decodeClientPiiField(client.emailEncrypted),
+      phone: decodeClientPiiField(client.phoneEncrypted),
       status: client.status,
       tags: parseTags(client.tags),
       createdAt: client.createdAt,
@@ -349,9 +349,9 @@ router.put('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReques
 
     res.json({
       id: client.id,
-      name: client.nameEncrypted,
-      email: client.emailEncrypted,
-      phone: client.phoneEncrypted,
+      name: decodeClientPiiField(client.nameEncrypted),
+      email: decodeClientPiiField(client.emailEncrypted),
+      phone: decodeClientPiiField(client.phoneEncrypted),
       status: client.status,
       tags: parseTags(client.tags),
       createdAt: client.createdAt,

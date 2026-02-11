@@ -43,6 +43,7 @@ const refreshLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
 });
 
 // Public routes with rate limiting

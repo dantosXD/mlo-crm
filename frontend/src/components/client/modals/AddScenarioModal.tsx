@@ -1,302 +1,167 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Modal, Stack, TextInput, Select, SimpleGrid, NumberInput,
-  Divider, Paper, Text, Group, Button,
+  Modal, Stack, TextInput, Group, Button, ScrollArea,
 } from '@mantine/core';
-import { IconCurrencyDollar, IconPercentage, IconCalendar } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { api } from '../../../utils/api';
 import type { LoanScenario } from '../../../types';
+import type { LoanScenarioData, LoanProgramTemplate } from '../../../utils/loanTypes';
+import { createDefaultScenarioData } from '../../../utils/loanTypes';
+import { LoanScenarioBuilder } from '../../LoanScenarioBuilder';
 
 interface AddScenarioModalProps {
   opened: boolean;
   onClose: () => void;
   clientId: string;
+  editingScenario?: LoanScenario | null;
 }
 
-const defaultForm = {
-  name: '',
-  loanType: 'PURCHASE' as 'PURCHASE' | 'REFINANCE',
-  amount: 400000,
-  interestRate: 6.5,
-  termYears: 30,
-  downPayment: 80000,
-  propertyValue: 500000,
-  propertyTaxes: 0,
-  homeInsurance: 0,
-  hoaFees: 0,
-};
+function parseScenarioData(entity: LoanScenario): LoanScenarioData | null {
+  if (!entity.scenarioData) return null;
+  try {
+    return typeof entity.scenarioData === 'string'
+      ? JSON.parse(entity.scenarioData)
+      : entity.scenarioData;
+  } catch {
+    return null;
+  }
+}
 
-export function AddScenarioModal({ opened, onClose, clientId }: AddScenarioModalProps) {
+export function AddScenarioModal({ opened, onClose, clientId, editingScenario }: AddScenarioModalProps) {
   const queryClient = useQueryClient();
+  const isEditing = !!editingScenario;
 
-  const [form, setForm] = useState({ ...defaultForm });
+  const [programTemplates, setProgramTemplates] = useState<LoanProgramTemplate[]>([]);
+  const [scenarioName, setScenarioName] = useState('');
+  const [builderData, setBuilderData] = useState<LoanScenarioData>(createDefaultScenarioData());
+  const [preferredProgramId, setPreferredProgramId] = useState<string | null>(null);
+  const [recommendationNotes, setRecommendationNotes] = useState('');
   const [saving, setSaving] = useState(false);
-  const [calculatedValues, setCalculatedValues] = useState<{
-    monthlyPayment?: number;
-    totalMonthlyPayment?: number;
-    totalInterest?: number;
-    loanToValue?: number;
-  } | null>(null);
-  const [formErrors, setFormErrors] = useState<{ name?: string; amount?: string; interestRate?: string; termYears?: string }>({});
 
-  const formatCurrency = (value: number | undefined | null) => {
-    if (value === undefined || value === null || Number.isNaN(value)) return '-';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
-  };
+  // Fetch active program templates
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const res = await api.get('/loan-program-templates/active');
+      if (res.ok) {
+        const data = await res.json();
+        setProgramTemplates(data);
+      }
+    } catch {
+      // Non-critical
+    }
+  }, []);
 
-  const formatPercent = (value: number | undefined | null) => {
-    if (value === undefined || value === null || Number.isNaN(value)) return '-';
-    return `${value.toFixed(2)}%`;
-  };
+  useEffect(() => {
+    if (opened) fetchTemplates();
+  }, [opened, fetchTemplates]);
+
+  // Reset form when opened/editing changes
+  useEffect(() => {
+    if (!opened) return;
+    if (editingScenario) {
+      setScenarioName(editingScenario.name);
+      const data = parseScenarioData(editingScenario);
+      setBuilderData(data || createDefaultScenarioData());
+      setPreferredProgramId(editingScenario.preferredProgramId || null);
+      setRecommendationNotes(editingScenario.recommendationNotes || '');
+    } else {
+      setScenarioName('New Loan Comparison');
+      setBuilderData(createDefaultScenarioData(programTemplates.length > 0 ? programTemplates : undefined));
+      setPreferredProgramId(null);
+      setRecommendationNotes('');
+    }
+  }, [opened, editingScenario, programTemplates]);
 
   const handleClose = () => {
-    setForm({ ...defaultForm });
-    setCalculatedValues(null);
-    setFormErrors({});
     onClose();
   };
 
-  const handleCalculate = async () => {
-    const errors: { name?: string; amount?: string; interestRate?: string; termYears?: string } = {};
-
-    if (form.amount <= 0) errors.amount = 'Loan amount must be greater than 0';
-    if (form.interestRate <= 0) errors.interestRate = 'Interest rate must be greater than 0%';
-    else if (form.interestRate > 30) errors.interestRate = 'Interest rate cannot exceed 30%';
-    if (!form.termYears || form.termYears <= 0) errors.termYears = 'Term is required and must be greater than 0';
-    else if (form.termYears > 40) errors.termYears = 'Term cannot exceed 40 years';
-
-    if (Object.keys(errors).length > 0) {
-      setFormErrors(errors);
+  const handleSave = async () => {
+    if (!scenarioName.trim()) {
+      notifications.show({ title: 'Error', message: 'Scenario name is required', color: 'red' });
       return;
     }
-    setFormErrors({});
-
-    try {
-      const response = await api.post('/loan-scenarios/calculate', {
-        amount: form.amount,
-        interestRate: form.interestRate,
-        termYears: form.termYears,
-        downPayment: form.downPayment,
-        propertyValue: form.propertyValue,
-        propertyTaxes: form.propertyTaxes,
-        homeInsurance: form.homeInsurance,
-        hoaFees: form.hoaFees,
-      });
-
-      if (!response.ok) throw new Error('Failed to calculate');
-      const result = await response.json();
-      setCalculatedValues(result);
-
-      notifications.show({
-        title: 'Calculated',
-        message: `Monthly Payment: $${result.monthlyPayment?.toLocaleString()}`,
-        color: 'blue',
-      });
-    } catch (error) {
-      console.error('Error calculating scenario:', error);
-      notifications.show({ title: 'Error', message: 'Failed to calculate loan scenario', color: 'red' });
-    }
-  };
-
-  const handleCreate = async () => {
-    const errors: { name?: string; amount?: string; interestRate?: string; termYears?: string } = {};
-    if (!form.name.trim()) errors.name = 'Scenario name is required';
-    if (form.amount <= 0) errors.amount = 'Loan amount must be greater than 0';
-    if (form.interestRate <= 0) errors.interestRate = 'Interest rate must be greater than 0%';
-    else if (form.interestRate > 30) errors.interestRate = 'Interest rate cannot exceed 30%';
-    if (!form.termYears || form.termYears <= 0) errors.termYears = 'Term is required and must be greater than 0';
-    else if (form.termYears > 40) errors.termYears = 'Term cannot exceed 40 years';
-
-    if (Object.keys(errors).length > 0) {
-      setFormErrors(errors);
-      return;
-    }
-    setFormErrors({});
     setSaving(true);
 
     try {
-      const response = await api.post('/loan-scenarios', { clientId, ...form });
-      if (!response.ok) throw new Error('Failed to create loan scenario');
+      const body: any = {
+        clientId,
+        name: scenarioName,
+        loanType: builderData.inputs.scenarioType === 'purchase' ? 'PURCHASE' : 'REFINANCE',
+        amount: builderData.inputs.purchasePrice
+          ? (builderData.inputs.purchasePrice - (builderData.inputs.downPayment ?? 0))
+          : (builderData.inputs.refinanceLoanAmount ?? 0),
+        interestRate: builderData.programs[0]?.ratePercent ?? 0,
+        termYears: builderData.programs[0]?.termYears ?? 30,
+        scenarioData: builderData,
+        preferredProgramId,
+        recommendationNotes: recommendationNotes || null,
+        status: editingScenario?.status || 'DRAFT',
+      };
 
-      const createdScenario = await response.json();
-      queryClient.setQueryData(['client-loan-scenarios', clientId], (old: LoanScenario[] = []) => [createdScenario, ...old]);
+      let res: Response;
+      if (isEditing) {
+        res = await api.put(`/loan-scenarios/${editingScenario!.id}`, body);
+      } else {
+        res = await api.post('/loan-scenarios', body);
+      }
+
+      if (!res.ok) throw new Error('Failed to save');
+
+      queryClient.invalidateQueries({ queryKey: ['client-loan-scenarios', clientId] });
       queryClient.invalidateQueries({ queryKey: ['client-activities', clientId] });
       handleClose();
 
-      notifications.show({ title: 'Success', message: 'Loan scenario created successfully', color: 'green' });
+      notifications.show({
+        title: 'Success',
+        message: isEditing ? 'Scenario updated' : 'Scenario created',
+        color: 'green',
+      });
     } catch (error) {
-      console.error('Error creating loan scenario:', error);
-      notifications.show({ title: 'Error', message: 'Failed to create loan scenario', color: 'red' });
+      console.error('Error saving scenario:', error);
+      notifications.show({ title: 'Error', message: 'Failed to save loan scenario', color: 'red' });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal opened={opened} onClose={handleClose} title="Add Loan Scenario" size="lg">
-      <Stack>
-        <TextInput
-          label="Scenario Name"
-          placeholder="e.g., 30-Year Fixed 6.5%"
-          required
-          value={form.name}
-          onChange={(e) => {
-            setForm({ ...form, name: e.target.value });
-            if (formErrors.name) setFormErrors({ ...formErrors, name: undefined });
-          }}
-          error={formErrors.name}
-        />
-
-        <Select
-          label="Loan Type"
-          data={[
-            { value: 'PURCHASE', label: 'Purchase' },
-            { value: 'REFINANCE', label: 'Refinance' },
-          ]}
-          value={form.loanType}
-          onChange={(value) => setForm({ ...form, loanType: (value as 'PURCHASE' | 'REFINANCE') || 'PURCHASE' })}
-        />
-
-        <SimpleGrid cols={2}>
-          <NumberInput
-            label="Loan Amount"
-            placeholder="400000"
+    <Modal
+      opened={opened}
+      onClose={handleClose}
+      title={isEditing ? `Edit: ${editingScenario?.name}` : 'New Loan Comparison'}
+      size="90vw"
+      styles={{ body: { padding: 0 } }}
+    >
+      <ScrollArea.Autosize mah="80vh" p="md">
+        <Stack>
+          <TextInput
+            label="Scenario Name"
             required
-            value={form.amount}
-            onChange={(value) => {
-              setForm({ ...form, amount: Number(value) || 0 });
-              if (formErrors.amount) setFormErrors({ ...formErrors, amount: undefined });
-            }}
-            leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-            thousandSeparator=","
-            error={formErrors.amount}
+            value={scenarioName}
+            onChange={(e) => setScenarioName(e.currentTarget.value)}
           />
-          <NumberInput
-            label="Property Value"
-            placeholder="500000"
-            min={0}
-            value={form.propertyValue}
-            onChange={(value) => setForm({ ...form, propertyValue: Number(value) || 0 })}
-            leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-            thousandSeparator=","
-          />
-        </SimpleGrid>
 
-        <SimpleGrid cols={3}>
-          <NumberInput
-            label="Interest Rate (%)"
-            placeholder="6.5"
-            required
-            min={0}
-            step={0.125}
-            decimalScale={3}
-            value={form.interestRate}
-            onChange={(value) => {
-              setForm({ ...form, interestRate: Number(value) || 0 });
-              if (formErrors.interestRate) setFormErrors({ ...formErrors, interestRate: undefined });
-            }}
-            leftSection={<IconPercentage size={16} aria-hidden="true" />}
-            error={formErrors.interestRate}
+          <LoanScenarioBuilder
+            data={builderData}
+            onChange={setBuilderData}
+            preferredProgramId={preferredProgramId}
+            onPreferredChange={setPreferredProgramId}
+            recommendationNotes={recommendationNotes}
+            onRecommendationNotesChange={setRecommendationNotes}
           />
-          <NumberInput
-            label="Term (Years)"
-            placeholder="30"
-            required
-            min={1}
-            max={40}
-            value={form.termYears}
-            onChange={(value) => {
-              setForm({ ...form, termYears: Number(value) || 0 });
-              if (formErrors.termYears) setFormErrors({ ...formErrors, termYears: undefined });
-            }}
-            leftSection={<IconCalendar size={16} aria-hidden="true" />}
-            error={formErrors.termYears}
-          />
-          <NumberInput
-            label="Down Payment"
-            placeholder="80000"
-            min={0}
-            value={form.downPayment}
-            onChange={(value) => setForm({ ...form, downPayment: Number(value) || 0 })}
-            leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-            thousandSeparator=","
-          />
-        </SimpleGrid>
 
-        <Divider label="Additional Costs (Annual)" labelPosition="center" />
-
-        <SimpleGrid cols={3}>
-          <NumberInput
-            label="Property Taxes"
-            placeholder="0"
-            min={0}
-            value={form.propertyTaxes}
-            onChange={(value) => setForm({ ...form, propertyTaxes: Number(value) || 0 })}
-            leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-            thousandSeparator=","
-          />
-          <NumberInput
-            label="Home Insurance"
-            placeholder="0"
-            min={0}
-            value={form.homeInsurance}
-            onChange={(value) => setForm({ ...form, homeInsurance: Number(value) || 0 })}
-            leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-            thousandSeparator=","
-          />
-          <NumberInput
-            label="HOA Fees (Monthly)"
-            placeholder="0"
-            min={0}
-            value={form.hoaFees}
-            onChange={(value) => setForm({ ...form, hoaFees: Number(value) || 0 })}
-            leftSection={<IconCurrencyDollar size={16} aria-hidden="true" />}
-            thousandSeparator=","
-          />
-        </SimpleGrid>
-
-        {calculatedValues && (
-          <>
-            <Divider label="Calculated Values" labelPosition="center" />
-            <Paper p="md" withBorder bg="gray.0">
-              <SimpleGrid cols={2}>
-                <div>
-                  <Text size="xs" c="dimmed">Monthly P&I</Text>
-                  <Text fw={600} size="lg" c="blue">{formatCurrency(calculatedValues.monthlyPayment)}</Text>
-                </div>
-                <div>
-                  <Text size="xs" c="dimmed">Total Monthly (PITI)</Text>
-                  <Text fw={600} size="lg" c="green">{formatCurrency(calculatedValues.totalMonthlyPayment)}</Text>
-                </div>
-                <div>
-                  <Text size="xs" c="dimmed">Total Interest</Text>
-                  <Text fw={500}>{formatCurrency(calculatedValues.totalInterest)}</Text>
-                </div>
-                <div>
-                  <Text size="xs" c="dimmed">LTV Ratio</Text>
-                  <Text fw={500}>{formatPercent(calculatedValues.loanToValue)}</Text>
-                </div>
-              </SimpleGrid>
-            </Paper>
-          </>
-        )}
-
-        <Group justify="space-between" mt="md">
-          <Button variant="light" onClick={handleCalculate}>
-            Calculate
-          </Button>
-          <Group>
+          <Group justify="flex-end" mt="md">
             <Button variant="subtle" onClick={handleClose}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} loading={saving}>
-              Save
+            <Button onClick={handleSave} loading={saving}>
+              {isEditing ? 'Update Comparison' : 'Create Comparison'}
             </Button>
           </Group>
-        </Group>
-      </Stack>
+        </Stack>
+      </ScrollArea.Autosize>
     </Modal>
   );
 }

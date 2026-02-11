@@ -96,6 +96,12 @@ export interface LoanScenario {
   loanToValue?: number;
   debtToIncome?: number;
   isPreferred: boolean;
+  scenarioData?: string | any;
+  preferredProgramId?: string | null;
+  status: string;
+  recommendationNotes?: string | null;
+  sharedAt?: string | null;
+  createdById?: string | null;
   createdAt: string;
   updatedAt?: string;
 }

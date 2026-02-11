@@ -36,6 +36,9 @@ model User {
   createdTasks Task[] @relation("TaskCreator")
   createdTaskTemplates TaskTemplate[] @relation("TaskTemplateCreator")
 
+  // Loan program templates
+  loanProgramTemplates LoanProgramTemplate[] @relation("LoanProgramTemplateCreator")
+
   // Calendar sharing relations
   ownedCalendarShares CalendarShare[] @relation("CalendarOwner")
   sharedWithMe CalendarShare[] @relation("SharedWithUser")
@@ -242,7 +245,7 @@ model Document {
   @@map("documents")
 }
 
-// Loan scenarios table
+// Loan scenarios table — supports rich multi-program comparisons
 model LoanScenario {
   id                  String    @id @default(uuid())
   clientId            String    @map("client_id")
@@ -264,11 +267,54 @@ model LoanScenario {
   loanToValue         Float?    @map("loan_to_value")
   debtToIncome        Float?    @map("debt_to_income")
   isPreferred         Boolean   @default(false) @map("is_preferred")
+
+  // Rich comparison data — JSON blob storing LoanScenarioData (inputs + programs array)
+  scenarioData        String?   @map("scenario_data") // JSON: { inputs, programs, debts, programDebtSelections }
+  preferredProgramId  String?   @map("preferred_program_id") // ID of the recommended program within scenarioData
+  status              String    @default("DRAFT") // DRAFT, PROPOSED, SHARED, ARCHIVED
+  version             String    @default("1.0.0")
+  recommendationNotes String?   @map("recommendation_notes") // MLO notes on why the preferred program is recommended
+  sharedAt            DateTime? @map("shared_at") // When shared with client
+  createdById         String?   @map("created_by_id")
+
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
   @@index([clientId])
+  @@index([status])
+  @@index([createdById])
   @@map("loan_scenarios")
+}
+
+// Configurable loan program templates per user/org
+model LoanProgramTemplate {
+  id              String    @id @default(uuid())
+  name            String    // e.g. "Conventional 30yr Fixed", "5/1 ARM 30yr"
+  category        String    @default("FIXED") // FIXED, ARM
+  termYears       Int       @map("term_years") // 15, 20, 30
+  defaultRate     Float?    @map("default_rate") // Optional default interest rate
+
+  // ARM-specific configuration (JSON)
+  // { initialPeriod: 5, adjustmentPeriod: 1, initialCap: 2, periodicCap: 2, lifetimeCap: 5, indexName: "SOFR", margin: 2.75 }
+  armConfig       String?   @map("arm_config")
+
+  // Loan type constraints
+  loanType        String    @default("conventional") @map("loan_type") // conventional, fha, va, usda, jumbo, portfolio
+
+  isActive        Boolean   @default(true) @map("is_active")
+  sortOrder       Int       @default(0) @map("sort_order")
+  notes           String?   // Internal notes about this program
+
+  createdById     String    @map("created_by_id")
+  createdBy       User      @relation("LoanProgramTemplateCreator", fields: [createdById], references: [id])
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([createdById])
+  @@index([isActive])
+  @@index([category])
+  @@index([sortOrder])
+  @@map("loan_program_templates")
 }
 
 // Activity log for audit trail

@@ -40,12 +40,17 @@ async function ensureCsrfCookie(accessToken: string | null): Promise<string | nu
   return csrf;
 }
 
+/** Guard to avoid concurrent refresh loops */
+let _refreshPromise: Promise<boolean> | null = null;
+
 /**
- * Make an authenticated API request with CSRF token
+ * Make an authenticated API request with CSRF token.
+ * Automatically retries once after refreshing the access token on 401/403.
  */
 export async function apiRequest(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  _isRetry = false,
 ): Promise<Response> {
   // Import auth store dynamically to avoid circular dependencies
   const { useAuthStore } = await import('../stores/authStore');
@@ -83,6 +88,20 @@ export async function apiRequest(
     headers,
     credentials: 'include',
   });
+
+  // Auto-refresh on 401/403 and retry once
+  if ((response.status === 401 || response.status === 403) && !_isRetry) {
+    // Coalesce concurrent refresh attempts into a single request
+    if (!_refreshPromise) {
+      _refreshPromise = useAuthStore.getState().refreshAuth().finally(() => {
+        _refreshPromise = null;
+      });
+    }
+    const refreshed = await _refreshPromise;
+    if (refreshed) {
+      return apiRequest(endpoint, options, true);
+    }
+  }
 
   return response;
 }

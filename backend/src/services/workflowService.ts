@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma.js';
 import { ServiceError } from './taskService.js';
+import { decodeClientPiiField } from '../utils/clientPiiCodec.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -69,14 +70,10 @@ function formatWorkflow(w: any) {
 }
 
 /** Decrypt an encrypted client name (best-effort). */
-function decryptName(encrypted: string | null): string {
+function decodeClientName(encrypted: string | null): string {
   if (!encrypted) return 'Unknown';
-  try {
-    const parsed = JSON.parse(encrypted);
-    return parsed.data || 'Unknown';
-  } catch {
-    return encrypted;
-  }
+  const decoded = decodeClientPiiField(encrypted).trim();
+  return decoded || 'Unknown';
 }
 
 const CREATED_BY_SELECT = { id: true, name: true, email: true, role: true } as const;
@@ -138,7 +135,7 @@ export async function getWorkflow(id: string) {
   const formattedExecutions = workflow.executions.map((e) => ({
     id: e.id,
     clientId: e.clientId,
-    clientName: e.client ? decryptName(e.client.nameEncrypted) : 'Unknown',
+    clientName: e.client ? decodeClientName(e.client.nameEncrypted) : 'Unknown',
     status: e.status,
     currentStep: e.currentStep,
     startedAt: e.startedAt,
@@ -539,7 +536,7 @@ export async function listExecutions(params: ListExecutionsParams) {
       workflowName: e.workflow.name,
       workflowTriggerType: e.workflow.triggerType,
       clientId: e.clientId,
-      clientName: e.client ? decryptName(e.client.nameEncrypted) : null,
+      clientName: e.client ? decodeClientName(e.client.nameEncrypted) : null,
       status: e.status,
       currentStep: e.currentStep,
       startedAt: e.startedAt,

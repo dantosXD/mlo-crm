@@ -6,6 +6,8 @@ interface FlowControlActionConfig {
   delayHours?: number;
   delayDays?: number;
   delayUntil?: Date;
+  duration?: number;
+  unit?: 'minutes' | 'hours' | 'days';
   condition?: string;
   trueActions?: any[];
   falseActions?: any[];
@@ -29,6 +31,12 @@ export async function executeWait(
     else if (config.delayUntil) {
       const targetTime = new Date(config.delayUntil).getTime();
       delayMs = Math.max(0, targetTime - Date.now());
+    } else if (config.duration && config.unit) {
+      // Support the duration/unit format used by workflow templates
+      const multiplier = config.unit === 'days' ? 24 * 60 * 60 * 1000
+        : config.unit === 'hours' ? 60 * 60 * 1000
+        : 60 * 1000; // minutes
+      delayMs = config.duration * multiplier;
     } else {
       return { success: false, message: 'Wait duration not specified. Use delayMinutes, delayHours, delayDays, or delayUntil' };
     }

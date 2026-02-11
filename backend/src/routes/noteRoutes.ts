@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
+import { decodeClientPiiField } from '../utils/clientPiiCodec.js';
 import {
   fireNoteCreatedTrigger,
   fireNoteWithTagTrigger,
@@ -37,21 +38,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       },
     });
 
-    // Helper to decrypt client name
-    const decryptName = (encrypted: string | null): string => {
-      if (!encrypted) return 'Unknown';
-      try {
-        const parsed = JSON.parse(encrypted);
-        return parsed.data || 'Unknown';
-      } catch {
-        return encrypted;
-      }
-    };
-
     const formattedNotes = notes.map(note => ({
       id: note.id,
       clientId: note.clientId,
-      clientName: note.client ? decryptName(note.client.nameEncrypted) : 'Unknown',
+      clientName: note.client ? (decodeClientPiiField(note.client.nameEncrypted).trim() || 'Unknown') : 'Unknown',
       text: note.text,
       tags: JSON.parse(note.tags),
       isPinned: note.isPinned,

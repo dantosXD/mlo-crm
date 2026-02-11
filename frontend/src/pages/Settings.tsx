@@ -23,7 +23,6 @@ import {
   IconLock,
   IconBell,
   IconPalette,
-  IconSettings,
   IconDeviceFloppy,
   IconAlertCircle,
 } from '@tabler/icons-react';
@@ -31,7 +30,7 @@ import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
 
 export default function Settings() {
-  const { user, accessToken, updateUser } = useAuthStore();
+  const { user, updateUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState<string | null>('profile');
   const [saving, setSaving] = useState(false);
 
@@ -153,7 +152,7 @@ export default function Settings() {
         message: 'Your password has been updated successfully',
         color: 'green',
       });
-    } catch (error) {
+    } catch {
       setPasswordError('An error occurred while changing password');
     } finally {
       setSavingPassword(false);
@@ -251,41 +250,70 @@ export default function Settings() {
 
               <Divider />
 
-              {passwordError && (
-                <Alert icon={<IconAlertCircle size={16} aria-hidden="true" />} color="red" title="Error">
-                  {passwordError}
-                </Alert>
-              )}
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handlePasswordChange();
+                }}
+              >
+                <Stack gap="lg">
+                  <TextInput
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    type="email"
+                    name="username"
+                    autoComplete="username"
+                    readOnly
+                    value={profileForm.email || user?.email || ''}
+                    styles={{
+                      root: { display: 'none' },
+                    }}
+                  />
 
-              <PasswordInput
-                label="Current Password"
-                placeholder="Enter current password"
-                value={passwordForm.currentPassword}
-                onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-                error={passwordError && !passwordForm.currentPassword ? 'Required' : undefined}
-              />
+                  {passwordError && (
+                    <Alert icon={<IconAlertCircle size={16} aria-hidden="true" />} color="red" title="Error">
+                      {passwordError}
+                    </Alert>
+                  )}
 
-              <PasswordInput
-                label="New Password"
-                placeholder="Enter new password"
-                value={passwordForm.newPassword}
-                onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                error={passwordError && passwordForm.newPassword.length > 0 && passwordForm.newPassword.length < 8 ? 'Must be at least 8 characters' : undefined}
-              />
+                  <PasswordInput
+                    label="Current Password"
+                    placeholder="Enter current password"
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                    error={passwordError && !passwordForm.currentPassword ? 'Required' : undefined}
+                    autoComplete="current-password"
+                  />
 
-              <PasswordInput
-                label="Confirm New Password"
-                placeholder="Confirm new password"
-                value={passwordForm.confirmPassword}
-                onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                error={passwordError && passwordForm.confirmPassword && passwordForm.newPassword !== passwordForm.confirmPassword ? 'Passwords do not match' : undefined}
-              />
+                  <PasswordInput
+                    label="New Password"
+                    placeholder="Enter new password"
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                    error={passwordError && passwordForm.newPassword.length > 0 && passwordForm.newPassword.length < 8 ? 'Must be at least 8 characters' : undefined}
+                    autoComplete="new-password"
+                  />
 
-              <Group justify="flex-end" mt="md">
-                <Button leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />} onClick={handlePasswordChange} loading={savingPassword}>
-                  Update Password
-                </Button>
-              </Group>
+                  <PasswordInput
+                    label="Confirm New Password"
+                    placeholder="Confirm new password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                    error={passwordError && passwordForm.confirmPassword && passwordForm.newPassword !== passwordForm.confirmPassword ? 'Passwords do not match' : undefined}
+                    autoComplete="new-password"
+                  />
+
+                  <Group justify="flex-end" mt="md">
+                    <Button
+                      type="submit"
+                      leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />}
+                      loading={savingPassword}
+                    >
+                      Update Password
+                    </Button>
+                  </Group>
+                </Stack>
+              </form>
 
               <Divider my="lg" />
 

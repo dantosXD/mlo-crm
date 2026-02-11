@@ -126,18 +126,33 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       hoaFees,
       pmiRate,
       isPreferred,
+      scenarioData,
+      preferredProgramId,
+      status,
+      recommendationNotes,
     } = req.body;
     const userId = req.user?.userId;
 
-    if (!clientId || !name || !loanType || !amount || !interestRate || !termYears) {
+    if (!clientId || !name) {
       return res.status(400).json({
         error: 'Validation Error',
-        message: 'Client ID, name, loan type, amount, interest rate, and term are required',
+        message: 'Client ID and name are required',
       });
     }
 
-    // Calculate loan values
-    const calculations = calculateLoanScenario({
+    // For rich comparison scenarios, scenarioData is the primary data source
+    const isRichScenario = !!scenarioData;
+
+    // For legacy single-program scenarios, validate required fields
+    if (!isRichScenario && (!loanType || !amount || !interestRate || !termYears)) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Loan type, amount, interest rate, and term are required for basic scenarios',
+      });
+    }
+
+    // Calculate loan values for legacy scenarios
+    const calculations = isRichScenario ? null : calculateLoanScenario({
       amount,
       interestRate,
       termYears,
@@ -153,33 +168,40 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       data: {
         clientId,
         name,
-        loanType,
-        amount,
-        interestRate,
-        termYears,
+        loanType: loanType || (isRichScenario ? 'PURCHASE' : 'PURCHASE'),
+        amount: amount || 0,
+        interestRate: interestRate || 0,
+        termYears: termYears || 30,
         downPayment: downPayment || null,
         propertyValue: propertyValue || null,
         propertyTaxes: propertyTaxes || null,
         homeInsurance: homeInsurance || null,
         hoaFees: hoaFees || null,
         pmiRate: pmiRate || null,
-        monthlyPayment: calculations.monthlyPayment,
-        totalMonthlyPayment: calculations.totalMonthlyPayment,
-        totalInterest: calculations.totalInterest,
-        loanToValue: calculations.loanToValue,
+        monthlyPayment: calculations?.monthlyPayment || null,
+        totalMonthlyPayment: calculations?.totalMonthlyPayment || null,
+        totalInterest: calculations?.totalInterest || null,
+        loanToValue: calculations?.loanToValue || null,
         isPreferred: isPreferred || false,
+        scenarioData: isRichScenario ? JSON.stringify(scenarioData) : null,
+        preferredProgramId: preferredProgramId || null,
+        status: status || 'DRAFT',
+        recommendationNotes: recommendationNotes || null,
+        createdById: userId || null,
       },
     });
 
     // Log activity
-    await prisma.activity.create({
-      data: {
-        clientId,
-        userId: userId!,
-        type: 'LOAN_SCENARIO_CREATED',
-        description: `Loan scenario "${name}" created`,
-      },
-    });
+    if (userId) {
+      await prisma.activity.create({
+        data: {
+          clientId,
+          userId,
+          type: 'LOAN_SCENARIO_CREATED',
+          description: `Loan scenario "${name}" created${isRichScenario ? ' (comparison)' : ''}`,
+        },
+      });
+    }
 
     res.status(201).json(scenario);
   } catch (error) {
@@ -252,6 +274,10 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
       hoaFees,
       pmiRate,
       isPreferred,
+      scenarioData,
+      preferredProgramId,
+      status,
+      recommendationNotes,
     } = req.body;
     const userId = req.user?.userId;
 
@@ -264,8 +290,10 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Calculate new loan values if amounts changed
-    const calculations = calculateLoanScenario({
+    const isRichScenario = scenarioData !== undefined || existingScenario.scenarioData;
+
+    // Calculate new loan values if amounts changed (legacy scenarios only)
+    const calculations = isRichScenario ? null : calculateLoanScenario({
       amount: amount ?? existingScenario.amount,
       interestRate: interestRate ?? existingScenario.interestRate,
       termYears: termYears ?? existingScenario.termYears,
@@ -292,22 +320,30 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
         ...(hoaFees !== undefined && { hoaFees }),
         ...(pmiRate !== undefined && { pmiRate }),
         ...(isPreferred !== undefined && { isPreferred }),
-        monthlyPayment: calculations.monthlyPayment,
-        totalMonthlyPayment: calculations.totalMonthlyPayment,
-        totalInterest: calculations.totalInterest,
-        loanToValue: calculations.loanToValue,
+        ...(scenarioData !== undefined && { scenarioData: JSON.stringify(scenarioData) }),
+        ...(preferredProgramId !== undefined && { preferredProgramId }),
+        ...(status !== undefined && { status }),
+        ...(recommendationNotes !== undefined && { recommendationNotes }),
+        ...(calculations && {
+          monthlyPayment: calculations.monthlyPayment,
+          totalMonthlyPayment: calculations.totalMonthlyPayment,
+          totalInterest: calculations.totalInterest,
+          loanToValue: calculations.loanToValue,
+        }),
       },
     });
 
     // Log activity
-    await prisma.activity.create({
-      data: {
-        clientId: scenario.clientId,
-        userId: userId!,
-        type: 'LOAN_SCENARIO_UPDATED',
-        description: `Loan scenario "${scenario.name}" updated`,
-      },
-    });
+    if (userId) {
+      await prisma.activity.create({
+        data: {
+          clientId: scenario.clientId,
+          userId,
+          type: 'LOAN_SCENARIO_UPDATED',
+          description: `Loan scenario "${scenario.name}" updated`,
+        },
+      });
+    }
 
     res.json(scenario);
   } catch (error) {
@@ -363,6 +399,64 @@ router.patch('/:id/preferred', async (req: AuthRequest, res: Response) => {
       error: 'Internal Server Error',
       message: 'Failed to set preferred scenario',
     });
+  }
+});
+
+// PATCH /api/loan-scenarios/:id/status - Change scenario status with tracking
+router.patch('/:id/status', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const userId = req.user?.userId;
+
+    const validStatuses = ['DRAFT', 'PROPOSED', 'SHARED', 'ARCHIVED'];
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: `Status must be one of: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    const existingScenario = await prisma.loanScenario.findUnique({ where: { id } });
+    if (!existingScenario) {
+      return res.status(404).json({ error: 'Not Found', message: 'Loan scenario not found' });
+    }
+
+    const updateData: any = { status };
+
+    // Auto-set sharedAt when marking as SHARED for the first time
+    if (status === 'SHARED' && !existingScenario.sharedAt) {
+      updateData.sharedAt = new Date();
+    }
+
+    const scenario = await prisma.loanScenario.update({
+      where: { id },
+      data: updateData,
+    });
+
+    // Log activity
+    const statusLabels: Record<string, string> = {
+      DRAFT: 'moved back to draft',
+      PROPOSED: 'proposed to client',
+      SHARED: 'shared with client',
+      ARCHIVED: 'archived',
+    };
+
+    if (userId) {
+      await prisma.activity.create({
+        data: {
+          clientId: scenario.clientId,
+          userId,
+          type: 'LOAN_SCENARIO_STATUS_CHANGED',
+          description: `Loan scenario "${scenario.name}" ${statusLabels[status] || status}`,
+        },
+      });
+    }
+
+    res.json(scenario);
+  } catch (error) {
+    console.error('Error updating scenario status:', error);
+    res.status(500).json({ error: 'Internal Server Error', message: 'Failed to update scenario status' });
   }
 });
 

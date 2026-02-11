@@ -22,6 +22,7 @@ import {
   IconCheck,
   IconCalendar,
   IconBell,
+  IconScale,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -48,6 +49,8 @@ import CommunicationsHub from './pages/CommunicationsHub';
 import TasksDashboard from './pages/TasksDashboard';
 import Calendar from './pages/Calendar';
 import RemindersDashboard from './pages/RemindersDashboard';
+import LoanScenarios from './pages/LoanScenarios';
+import LoanProgramSettings from './pages/LoanProgramSettings';
 
 const ForgotPassword = () => (
   <Center h="100vh">
@@ -109,6 +112,8 @@ const navGroups: NavGroup[] = [
       { icon: IconLayoutKanban, label: 'Pipeline', href: '/pipeline', adminOnly: false },
       { icon: IconFileText, label: 'Documents', href: '/documents', adminOnly: false },
       { icon: IconCalculator, label: 'Calculator', href: '/calculator', adminOnly: false },
+      { icon: IconScale, label: 'Loan Scenarios', href: '/loan-scenarios', adminOnly: false },
+      { icon: IconSettings, label: 'Loan Programs', href: '/loan-programs', adminOnly: false },
     ],
   },
   {
@@ -469,6 +474,8 @@ function ProtectedLayout() {
           <Route path="/communications/compose" element={<WriteRoute><CommunicationComposer /></WriteRoute>} />
           <Route path="/communications/:clientId/compose" element={<WriteRoute><CommunicationComposer /></WriteRoute>} />
           <Route path="/calculator" element={<Calculator />} />
+          <Route path="/loan-scenarios" element={<LoanScenarios />} />
+          <Route path="/loan-programs" element={<LoanProgramSettings />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/workflows" element={<WorkflowsHub />} />
           <Route path="/workflows/executions" element={<TabRedirect to="/workflows" tab="executions" />} />
@@ -492,9 +499,10 @@ function RequireAuth() {
 }
 
 function App() {
-  const { isAuthenticated, hasHydrated, refreshAuth } = useAuthStore();
+  const { isAuthenticated, hasHydrated, refreshAuth, lastActivity } = useAuthStore();
   const [authInitialized, setAuthInitialized] = useState(false);
   const authInitRef = useRef(false);
+  const sessionTimeoutMinutes = parseInt(import.meta.env.VITE_SESSION_TIMEOUT_MINUTES || '15', 10);
 
   useEffect(() => {
     if (!hasHydrated || authInitRef.current) {
@@ -502,10 +510,19 @@ function App() {
     }
 
     authInitRef.current = true;
+    const hasRecentSessionHint = typeof lastActivity === 'number'
+      && Number.isFinite(lastActivity)
+      && Date.now() - lastActivity < (sessionTimeoutMinutes * 60 * 1000);
+
+    if (!hasRecentSessionHint) {
+      setAuthInitialized(true);
+      return;
+    }
+
     void refreshAuth().finally(() => {
       setAuthInitialized(true);
     });
-  }, [hasHydrated, refreshAuth]);
+  }, [hasHydrated, lastActivity, refreshAuth, sessionTimeoutMinutes]);
 
   // Wait for auth store to hydrate from persisted state before making routing decisions
   if (!hasHydrated || !authInitialized) {

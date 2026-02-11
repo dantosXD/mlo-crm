@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma.js';
 import { previewTemplate } from '../utils/placeholders.js';
 import { ServiceError } from './taskService.js';
+import { decodeClientPiiField } from '../utils/clientPiiCodec.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -10,14 +11,10 @@ function assertFound<T>(value: T | null | undefined, entity = 'Resource'): asser
   }
 }
 
-function decryptName(encrypted: string | null): string {
+function decodeClientName(encrypted: string | null): string {
   if (!encrypted) return 'Unknown';
-  try {
-    const parsed = JSON.parse(encrypted);
-    return parsed.data || 'Unknown';
-  } catch {
-    return encrypted;
-  }
+  const decoded = decodeClientPiiField(encrypted).trim();
+  return decoded || 'Unknown';
 }
 
 function canAccessClientCommunication(userRole: string, userId: string, createdById: string): boolean {
@@ -38,7 +35,7 @@ function formatCommunication(c: any) {
   return {
     id: c.id,
     clientId: c.clientId,
-    clientName: c.client ? decryptName(c.client.nameEncrypted) : 'Unknown',
+    clientName: c.client ? decodeClientName(c.client.nameEncrypted) : 'Unknown',
     type: c.type,
     status: c.status,
     subject: c.subject,
@@ -135,7 +132,7 @@ export async function searchCommunications(params: SearchCommunicationsParams) {
   });
 
   const matchingClientIds = allClients
-    .filter((c) => decryptName(c.nameEncrypted).toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter((c) => decodeClientName(c.nameEncrypted).toLowerCase().includes(searchQuery.toLowerCase()))
     .map((c) => c.id);
 
   let clientMatchCommunications: any[] = [];

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -102,13 +102,14 @@ async function fetchDashboardData(): Promise<DashboardStats> {
     totalDocuments = (await docsResult.value.json()).length;
   }
 
-  // Process tasks
+  // Process tasks — API returns { tasks: [...], pagination: { total } }
   let totalTasks = 0;
   let pendingTasks = 0;
   let pendingTasksList: Task[] = [];
   if (tasksResult.status === 'fulfilled' && tasksResult.value.ok) {
-    const tasks = await tasksResult.value.json();
-    totalTasks = tasks.length;
+    const tasksPayload = await tasksResult.value.json();
+    const tasks = Array.isArray(tasksPayload) ? tasksPayload : tasksPayload.tasks || [];
+    totalTasks = tasksPayload.pagination?.total ?? tasks.length;
     const pending = tasks.filter((t: { status: string }) => t.status !== 'COMPLETE');
     pendingTasks = pending.length;
     pendingTasksList = pending.slice(0, 5).map((t: Task & { client?: { id: string; name: string } | null }) => ({
@@ -137,23 +138,28 @@ async function fetchDashboardData(): Promise<DashboardStats> {
     failedToday: 0,
     runningExecutions: [] as any[],
   };
+  // Workflow execution endpoints return { executions: [...], pagination: {...} }
   if (runningResult.status === 'fulfilled' && runningResult.value.ok) {
-    workflowStats.runningExecutions = await runningResult.value.json();
+    const runningPayload = await runningResult.value.json();
+    workflowStats.runningExecutions = Array.isArray(runningPayload) ? runningPayload : runningPayload.executions || [];
   }
   if (completedResult.status === 'fulfilled' && completedResult.value.ok) {
-    const completedData = await completedResult.value.json();
+    const completedPayload = await completedResult.value.json();
+    const completedData = Array.isArray(completedPayload) ? completedPayload : completedPayload.executions || [];
     workflowStats.completedToday = completedData.filter((e: { completedAt: string }) =>
       new Date(e.completedAt) >= today
     ).length;
   }
   if (failedResult.status === 'fulfilled' && failedResult.value.ok) {
-    const failedData = await failedResult.value.json();
+    const failedPayload = await failedResult.value.json();
+    const failedData = Array.isArray(failedPayload) ? failedPayload : failedPayload.executions || [];
     workflowStats.failedToday = failedData.filter((e: { completedAt: string }) =>
       new Date(e.completedAt) >= today
     ).length;
   }
   if (workflowsResult.status === 'fulfilled' && workflowsResult.value.ok) {
-    const activeWorkflows = await workflowsResult.value.json();
+    const workflowsPayload = await workflowsResult.value.json();
+    const activeWorkflows = Array.isArray(workflowsPayload) ? workflowsPayload : workflowsPayload.workflows || [];
     workflowStats.activeWorkflows = activeWorkflows.filter((w: { isActive: boolean }) => w.isActive).length;
   }
 
@@ -177,9 +183,20 @@ export default function Dashboard() {
   const [layouts, setLayouts] = useState<LayoutItem[]>(DEFAULT_LAYOUTS.lg);
   const [savingLayout, setSavingLayout] = useState(false);
 
+  // Invalidate dashboard data whenever the access token changes (login / refresh)
+  const prevTokenRef = useRef(accessToken);
+  useEffect(() => {
+    if (prevTokenRef.current !== accessToken && accessToken) {
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    }
+    prevTokenRef.current = accessToken;
+  }, [accessToken, queryClient]);
+
   // Fetch dashboard stats
+  // Include a token fingerprint in the key so a new login/refresh busts the cache
+  const tokenKey = accessToken ? accessToken.slice(-8) : '';
   const { data: stats, isLoading: loading } = useQuery({
-    queryKey: ['dashboard-stats'],
+    queryKey: ['dashboard-stats', tokenKey],
     queryFn: fetchDashboardData,
     enabled: !!accessToken,
     staleTime: 30_000, // 30 seconds

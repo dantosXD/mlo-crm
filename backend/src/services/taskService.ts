@@ -1,5 +1,5 @@
 import prisma from '../utils/prisma.js';
-import { decrypt } from '../utils/crypto.js';
+import { decodeClientPiiField } from '../utils/clientPiiCodec.js';
 import {
   fireTaskCreatedTrigger,
   fireTaskCompletedTrigger,
@@ -161,7 +161,7 @@ export async function listTasks(params: ListTasksParams) {
   const tasksWithClientName = tasks.map((task) => ({
     ...task,
     client: task.client
-      ? { id: task.client.id, name: decrypt(task.client.nameEncrypted) }
+      ? { id: task.client.id, name: decodeClientPiiField(task.client.nameEncrypted) }
       : null,
   }));
 
