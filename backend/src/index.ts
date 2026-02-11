@@ -28,6 +28,7 @@ import calendarSyncRoutes from './routes/calendarSyncRoutes.js';
 import calendarShareRoutes from './routes/calendarShareRoutes.js';
 import reminderRoutes from './routes/reminderRoutes.js';
 import integrationRoutes from './routes/integrationRoutes.js';
+import dataLifecycleRoutes from './routes/dataLifecycleRoutes.js';
 import healthRoutes from './routes/healthRoutes.js';
 import agentRoutes from './routes/agentRoutes.js';
 import { generateCsrfToken, validateCsrfToken } from './middleware/csrf.js';
@@ -40,6 +41,7 @@ import { checkS3Health } from './utils/s3.js';
 import { initSentry, sentryErrorHandler, captureException } from './monitoring/sentry.js';
 import { getMetricsSnapshot, recordDbLatency } from './monitoring/metrics.js';
 import { getRedisClient } from './utils/redis.js';
+import { runWithRequestContext } from './utils/requestContext.js';
 
 installConsoleBridge();
 const env = getEnv();
@@ -53,6 +55,7 @@ initSentry(app);
 
 app.use(requestIdMiddleware);
 app.use(requestLoggingMiddleware);
+app.use((req, res, next) => runWithRequestContext({}, () => next()));
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -137,6 +140,7 @@ app.get('/api', (_req, res) => {
       communicationTemplates: '/api/communication-templates/*',
       events: '/api/events/*',
       calendarSync: '/api/calendar-sync/*',
+      dataLifecycle: '/api/data-lifecycle/*',
     },
   });
 });
@@ -168,6 +172,7 @@ app.use('/api/today', validateCsrfToken, todayRoutes);
 app.use('/api/analytics', validateCsrfToken, workflowAnalyticsRoutes);
 app.use('/api/agent', agentRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/data-lifecycle', validateCsrfToken, dataLifecycleRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({

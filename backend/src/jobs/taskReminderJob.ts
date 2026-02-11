@@ -1,11 +1,9 @@
-import { PrismaClient } from '@prisma/client';
 import {
   createTaskReminderNotification,
   wasReminderSentToday,
   logReminderHistory,
 } from '../services/notificationService';
-
-const prisma = new PrismaClient();
+import prisma from '../utils/prisma.js';
 
 // Reminder type configurations (in milliseconds)
 const REMINDER_OFFSETS: Record<string, number> = {

@@ -32,6 +32,11 @@ const VALID_TYPES = ['EMAIL', 'SMS', 'LETTER'] as const;
 const VALID_STATUSES = ['DRAFT', 'READY', 'SENT', 'FAILED'] as const;
 
 function formatCommunication(c: any) {
+  const parsedAttachments = c.attachments ? JSON.parse(c.attachments) : [];
+  const attachments = Array.isArray(parsedAttachments)
+    ? parsedAttachments.filter((attachment: any) => !attachment?.isArchived)
+    : [];
+
   return {
     id: c.id,
     clientId: c.clientId,
@@ -46,7 +51,7 @@ function formatCommunication(c: any) {
     scheduledAt: c.scheduledAt,
     sentAt: c.sentAt,
     followUpDate: c.followUpDate,
-    attachments: c.attachments ? JSON.parse(c.attachments) : [],
+    attachments,
     createdBy: c.createdBy,
     metadata: c.metadata ? JSON.parse(c.metadata) : null,
     createdAt: c.createdAt,
@@ -292,21 +297,19 @@ export async function deleteCommunication(id: string, userId: string, userRole: 
   assertFound(existing, 'Communication');
   if (!canAccessClientCommunication(userRole, userId, existing.createdById))
     throw new ServiceError(403, 'Access Denied', 'You do not have permission to delete this communication');
-  if (existing.status === 'SENT')
-    throw new ServiceError(400, 'Validation Error', 'Cannot delete sent communications. Update status to FAILED or keep for records.');
 
   await prisma.communication.delete({ where: { id } });
   await prisma.activity.create({
     data: {
       clientId: existing.clientId,
       userId,
-      type: 'COMMUNICATION_DELETED',
-      description: `${existing.type} communication deleted`,
+      type: 'COMMUNICATION_ARCHIVED',
+      description: `${existing.type} communication archived`,
       metadata: JSON.stringify({ communicationId: id, type: existing.type }),
     },
   });
 
-  return { message: 'Communication deleted successfully' };
+  return { message: 'Communication archived successfully' };
 }
 
 export async function updateCommunicationStatus(id: string, status: string, userId: string, userRole: string) {
@@ -533,13 +536,11 @@ export async function updateTemplate(id: string, data: UpdateTemplateData) {
 }
 
 export async function deleteTemplate(id: string) {
-  const template = await prisma.communicationTemplate.findUnique({ where: { id }, include: { communications: { take: 1 } } });
+  const template = await prisma.communicationTemplate.findUnique({ where: { id } });
   assertFound(template, 'Communication template');
-  if (template.communications && template.communications.length > 0)
-    throw new ServiceError(400, 'Validation Error', 'Cannot delete template that is in use. Deactivate it instead.');
 
   await prisma.communicationTemplate.delete({ where: { id } });
-  return { message: 'Communication template deleted successfully' };
+  return { message: 'Communication template archived successfully' };
 }
 
 export async function toggleTemplate(id: string) {

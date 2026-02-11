@@ -397,12 +397,12 @@ router.delete('/:id', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthReq
     await prisma.activity.create({
       data: {
         userId: userId!,
-        type: 'CLIENT_DELETED',
-        description: `Client ${sanitizedName} deleted`,
+        type: 'CLIENT_ARCHIVED',
+        description: `Client ${sanitizedName} archived`,
       },
     });
 
-    res.json({ message: 'Client deleted successfully' });
+    res.json({ message: 'Client archived successfully' });
   } catch (error) {
     console.error('Error deleting client:', error);
     res.status(500).json({

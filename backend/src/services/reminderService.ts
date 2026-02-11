@@ -177,7 +177,7 @@ export async function deleteReminder(id: string, userId: string) {
   const existing = await prisma.reminder.findFirst({ where: { id, userId } });
   assertFound(existing, 'Reminder');
   await prisma.reminder.delete({ where: { id } });
-  return { message: 'Reminder deleted successfully' };
+  return { message: 'Reminder archived successfully' };
 }
 
 // ─── status actions ─────────────────────────────────────────────────────────

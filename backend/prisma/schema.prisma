@@ -18,6 +18,7 @@ model User {
   name          String
   role          String    @default("MLO") // ADMIN, MANAGER, MLO, PROCESSOR, UNDERWRITER, VIEWER
   isActive      Boolean   @default(true) @map("is_active")
+  deletedAt     DateTime? @map("deleted_at")
   preferences   String?   @default("{}") // JSON string for user preferences (dashboard layout, etc.)
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -46,6 +47,7 @@ model User {
   // Reminder relations
   reminders Reminder[] @relation("ReminderUser")
 
+  @@index([deletedAt])
   @@map("users")
 }
 
@@ -59,6 +61,7 @@ model Client {
   emailHash       String    @map("email_hash")
   phoneHash       String    @map("phone_hash")
   status          String    @default("LEAD") // LEAD, PRE_QUALIFIED, ACTIVE, PROCESSING, UNDERWRITING, CLEAR_TO_CLOSE, CLOSED, DENIED, INACTIVE
+  deletedAt       DateTime? @map("deleted_at")
   tags            String    @default("[]") // JSON array string
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -81,6 +84,7 @@ model Client {
   @@index([emailHash])
   @@index([phoneHash])
   @@index([status])
+  @@index([deletedAt])
   @@index([createdAt])
   @@map("clients")
 }
@@ -110,12 +114,14 @@ model Note {
   text        String
   tags        String    @default("[]") // JSON array string
   isPinned    Boolean   @default(false) @map("is_pinned")
+  deletedAt   DateTime? @map("deleted_at")
   createdById String    @map("created_by_id")
   createdBy   User      @relation(fields: [createdById], references: [id])
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@index([clientId])
+  @@index([deletedAt])
   @@index([createdAt])
   @@map("notes")
 }
@@ -178,9 +184,11 @@ model TaskSubtask {
   text        String
   isCompleted Boolean   @default(false) @map("is_completed")
   order       Int       @default(0)
+  deletedAt   DateTime? @map("deleted_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
+  @@index([deletedAt])
   @@map("task_subtasks")
 }
 
@@ -213,11 +221,13 @@ model TaskAttachment {
   filePath    String?   @map("file_path") // For documents
   content     String?   // For notes
   metadata    String?   // JSON string for additional data
+  deletedAt   DateTime? @map("deleted_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   createdBy   String    @map("created_by_id")
 
   @@index([taskId])
   @@index([type])
+  @@index([deletedAt])
   @@map("task_attachments")
 }
 
@@ -236,12 +246,14 @@ model Document {
   dueDate     DateTime? @map("due_date")
   expiresAt   DateTime? @map("expires_at")
   notes       String?
+  deletedAt   DateTime? @map("deleted_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@index([clientId])
   @@index([status])
   @@index([category])
+  @@index([deletedAt])
   @@map("documents")
 }
 
@@ -272,6 +284,7 @@ model LoanScenario {
   scenarioData        String?   @map("scenario_data") // JSON: { inputs, programs, debts, programDebtSelections }
   preferredProgramId  String?   @map("preferred_program_id") // ID of the recommended program within scenarioData
   status              String    @default("DRAFT") // DRAFT, PROPOSED, SHARED, ARCHIVED
+  deletedAt           DateTime? @map("deleted_at")
   version             String    @default("1.0.0")
   recommendationNotes String?   @map("recommendation_notes") // MLO notes on why the preferred program is recommended
   sharedAt            DateTime? @map("shared_at") // When shared with client
@@ -282,6 +295,7 @@ model LoanScenario {
 
   @@index([clientId])
   @@index([status])
+  @@index([deletedAt])
   @@index([createdById])
   @@map("loan_scenarios")
 }
@@ -302,6 +316,7 @@ model LoanProgramTemplate {
   loanType        String    @default("conventional") @map("loan_type") // conventional, fha, va, usda, jumbo, portfolio
 
   isActive        Boolean   @default(true) @map("is_active")
+  deletedAt       DateTime? @map("deleted_at")
   sortOrder       Int       @default(0) @map("sort_order")
   notes           String?   // Internal notes about this program
 
@@ -312,6 +327,7 @@ model LoanProgramTemplate {
 
   @@index([createdById])
   @@index([isActive])
+  @@index([deletedAt])
   @@index([category])
   @@index([sortOrder])
   @@map("loan_program_templates")
@@ -374,12 +390,14 @@ model TaskTemplate {
   tags        String    @default("[]") // JSON array string
   dueDays     Int?      @map("due_days")
   steps       String?   // JSON array of subtask steps
+  deletedAt   DateTime? @map("deleted_at")
   createdById String?   @map("created_by_id")
   createdBy   User?     @relation("TaskTemplateCreator", fields: [createdById], references: [id])
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@index([type])
+  @@index([deletedAt])
   @@index([createdById])
   @@map("task_templates")
 }
@@ -409,10 +427,12 @@ model Notification {
   isRead      Boolean   @default(false) @map("is_read")
   readAt      DateTime? @map("read_at")
   metadata    String?   // JSON string for additional data
+  deletedAt   DateTime? @map("deleted_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([isRead])
+  @@index([deletedAt])
   @@index([createdAt])
   @@map("notifications")
 }
@@ -427,6 +447,7 @@ model CommunicationTemplate {
   body          String
   placeholders  String?   // JSON array of available placeholders (e.g., ["client_name", "due_date"])
   isActive      Boolean   @default(true) @map("is_active")
+  deletedAt     DateTime? @map("deleted_at")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -436,6 +457,7 @@ model CommunicationTemplate {
   @@index([type])
   @@index([category])
   @@index([isActive])
+  @@index([deletedAt])
   @@map("communication_templates")
 }
 
@@ -457,6 +479,7 @@ model Communication {
   createdById   String    @map("created_by_id")
   createdBy     User      @relation(fields: [createdById], references: [id])
   metadata      String?   // JSON string for additional data (e.g., email provider response)
+  deletedAt     DateTime? @map("deleted_at")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -465,6 +488,7 @@ model Communication {
   @@index([status])
   @@index([scheduledAt])
   @@index([followUpDate])
+  @@index([deletedAt])
   @@index([createdAt])
   @@map("communications")
 }
@@ -476,6 +500,7 @@ model Workflow {
   description   String?
   isActive      Boolean   @default(true) @map("is_active")
   isTemplate    Boolean   @default(false) @map("is_template")
+  deletedAt     DateTime? @map("deleted_at")
   triggerType   String    @map("trigger_type") // CLIENT_CREATED, CLIENT_STATUS_CHANGED, DOCUMENT_UPLOADED, etc.
   triggerConfig String?   @map("trigger_config") // JSON string for trigger configuration
   conditions    String?   // JSON string for workflow conditions
@@ -492,6 +517,7 @@ model Workflow {
 
   @@index([triggerType])
   @@index([isActive])
+  @@index([deletedAt])
   @@index([createdAt])
   @@map("workflows")
 }
@@ -606,6 +632,7 @@ model Event {
 
   // Metadata
   metadata        String?   // JSON string for additional data
+  deletedAt       DateTime? @map("deleted_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -616,6 +643,7 @@ model Event {
   @@index([taskId])
   @@index([createdById])
   @@index([status])
+  @@index([deletedAt])
   @@map("events")
 }
 
@@ -675,6 +703,7 @@ model Reminder {
   // Tags and metadata
   tags        String?   // JSON array of tags
   metadata    String?   // JSON string for additional data
+  deletedAt   DateTime? @map("deleted_at")
 
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
@@ -683,6 +712,7 @@ model Reminder {
   @@index([clientId])
   @@index([remindAt])
   @@index([status])
+  @@index([deletedAt])
   @@index([category])
   @@map("reminders")
 }
@@ -710,6 +740,7 @@ model CalendarShare {
 
   // Status
   isActive        Boolean  @default(true) @map("is_active")
+  deletedAt       DateTime? @map("deleted_at")
   acceptedAt      DateTime? @map("accepted_at")
 
   createdAt       DateTime @default(now()) @map("created_at")
@@ -720,5 +751,22 @@ model CalendarShare {
   @@index([sharedWithId])
   @@index([shareToken])
   @@index([isActive])
+  @@index([deletedAt])
   @@map("calendar_shares")
+}
+
+model EntityVersion {
+  id          String    @id @default(uuid())
+  entityType  String    @map("entity_type")
+  entityId    String    @map("entity_id")
+  operation   String
+  actorUserId String?   @map("actor_user_id")
+  beforeData  String?   @map("before_data")
+  afterData   String?   @map("after_data")
+  metadata    String?   // JSON string
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorUserId])
+  @@map("entity_versions")
 }

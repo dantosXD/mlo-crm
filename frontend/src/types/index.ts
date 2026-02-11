@@ -128,7 +128,13 @@ export interface Activity {
   clientId: string;
   type: string;
   description: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any> & {
+    direction?: 'inbound' | 'outbound';
+    duration?: number;
+    outcome?: string;
+    followUpDate?: string;
+    followUpNeeded?: boolean;
+  };
   user: { id: string; name: string };
   createdAt: string;
 }

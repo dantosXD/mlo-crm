@@ -383,11 +383,11 @@ export async function deleteTask(taskId: string, userId: string) {
 
   if (existingTask.clientId) {
     await prisma.activity.create({
-      data: { clientId: existingTask.clientId, userId, type: 'TASK_DELETED', description: `Task "${existingTask.text}" deleted` },
+      data: { clientId: existingTask.clientId, userId, type: 'TASK_ARCHIVED', description: `Task "${existingTask.text}" archived` },
     });
   }
 
-  return { message: 'Task deleted successfully' };
+  return { message: 'Task archived successfully' };
 }
 
 // ─── bulk operations ────────────────────────────────────────────────────────
@@ -512,7 +512,7 @@ export async function updateSubtask(
 export async function deleteSubtask(taskId: string, subtaskId: string, userId: string) {
   await verifyTaskOwnership(taskId, userId);
   await prisma.taskSubtask.delete({ where: { id: subtaskId } });
-  return { message: 'Subtask deleted successfully' };
+  return { message: 'Subtask archived successfully' };
 }
 
 export async function toggleSubtask(taskId: string, subtaskId: string, userId: string) {
@@ -677,7 +677,7 @@ export async function createTaskTemplate(
 
 export async function deleteTaskTemplate(templateId: string) {
   await prisma.taskTemplate.delete({ where: { id: templateId } });
-  return { message: 'Task template deleted successfully' };
+  return { message: 'Task template archived successfully' };
 }
 
 // ─── attachments ────────────────────────────────────────────────────────────
@@ -713,7 +713,7 @@ export async function createTaskAttachment(
 export async function deleteTaskAttachment(taskId: string, attachmentId: string, userId: string) {
   await verifyTaskOwnership(taskId, userId);
   await prisma.taskAttachment.delete({ where: { id: attachmentId } });
-  return { message: 'Task attachment deleted successfully' };
+  return { message: 'Task attachment archived successfully' };
 }
 
 // ─── claim & clone ──────────────────────────────────────────────────────────

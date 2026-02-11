@@ -5,3 +5,4 @@ export { TasksTab } from './TasksTab';
 export { LoansTab } from './LoansTab';
 export { CommunicationsTab } from './CommunicationsTab';
 export { ActivityTab } from './ActivityTab';
+export { ActivitySidebar } from './ActivitySidebar';

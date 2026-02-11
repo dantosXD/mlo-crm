@@ -175,7 +175,7 @@ export async function deleteEvent(id: string, userId: string) {
   const existing = await prisma.event.findFirst({ where: { id, createdById: userId } });
   assertFound(existing, 'Event');
   await prisma.event.delete({ where: { id } });
-  return { message: 'Event deleted successfully' };
+  return { message: 'Event archived successfully' };
 }
 
 export async function updateEventStatus(id: string, status: string, userId: string) {

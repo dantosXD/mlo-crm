@@ -1,5 +1,4 @@
 import { Router, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import {
   fireDocumentUploadedTrigger,
@@ -8,15 +7,14 @@ import {
 import {
   uploadFileToS3,
   getPresignedDownloadUrl,
-  deleteFileFromS3,
 } from '../utils/s3.js';
 import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 import multer from 'multer';
 import fs from 'fs';
+import prisma from '../utils/prisma.js';
 
 const router = Router();
-const prisma = new PrismaClient();
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Configure multer for in-memory uploads (persist to object storage)
@@ -600,30 +598,17 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
 
     await prisma.document.delete({ where: { id } });
 
+    // Non-destructive policy: keep source files for audit/recovery.
     if (document.filePath) {
       const localPath = isLikelyLocalPath(document.filePath);
-
       if (!isProduction && localPath && fs.existsSync(document.filePath)) {
-        try {
-          fs.unlinkSync(document.filePath);
-        } catch (unlinkError) {
-          logger.warn('document_local_file_delete_failed', {
-            documentId: id,
-            error: unlinkError instanceof Error ? unlinkError.message : String(unlinkError),
-          });
-        }
+        logger.info('document_local_file_retained_for_archive', { documentId: id });
       } else if (!localPath) {
-        await deleteFileFromS3(document.filePath).catch(() => {
-          // Storage cleanup failures should not block API delete.
-        });
-      } else {
-        logger.warn('document_legacy_local_path_delete_skipped', {
-          documentId: id,
-        });
+        logger.info('document_object_storage_file_retained_for_archive', { documentId: id });
       }
     }
 
-    res.json({ message: 'Document deleted successfully' });
+    res.json({ message: 'Document archived successfully' });
   } catch (error) {
     logger.error('document_delete_failed', {
       error: error instanceof Error ? error.message : String(error),

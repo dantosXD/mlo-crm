@@ -322,11 +322,11 @@ router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Prevent deleting self
+    // Prevent archiving self
     if (id === req.user!.userId) {
       return res.status(400).json({
         error: 'Validation Error',
-        message: 'Cannot delete your own account',
+        message: 'Cannot archive your own account',
       });
     }
 
@@ -336,12 +336,12 @@ router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
     await prisma.activity.create({
       data: {
         userId: req.user!.userId,
-        type: 'USER_DELETED',
-        description: `Admin deleted user ${existingUser.name} (${existingUser.email})`,
+        type: 'USER_ARCHIVED',
+        description: `Admin archived user ${existingUser.name} (${existingUser.email})`,
       },
     });
 
-    res.json({ message: 'User deleted successfully' });
+    res.json({ message: 'User archived successfully' });
   } catch (error) {
     console.error('Error deleting user:', error);
     res.status(500).json({

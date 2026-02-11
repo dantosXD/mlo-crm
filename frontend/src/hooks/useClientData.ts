@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../utils/api';
 import type { Client, Note, Task, LoanScenario, ClientDocument, Activity } from '../types';
 
@@ -74,5 +74,31 @@ export function useClientActivities(id: string | undefined) {
       return response.json() as Promise<Activity[]>;
     },
     enabled: !!id,
+  });
+}
+
+export function useLogInteraction(clientId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      type: string;
+      description: string;
+      metadata?: Record<string, any>;
+      occurredAt?: string;
+    }) => {
+      const response = await api.post('/activities', {
+        clientId,
+        ...data,
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || 'Failed to log interaction');
+      }
+      return response.json() as Promise<Activity>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client-activities', clientId] });
+    },
   });
 }

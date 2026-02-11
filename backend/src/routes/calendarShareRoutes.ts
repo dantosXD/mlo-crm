@@ -1,10 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { authenticateToken } from '../middleware/auth';
 import { randomBytes } from 'crypto';
+import prisma from '../utils/prisma.js';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // GET /api/calendar/shares - Get all shares for my calendar (shares I created)
 router.get('/shares', authenticateToken, async (req: Request, res: Response) => {
