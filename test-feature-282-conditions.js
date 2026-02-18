@@ -16,14 +16,30 @@ const TEST_USER = {
 
 let authToken = null;
 let testClientId = null;
+const API_URL = (process.env.API_URL || 'http://localhost:3002').replace(/\/$/, '');
+let csrfToken = null;
+let sessionCookie = null;
+
+function syncCsrfState(res) {
+  const headerToken = res.headers.get('X-CSRF-Token');
+  if (headerToken) {
+    csrfToken = headerToken;
+  }
+
+  const setCookie = res.headers.get('set-cookie');
+  if (setCookie) {
+    sessionCookie = setCookie.split(';')[0];
+  }
+}
 
 // Login
 async function login() {
-  const res = await fetch('http://localhost:3000/api/auth/login', {
+  const res = await fetch(`${API_URL}/api/auth/login`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(TEST_USER)
   });
+  syncCsrfState(res);
   const data = await res.json();
   authToken = data.accessToken;
   return authToken;
@@ -32,9 +48,13 @@ async function login() {
 // Get or create client
 async function getTestClient() {
   // Try to get the tagged client we just created
-  const res = await fetch('http://localhost:3000/api/clients', {
-    headers: {'Authorization': `Bearer ${authToken}`}
+  const res = await fetch(`${API_URL}/api/clients`, {
+    headers: {
+      'Authorization': `Bearer ${authToken}`,
+      ...(sessionCookie ? { Cookie: sessionCookie } : {})
+    }
   });
+  syncCsrfState(res);
   const clients = await res.json();
 
   if (Array.isArray(clients)) {
@@ -51,11 +71,13 @@ async function getTestClient() {
   }
 
   // Create test client
-  const createRes = await fetch('http://localhost:3000/api/clients', {
+  const createRes = await fetch(`${API_URL}/api/clients`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${authToken}`,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      ...(sessionCookie ? { Cookie: sessionCookie } : {})
     },
     body: JSON.stringify({
       name: 'Condition Test Client',
@@ -65,20 +87,24 @@ async function getTestClient() {
       tags: JSON.stringify(['test-tag', 'priority'])
     })
   });
+  syncCsrfState(createRes);
   const client = await createRes.json();
   return client.id;
 }
 
 // Test condition evaluation
 async function testCondition(conditions, clientId) {
-  const res = await fetch('http://localhost:3000/api/workflows/test-condition', {
+  const res = await fetch(`${API_URL}/api/workflows/test-condition`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${authToken}`
+      'Authorization': `Bearer ${authToken}`,
+      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      ...(sessionCookie ? { Cookie: sessionCookie } : {})
     },
     body: JSON.stringify({ conditions, clientId })
   });
+  syncCsrfState(res);
   return await res.json();
 }
 

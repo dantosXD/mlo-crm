@@ -7,6 +7,7 @@ import prisma from '../utils/prisma.js';
 import { getEnv } from '../config/env.js';
 import { recordAuthAttempt } from '../monitoring/metrics.js';
 import { logger } from '../utils/logger.js';
+import { sendPasswordResetEmail } from '../services/mailerService.js';
 
 const env = getEnv();
 const JWT_SECRET = env.JWT_SECRET;
@@ -14,6 +15,7 @@ const JWT_EXPIRES_IN = env.JWT_EXPIRES_IN;
 const REFRESH_TOKEN_EXPIRES_IN = env.REFRESH_TOKEN_EXPIRES_IN;
 const REFRESH_TOKEN_COOKIE_NAME = env.REFRESH_TOKEN_COOKIE_NAME;
 const isProduction = env.NODE_ENV === 'production';
+const PASSWORD_RESET_TOKEN_EXPIRES_MS = 60 * 60 * 1000; // 1 hour
 
 interface JwtPayload {
   userId: string;
@@ -66,6 +68,46 @@ function clearRefreshTokenCookie(res: Response) {
 
 function readRefreshTokenFromRequest(req: Request): string | null {
   return req.cookies?.[REFRESH_TOKEN_COOKIE_NAME] || null;
+}
+
+function hashResetToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function getResetLinkBaseUrl(req: Request): string {
+  if (env.FRONTEND_URL) {
+    return env.FRONTEND_URL.replace(/\/+$/, '');
+  }
+
+  const host = req.get('host');
+  if (host) {
+    return `${req.protocol}://${host}`;
+  }
+
+  return 'http://localhost:5173';
+}
+
+async function issuePasswordResetToken(userId: string): Promise<{ token: string; expiresAt: Date }> {
+  const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashResetToken(token);
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_EXPIRES_MS);
+
+  await prisma.passwordResetToken.deleteMany({
+    where: {
+      userId,
+      OR: [{ usedAt: null }, { expiresAt: { lt: new Date() } }],
+    },
+  });
+
+  await prisma.passwordResetToken.create({
+    data: {
+      userId,
+      tokenHash,
+      expiresAt,
+    },
+  });
+
+  return { token, expiresAt };
 }
 
 export async function login(req: Request, res: Response) {
@@ -247,17 +289,23 @@ export async function register(req: Request, res: Response) {
       },
     });
 
+    // Generate CSRF token for the session
+    const csrfToken = crypto.randomBytes(32).toString('hex');
+
     setRefreshTokenCookie(res, refreshToken);
 
-    return res.status(201).json({
-      accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
-    });
+    return res
+      .status(201)
+      .header('X-CSRF-Token', csrfToken)
+      .json({
+        accessToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
+      });
   } catch (error) {
     logger.error('auth_register_failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({
@@ -375,6 +423,224 @@ export async function logout(req: Request, res: Response) {
     return res.status(500).json({
       error: 'Internal Server Error',
       message: 'An error occurred during logout',
+    });
+  }
+}
+
+export async function forgotPassword(req: Request, res: Response) {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Email is required',
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    let debugResetLink: string | undefined;
+
+    if (user && user.isActive) {
+      const { token, expiresAt } = await issuePasswordResetToken(user.id);
+      const resetLink = `${getResetLinkBaseUrl(req)}/reset-password?token=${encodeURIComponent(token)}`;
+
+      await prisma.activity.create({
+        data: {
+          userId: user.id,
+          type: 'PASSWORD_RESET_REQUESTED',
+          description: `Password reset requested for ${user.email}`,
+          ipAddress: req.ip,
+          userAgent: req.get('User-Agent'),
+        },
+      });
+
+      let emailDeliveryError: string | null = null;
+      try {
+        await sendPasswordResetEmail({
+          to: user.email,
+          resetLink,
+          expiresAt,
+        });
+      } catch (error) {
+        emailDeliveryError = error instanceof Error ? error.message : String(error);
+        logger.error('auth_password_reset_email_failed', {
+          userId: user.id,
+          email: user.email,
+          error: emailDeliveryError,
+        });
+      }
+
+      await prisma.activity.create({
+        data: {
+          userId: user.id,
+          type: emailDeliveryError ? 'PASSWORD_RESET_EMAIL_FAILED' : 'PASSWORD_RESET_EMAIL_SENT',
+          description: emailDeliveryError
+            ? `Password reset email delivery failed for ${user.email}`
+            : `Password reset email sent to ${user.email}`,
+          ipAddress: req.ip,
+          userAgent: req.get('User-Agent'),
+        },
+      });
+
+      logger.info('auth_password_reset_requested', {
+        userId: user.id,
+        email: user.email,
+        expiresAt: expiresAt.toISOString(),
+        emailDeliveryError,
+        ...(env.NODE_ENV === 'development' ? { resetLink } : {}),
+      });
+
+      if (!isProduction) {
+        debugResetLink = resetLink;
+      }
+    }
+
+    return res.json({
+      message: 'If an account exists for that email, a password reset link has been sent.',
+      ...(debugResetLink ? { debugResetLink } : {}),
+    });
+  } catch (error) {
+    logger.error('auth_forgot_password_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'An error occurred while processing password reset request',
+    });
+  }
+}
+
+export async function validatePasswordResetToken(req: Request, res: Response) {
+  try {
+    const token = typeof req.query.token === 'string'
+      ? req.query.token
+      : typeof req.body?.token === 'string'
+        ? req.body.token
+        : '';
+
+    if (!token) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Reset token is required',
+      });
+    }
+
+    const tokenHash = hashResetToken(token);
+    const resetToken = await prisma.passwordResetToken.findFirst({
+      where: {
+        tokenHash,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      include: {
+        user: {
+          select: { isActive: true },
+        },
+      },
+    });
+
+    if (!resetToken || !resetToken.user.isActive) {
+      return res.status(400).json({
+        error: 'Invalid Token',
+        message: 'Password reset token is invalid or expired',
+      });
+    }
+
+    return res.json({ valid: true });
+  } catch (error) {
+    logger.error('auth_validate_reset_token_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'An error occurred while validating reset token',
+    });
+  }
+}
+
+export async function resetPassword(req: Request, res: Response) {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Reset token is required',
+      });
+    }
+
+    if (!newPassword || typeof newPassword !== 'string') {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'New password is required',
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'New password must be at least 8 characters',
+      });
+    }
+
+    const tokenHash = hashResetToken(token);
+    const resetToken = await prisma.passwordResetToken.findFirst({
+      where: {
+        tokenHash,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!resetToken || !resetToken.user.isActive) {
+      return res.status(400).json({
+        error: 'Invalid Token',
+        message: 'Password reset token is invalid or expired',
+      });
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 12);
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: resetToken.userId },
+        data: { passwordHash: newPasswordHash },
+      }),
+      prisma.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { usedAt: new Date() },
+      }),
+      prisma.refreshToken.deleteMany({
+        where: { userId: resetToken.userId },
+      }),
+      prisma.activity.create({
+        data: {
+          userId: resetToken.userId,
+          type: 'PASSWORD_RESET_COMPLETED',
+          description: 'User reset their password',
+          ipAddress: req.ip,
+          userAgent: req.get('User-Agent'),
+        },
+      }),
+    ]);
+
+    return res.json({
+      message: 'Password reset successfully. Please sign in with your new password.',
+    });
+  } catch (error) {
+    logger.error('auth_reset_password_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'An error occurred while resetting password',
     });
   }
 }

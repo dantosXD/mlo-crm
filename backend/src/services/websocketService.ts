@@ -1,6 +1,8 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import { authenticateSocket } from '../middleware/socketAuth.js';
+import { logger } from '../utils/logger.js';
+import { getEnv } from '../config/env.js';
 
 let io: SocketIOServer | null = null;
 
@@ -9,13 +11,15 @@ let io: SocketIOServer | null = null;
  */
 export const initializeWebSocket = (httpServer: HTTPServer) => {
   if (io) {
-    console.log('WebSocket already initialized');
+    logger.info('websocket_already_initialized');
     return io;
   }
 
+  const env = getEnv();
+
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      origin: env.FRONTEND_URL || 'http://localhost:5173',
       credentials: true,
       methods: ['GET', 'POST']
     },
@@ -28,7 +32,7 @@ export const initializeWebSocket = (httpServer: HTTPServer) => {
   // Connection handler
   io.on('connection', (socket) => {
     const userId = (socket.data as any).userId;
-    console.log(`WebSocket client connected: ${socket.id} for user: ${userId}`);
+    logger.info('websocket_client_connected', { socketId: socket.id, userId });
 
     // Join user's personal room
     socket.join(`user:${userId}`);
@@ -37,52 +41,52 @@ export const initializeWebSocket = (httpServer: HTTPServer) => {
     socket.on('subscribe:tasks', (clientId: string) => {
       if (clientId) {
         socket.join(`tasks:client:${clientId}`);
-        console.log(`Socket ${socket.id} subscribed to tasks for client ${clientId}`);
+        logger.info('websocket_subscribed_tasks_client', { socketId: socket.id, clientId });
       } else {
         socket.join('tasks:all');
-        console.log(`Socket ${socket.id} subscribed to all tasks`);
+        logger.info('websocket_subscribed_tasks_all', { socketId: socket.id });
       }
     });
 
     socket.on('unsubscribe:tasks', (clientId: string) => {
       if (clientId) {
         socket.leave(`tasks:client:${clientId}`);
-        console.log(`Socket ${socket.id} unsubscribed from tasks for client ${clientId}`);
+        logger.info('websocket_unsubscribed_tasks_client', { socketId: socket.id, clientId });
       } else {
         socket.leave('tasks:all');
-        console.log(`Socket ${socket.id} unsubscribed from all tasks`);
+        logger.info('websocket_unsubscribed_tasks_all', { socketId: socket.id });
       }
     });
 
     // Join calendar-related rooms
     socket.on('subscribe:calendar', () => {
       socket.join(`calendar:${userId}`);
-      console.log(`Socket ${socket.id} subscribed to calendar for user ${userId}`);
+      logger.info('websocket_subscribed_calendar', { socketId: socket.id, userId });
     });
 
     socket.on('unsubscribe:calendar', () => {
       socket.leave(`calendar:${userId}`);
-      console.log(`Socket ${socket.id} unsubscribed from calendar`);
+      logger.info('websocket_unsubscribed_calendar', { socketId: socket.id, userId });
     });
 
     // Join reminder-related rooms
     socket.on('subscribe:reminders', () => {
       socket.join(`reminders:${userId}`);
-      console.log(`Socket ${socket.id} subscribed to reminders for user ${userId}`);
+      logger.info('websocket_subscribed_reminders', { socketId: socket.id, userId });
     });
 
     socket.on('unsubscribe:reminders', () => {
       socket.leave(`reminders:${userId}`);
-      console.log(`Socket ${socket.id} unsubscribed from reminders`);
+      logger.info('websocket_unsubscribed_reminders', { socketId: socket.id, userId });
     });
 
     // Disconnect handler
     socket.on('disconnect', () => {
-      console.log(`WebSocket client disconnected: ${socket.id} for user: ${userId}`);
+      logger.info('websocket_client_disconnected', { socketId: socket.id, userId });
     });
   });
 
-  console.log('WebSocket server initialized');
+  logger.info('websocket_server_initialized');
   return io;
 };
 

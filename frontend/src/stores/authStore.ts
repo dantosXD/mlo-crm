@@ -18,6 +18,7 @@ interface AuthState {
   error: string | null;
   lastActivity: number | null; // Timestamp of last user activity
   hasHydrated: boolean;
+  sessionExpired: boolean; // Set when token refresh fails mid-session
 
   // Actions
   login: (email: string, password: string) => Promise<boolean>;
@@ -29,6 +30,7 @@ interface AuthState {
   updateLastActivity: () => void;
   checkSessionTimeout: (timeoutMinutes: number) => boolean;
   setHasHydrated: (value: boolean) => void;
+  clearSessionExpired: () => void;
 }
 
 type PersistedAuthState = {
@@ -69,6 +71,7 @@ export const useAuthStore = create<AuthState>()(
       error: null,
       lastActivity: null,
       hasHydrated: false,
+      sessionExpired: false,
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -174,6 +177,7 @@ export const useAuthStore = create<AuthState>()(
                 isAuthenticated: false,
                 error: null,
                 lastActivity: null,
+                sessionExpired: true,
               });
             }
             return false;
@@ -212,6 +216,10 @@ export const useAuthStore = create<AuthState>()(
 
       setHasHydrated: (value: boolean) => {
         set({ hasHydrated: value });
+      },
+
+      clearSessionExpired: () => {
+        set({ sessionExpired: false });
       },
     }),
     {

@@ -15,7 +15,7 @@ import {
 } from '@mantine/core';
 import { IconBell, IconBellRinging, IconCheck, IconTrash } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../utils/api';
+import { api, isTransientRequestError } from '../utils/api';
 import { useAuthStore } from '../stores/authStore';
 
 interface Notification {
@@ -52,7 +52,9 @@ export function NotificationCenter() {
         setNotifications(data);
       }
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      if (!isTransientRequestError(error)) {
+        console.error('Error fetching notifications:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -72,7 +74,9 @@ export function NotificationCenter() {
         setUnreadCount(data.count);
       }
     } catch (error) {
-      console.error('Error fetching unread count:', error);
+      if (!isTransientRequestError(error)) {
+        console.error('Error fetching unread count:', error);
+      }
     }
   };
 
@@ -89,7 +93,9 @@ export function NotificationCenter() {
         setUnreadCount(prev => Math.max(0, prev - 1));
       }
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      if (!isTransientRequestError(error)) {
+        console.error('Error marking notification as read:', error);
+      }
     }
   };
 
@@ -104,7 +110,9 @@ export function NotificationCenter() {
         setUnreadCount(0);
       }
     } catch (error) {
-      console.error('Error marking all as read:', error);
+      if (!isTransientRequestError(error)) {
+        console.error('Error marking all as read:', error);
+      }
     }
   };
 
@@ -124,7 +132,9 @@ export function NotificationCenter() {
         });
       }
     } catch (error) {
-      console.error('Error deleting notification:', error);
+      if (!isTransientRequestError(error)) {
+        console.error('Error deleting notification:', error);
+      }
     }
   };
 
@@ -168,6 +178,7 @@ export function NotificationCenter() {
     >
       <Menu.Target>
         <UnstyledButton
+          aria-label="Notifications"
           style={{
             padding: '8px',
             borderRadius: 8,

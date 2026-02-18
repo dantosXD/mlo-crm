@@ -30,6 +30,8 @@ import { QuickCapture } from './components/QuickCapture';
 import { NotificationCenter } from './components/NotificationCenter';
 import { AiChatSidebar } from './components/AiChatSidebar';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Admin from './pages/Admin';
 import AccessDenied from './pages/AccessDenied';
 import Clients from './pages/Clients';
@@ -52,12 +54,6 @@ import Calendar from './pages/Calendar';
 import RemindersDashboard from './pages/RemindersDashboard';
 import LoanScenarios from './pages/LoanScenarios';
 import LoanProgramSettings from './pages/LoanProgramSettings';
-
-const ForgotPassword = () => (
-  <Center h="100vh">
-    <Text size="xl">Forgot Password - Coming Soon</Text>
-  </Center>
-);
 
 // Role-protected route wrapper
 function AdminRoute({ children }: { children: React.ReactNode }) {
@@ -260,16 +256,28 @@ function ProtectedLayout() {
   const location = useLocation();
   const currentPath = location.pathname;
   const navigate = useNavigate();
-  const { user, logout, updateLastActivity, checkSessionTimeout } = useAuthStore();
+  const { user, logout, updateLastActivity, checkSessionTimeout, sessionExpired, clearSessionExpired } = useAuthStore();
   const isReadOnly = isReadOnlyRole(user?.role);
 
   // Session timeout configuration
   const SESSION_TIMEOUT_MINUTES = parseInt(import.meta.env.VITE_SESSION_TIMEOUT_MINUTES || '15', 10);
-  const sessionTimeoutMs = SESSION_TIMEOUT_MINUTES * 60 * 1000;
 
-  // Track session expiry notification
+  // Track session expiry notification and its cause
   const [showSessionExpiry, setShowSessionExpiry] = useState(false);
-  const expiryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [sessionExpiryReason, setSessionExpiryReason] = useState<'inactivity' | 'token'>('inactivity');
+
+  // React to token-refresh-failure session expiry (separate from inactivity timeout)
+  useEffect(() => {
+    if (sessionExpired) {
+      clearSessionExpired();
+      setSessionExpiryReason('token');
+      setShowSessionExpiry(true);
+      setTimeout(() => {
+        setShowSessionExpiry(false);
+        navigate('/login');
+      }, 5000);
+    }
+  }, [sessionExpired, clearSessionExpired, navigate]);
   const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Store the latest checkSessionTimeout function in a ref
@@ -309,6 +317,7 @@ function ProtectedLayout() {
       const didExpire = checkSessionTimeoutRef.current(SESSION_TIMEOUT_MINUTES);
       if (didExpire) {
         // Show notification first
+        setSessionExpiryReason('inactivity');
         setShowSessionExpiry(true);
         // Logout the user
         await logoutRef.current();
@@ -369,7 +378,9 @@ function ProtectedLayout() {
             maxWidth: 400,
           }}
         >
-          Your session has expired due to inactivity. Please log in again.
+          {sessionExpiryReason === 'token'
+            ? 'Your session could not be renewed. Please log in again.'
+            : 'Your session has expired due to inactivity. Please log in again.'}
         </Notification>
       )}
 
@@ -539,6 +550,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="*" element={<RequireAuth />} />
       </Routes>
     );

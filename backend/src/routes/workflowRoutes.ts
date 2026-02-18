@@ -78,6 +78,55 @@ router.post('/templates/:id/use', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), asy
   }
 });
 
+// --- execution control (must be before /:id to avoid route shadowing) ---
+
+router.get('/executions', async (req: AuthRequest, res: Response) => {
+  try {
+    const { page, limit, client_id, workflow_id, status } = req.query;
+    const result = await workflowService.listExecutions({
+      page: page ? parseInt(page as string) : undefined,
+      limit: limit ? parseInt(limit as string) : undefined,
+      clientId: client_id as string | undefined,
+      workflowId: workflow_id as string | undefined,
+      status: status as string | undefined,
+    });
+    res.json(result);
+  } catch (error) {
+    handleError(res, error, 'Failed to fetch workflow executions');
+  }
+});
+
+router.post('/executions/:id/pause', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await workflowService.pauseExecution(req.params.id);
+    res.json(result);
+  } catch (error) {
+    handleError(res, error, 'Failed to pause workflow execution');
+  }
+});
+
+router.post('/executions/:id/resume', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await workflowService.resumeExecution(req.params.id, req.user?.userId);
+    (result as any).success === false ? res.status(400).json(result) : res.json(result);
+  } catch (error) {
+    handleError(res, error, 'Failed to resume workflow execution');
+  }
+});
+
+// --- import / export (must be before /:id to avoid route shadowing) ---
+
+router.post('/import', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const { workflowData, asTemplate } = req.body;
+    const result = await workflowService.importWorkflow(workflowData, req.user.userId, asTemplate);
+    res.status(201).json(result);
+  } catch (error) {
+    handleError(res, error, 'Failed to import workflow');
+  }
+});
+
 // --- single workflow ---
 
 router.get('/:id', async (req: AuthRequest, res: Response) => {
@@ -194,42 +243,6 @@ router.post('/:id/trigger', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// --- execution control ---
-
-router.get('/executions', async (req: AuthRequest, res: Response) => {
-  try {
-    const { page, limit, client_id, workflow_id, status } = req.query;
-    const result = await workflowService.listExecutions({
-      page: page ? parseInt(page as string) : undefined,
-      limit: limit ? parseInt(limit as string) : undefined,
-      clientId: client_id as string | undefined,
-      workflowId: workflow_id as string | undefined,
-      status: status as string | undefined,
-    });
-    res.json(result);
-  } catch (error) {
-    handleError(res, error, 'Failed to fetch workflow executions');
-  }
-});
-
-router.post('/executions/:id/pause', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
-  try {
-    const result = await workflowService.pauseExecution(req.params.id);
-    res.json(result);
-  } catch (error) {
-    handleError(res, error, 'Failed to pause workflow execution');
-  }
-});
-
-router.post('/executions/:id/resume', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
-  try {
-    const result = await workflowService.resumeExecution(req.params.id, req.user?.userId);
-    (result as any).success === false ? res.status(400).json(result) : res.json(result);
-  } catch (error) {
-    handleError(res, error, 'Failed to resume workflow execution');
-  }
-});
-
 // --- import / export ---
 
 router.get('/:id/export', async (req: AuthRequest, res: Response) => {
@@ -240,17 +253,6 @@ router.get('/:id/export', async (req: AuthRequest, res: Response) => {
     res.json({ version: result.version, exportedAt: result.exportedAt, workflow: result.workflow });
   } catch (error) {
     handleError(res, error, 'Failed to export workflow');
-  }
-});
-
-router.post('/import', authorizeRoles('ADMIN', 'MANAGER', 'MLO'), async (req: AuthRequest, res: Response) => {
-  try {
-    if (!req.user?.userId) return res.status(401).json({ error: 'Unauthorized' });
-    const { workflowData, asTemplate } = req.body;
-    const result = await workflowService.importWorkflow(workflowData, req.user.userId, asTemplate);
-    res.status(201).json(result);
-  } catch (error) {
-    handleError(res, error, 'Failed to import workflow');
   }
 });
 

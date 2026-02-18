@@ -103,9 +103,9 @@ export async function fireTaskCompletedTrigger(taskId: string, clientId: string 
   await fireTrigger('TASK_COMPLETED', { taskId, clientId, userId, timestamp: new Date().toISOString() });
 }
 
-export async function fireTaskOverdueTrigger(taskId: string, clientId: string | null, dueDate: Date, daysOverdue: number): Promise<void> {
+export async function fireTaskOverdueTrigger(taskId: string, clientId: string | null, dueDate: Date, daysOverdue: number, userId = ''): Promise<void> {
   if (!clientId) return;
-  await fireTrigger('TASK_OVERDUE', { taskId, clientId, userId: '', dueDate: dueDate.toISOString(), daysOverdue, timestamp: new Date().toISOString() } as any);
+  await fireTrigger('TASK_OVERDUE', { taskId, clientId, userId, dueDate: dueDate.toISOString(), daysOverdue, timestamp: new Date().toISOString() });
 }
 
 export async function fireTaskAssignedTrigger(taskId: string, clientId: string | null, assignedToId: string, assignedBy: string): Promise<void> {

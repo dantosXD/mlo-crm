@@ -151,9 +151,9 @@ export async function checkDateBasedWorkflows(): Promise<void> {
         const offsetDays = triggerConfig.offsetDays || 0;
         const customDate = triggerConfig.customDate;
 
-        // Calculate target date
+        // Calculate target date. Positive offset means "after", negative means "before".
         const targetDate = new Date(today);
-        targetDate.setDate(targetDate.getDate() - offsetDays); // Negative offset = future, Positive = past
+        targetDate.setDate(targetDate.getDate() - offsetDays);
 
         // Find clients matching the date criteria
         let clients: any[] = [];
@@ -174,11 +174,35 @@ export async function checkDateBasedWorkflows(): Promise<void> {
             },
             take: 100,
           });
-        } else if (customDate) {
-          // For custom dates, we need to find clients that match some criteria
-          // This is a placeholder - in practice, you might have a client.customDate field or similar
-          // For now, we'll skip custom date workflows
-          console.log(`[Date-Based Workflows] Skipping custom date workflow ${workflow.id} (not implemented)`);
+        } else if (dateField === 'custom' && customDate) {
+          const baseDate = new Date(customDate);
+          if (Number.isNaN(baseDate.getTime())) {
+            console.warn(`[Date-Based Workflows] Invalid customDate for workflow ${workflow.id}`);
+            continue;
+          }
+
+          baseDate.setHours(0, 0, 0, 0);
+          const triggerDate = new Date(baseDate);
+          triggerDate.setDate(triggerDate.getDate() + offsetDays);
+
+          if (triggerDate.getTime() === today.getTime()) {
+            console.log(
+              `[Date-Based Workflows] Executing custom-date workflow ${workflow.name} (${workflow.id})`
+            );
+
+            await executeWorkflow(workflow.id, {
+              clientId: undefined,
+              triggerType: 'DATE_BASED',
+              triggerData: {
+                dateField,
+                customDate: baseDate.toISOString(),
+                offsetDays,
+                targetDate: triggerDate.toISOString(),
+              },
+              userId: workflow.createdById,
+            });
+          }
+
           continue;
         }
 

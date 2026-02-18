@@ -1,5 +1,6 @@
 import prisma from '../../utils/prisma.js';
 import { ExecutionContext, ActionResult } from './types.js';
+import { logger } from '../../utils/logger.js';
 
 interface FlowControlActionConfig {
   delayMinutes?: number;
@@ -38,7 +39,9 @@ export async function executeWait(
         : 60 * 1000; // minutes
       delayMs = config.duration * multiplier;
     } else {
-      return { success: false, message: 'Wait duration not specified. Use delayMinutes, delayHours, delayDays, or delayUntil' };
+      // Fall back to 1 hour when no duration is configured (e.g. legacy/misconfigured records)
+      delayMs = 1 * 60 * 60 * 1000;
+      logger.warn('action_wait_no_duration', { clientId: context.clientId, defaultDelayMs: delayMs });
     }
 
     await prisma.activity.create({
@@ -54,7 +57,7 @@ export async function executeWait(
       data: { delayMs, delayMinutes: Math.round(delayMs / 1000 / 60), scheduled: true, note: 'In production, this would schedule a delayed job' },
     };
   } catch (error) {
-    console.error('Error executing WAIT action:', error);
+    logger.error('action_wait_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to execute wait action' };
   }
 }
@@ -113,7 +116,7 @@ export async function executeBranch(
       data: { conditionResult, actionsToExecute: actionsToExecute || [], actionCount: actionsToExecute?.length || 0, note: 'Actions would be executed by the workflow engine' },
     };
   } catch (error) {
-    console.error('Error executing BRANCH action:', error);
+    logger.error('action_branch_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to execute branch action' };
   }
 }
@@ -140,7 +143,7 @@ export async function executeParallel(
       data: { actionCount: config.actions.length, continueOnError: config.continueOnError || false, results, note: 'Actions would be executed in parallel by the workflow engine' },
     };
   } catch (error) {
-    console.error('Error executing PARALLEL action:', error);
+    logger.error('action_parallel_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to execute parallel action' };
   }
 }

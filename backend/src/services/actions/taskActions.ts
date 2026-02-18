@@ -1,5 +1,6 @@
 import prisma from '../../utils/prisma.js';
 import { ExecutionContext, ActionResult, replacePlaceholders, getClientData } from './types.js';
+import { logger } from '../../utils/logger.js';
 
 interface TaskActionConfig {
   text?: string;
@@ -49,7 +50,7 @@ export async function executeCreateTask(
 
     return { success: true, message: 'Task created successfully', data: { taskId: task.id, text: finalText, priority: task.priority, dueDate: task.dueDate, assignedToId } };
   } catch (error) {
-    console.error('Error executing CREATE_TASK action:', error);
+    logger.error('action_create_task_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to create task' };
   }
 }
@@ -79,7 +80,7 @@ export async function executeCompleteTask(
 
     return { success: true, message: 'Task completed successfully', data: { taskId: updatedTask.id, status: updatedTask.status, completedAt: updatedTask.completedAt } };
   } catch (error) {
-    console.error('Error executing COMPLETE_TASK action:', error);
+    logger.error('action_complete_task_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to complete task' };
   }
 }
@@ -117,7 +118,7 @@ export async function executeAssignTask(
 
     return { success: true, message: 'Task assigned successfully', data: { taskId: updatedTask.id, assignedToId, assignedToName: assignee?.name } };
   } catch (error) {
-    console.error('Error executing ASSIGN_TASK action:', error);
+    logger.error('action_assign_task_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to assign task' };
   }
 }

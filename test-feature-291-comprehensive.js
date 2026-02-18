@@ -16,10 +16,11 @@ const TEST_USER = {
 let authToken = null;
 let userId = null;
 let clientId = null;
+const API_URL = (process.env.API_URL || 'http://localhost:3002').replace(/\/$/, '');
 
 // Login
 async function login() {
-  const res = await fetch('http://localhost:3000/api/auth/login', {
+  const res = await fetch(`${API_URL}/api/auth/login`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(TEST_USER)
@@ -34,7 +35,7 @@ async function login() {
 
 // Get client
 async function getClient() {
-  const res = await fetch('http://localhost:3000/api/clients', {
+  const res = await fetch(`${API_URL}/api/clients`, {
     headers: {'Authorization': `Bearer ${authToken}`}
   });
   const clients = await res.json();
@@ -44,7 +45,7 @@ async function getClient() {
   }
 
   // Create client
-  const createRes = await fetch('http://localhost:3000/api/clients', {
+  const createRes = await fetch(`${API_URL}/api/clients`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${authToken}`,
@@ -63,7 +64,7 @@ async function getClient() {
 
 // Call webhook action
 async function callWebhook(config) {
-  const res = await fetch('http://localhost:3000/api/workflows/test-action', {
+  const res = await fetch(`${API_URL}/api/workflows/test-action`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

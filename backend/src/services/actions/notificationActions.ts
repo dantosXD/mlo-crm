@@ -1,5 +1,6 @@
 import prisma from '../../utils/prisma.js';
 import { ExecutionContext, ActionResult, replacePlaceholders, getClientData } from './types.js';
+import { logger } from '../../utils/logger.js';
 
 interface NotificationActionConfig {
   title?: string;
@@ -61,7 +62,7 @@ export async function executeSendNotification(
 
     return { success: true, message: `Notification sent to ${recipientIds.length} user(s)`, data: { notificationIds: notifications.map((n) => n.id), recipientIds, title: finalTitle, message: finalMessage } };
   } catch (error) {
-    console.error('Error executing SEND_NOTIFICATION action:', error);
+    logger.error('action_send_notification_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to send notification' };
   }
 }
@@ -87,7 +88,7 @@ export async function executeLogActivity(
 
     return { success: true, message: 'Activity logged successfully', data: { activityId: activity.id, type: activity.type, description: finalDescription } };
   } catch (error) {
-    console.error('Error executing LOG_ACTIVITY action:', error);
+    logger.error('action_log_activity_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to log activity' };
   }
 }

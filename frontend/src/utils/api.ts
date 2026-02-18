@@ -43,6 +43,23 @@ async function ensureCsrfCookie(accessToken: string | null): Promise<string | nu
 /** Guard to avoid concurrent refresh loops */
 let _refreshPromise: Promise<boolean> | null = null;
 
+export function isTransientRequestError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return true;
+  }
+
+  if (error instanceof TypeError) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('failed to fetch') ||
+      message.includes('networkerror') ||
+      message.includes('load failed')
+    );
+  }
+
+  return false;
+}
+
 /**
  * Make an authenticated API request with CSRF token.
  * Automatically retries once after refreshing the access token on 401/403.

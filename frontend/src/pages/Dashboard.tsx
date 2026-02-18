@@ -12,9 +12,9 @@ import {
 import { IconRefresh } from '@tabler/icons-react';
 import ReactGridLayout, { WidthProvider } from 'react-grid-layout';
 import { notifications } from '@mantine/notifications';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
-import { api } from '../utils/api';
+import { api, isTransientRequestError } from '../utils/api';
 import { StatsCardsWidget } from '../widgets/StatsCardsWidget';
 import { PipelineOverviewWidget } from '../widgets/PipelineOverviewWidget';
 import { PendingTasksWidget } from '../widgets/PendingTasksWidget';
@@ -51,6 +51,22 @@ const DEFAULT_LAYOUTS = {
     { i: 'workflows', x: 0, y: 8, w: 2, h: 3, minW: 2, minH: 2 },
   ],
 };
+
+function serializeLayout(layout: LayoutItem[]): string {
+  return JSON.stringify(
+    layout.map((item) => ({
+      i: item.i,
+      x: item.x,
+      y: item.y,
+      w: item.w,
+      h: item.h,
+      minW: item.minW,
+      maxW: item.maxW,
+      minH: item.minH,
+      maxH: item.maxH,
+    }))
+  );
+}
 
 // Fetch all dashboard stats in parallel
 async function fetchDashboardData(): Promise<DashboardStats> {
@@ -141,7 +157,12 @@ async function fetchDashboardData(): Promise<DashboardStats> {
   // Workflow execution endpoints return { executions: [...], pagination: {...} }
   if (runningResult.status === 'fulfilled' && runningResult.value.ok) {
     const runningPayload = await runningResult.value.json();
-    workflowStats.runningExecutions = Array.isArray(runningPayload) ? runningPayload : runningPayload.executions || [];
+    const rawExecutions: any[] = Array.isArray(runningPayload) ? runningPayload : runningPayload.executions || [];
+    workflowStats.runningExecutions = rawExecutions.map((e: any) => ({
+      ...e,
+      workflow: e.workflow ?? { id: e.workflowId, name: e.workflowName ?? 'Unknown Workflow' },
+      client: e.client ?? (e.clientId ? { id: e.clientId, name: e.clientName ?? 'Unknown Client' } : null),
+    }));
   }
   if (completedResult.status === 'fulfilled' && completedResult.value.ok) {
     const completedPayload = await completedResult.value.json();
@@ -182,6 +203,10 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const [layouts, setLayouts] = useState<LayoutItem[]>(DEFAULT_LAYOUTS.lg);
   const [savingLayout, setSavingLayout] = useState(false);
+  const layoutSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasLoadedPreferencesRef = useRef(false);
+  const isUserLayoutInteractionRef = useRef(false);
+  const lastPersistedLayoutRef = useRef<string>(serializeLayout(DEFAULT_LAYOUTS.lg));
 
   // Invalidate dashboard data whenever the access token changes (login / refresh)
   const prevTokenRef = useRef(accessToken);
@@ -206,13 +231,26 @@ export default function Dashboard() {
   useQuery({
     queryKey: ['user-preferences'],
     queryFn: async () => {
-      const res = await api.get('/users/preferences');
-      if (res.ok) {
-        const prefs: UserPreferences = await res.json();
-        if (prefs.dashboardLayout && prefs.dashboardLayout.length > 0) {
-          setLayouts(prefs.dashboardLayout);
+      try {
+        const res = await api.get('/users/preferences');
+        if (res.ok) {
+          const prefs: UserPreferences = await res.json();
+          if (prefs.dashboardLayout && prefs.dashboardLayout.length > 0) {
+            setLayouts(prefs.dashboardLayout);
+            lastPersistedLayoutRef.current = serializeLayout(prefs.dashboardLayout);
+          }
+          return prefs;
         }
-        return prefs;
+      } catch (error) {
+        if (!isTransientRequestError(error)) {
+          notifications.show({
+            title: 'Warning',
+            message: 'Failed to load dashboard preferences',
+            color: 'yellow',
+          });
+        }
+      } finally {
+        hasLoadedPreferencesRef.current = true;
       }
       return null;
     },
@@ -220,17 +258,31 @@ export default function Dashboard() {
     staleTime: 60_000,
   });
 
-  const saveUserPreferences = async (newLayouts: typeof DEFAULT_LAYOUTS.lg) => {
+  const saveUserPreferences = async (newLayouts: LayoutItem[]) => {
     if (!accessToken) return;
+
+    const serializedLayout = serializeLayout(newLayouts);
+    if (serializedLayout === lastPersistedLayoutRef.current) {
+      return;
+    }
+
     try {
       setSavingLayout(true);
-      await api.put('/users/preferences', {
+      const response = await api.put('/users/preferences', {
         preferences: {
           dashboardLayout: newLayouts,
         },
       });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save dashboard layout (${response.status})`);
+      }
+
+      lastPersistedLayoutRef.current = serializedLayout;
     } catch (error) {
-      console.error('Error saving preferences:', error);
+      if (isTransientRequestError(error)) {
+        return;
+      }
       notifications.show({
         title: 'Warning',
         message: 'Failed to save dashboard layout',
@@ -240,6 +292,21 @@ export default function Dashboard() {
       setSavingLayout(false);
     }
   };
+
+  const scheduleLayoutSave = useCallback((newLayout: LayoutItem[]) => {
+    if (!hasLoadedPreferencesRef.current) {
+      return;
+    }
+
+    if (layoutSaveTimeoutRef.current) {
+      clearTimeout(layoutSaveTimeoutRef.current);
+    }
+
+    layoutSaveTimeoutRef.current = setTimeout(() => {
+      void saveUserPreferences(newLayout);
+      layoutSaveTimeoutRef.current = null;
+    }, 750);
+  }, []);
 
   const handleTaskComplete = async (taskId: string) => {
     try {
@@ -265,24 +332,39 @@ export default function Dashboard() {
     }
   };
 
-  const handleLayoutChange = useCallback((newLayout: any) => {
+  const handleLayoutChange = useCallback((newLayout: LayoutItem[]) => {
     setLayouts(newLayout);
-    // Debounce save to avoid too many API calls
-    const timeoutId = setTimeout(() => {
-      saveUserPreferences(newLayout);
-    }, 1000);
-    return () => clearTimeout(timeoutId);
-  }, [accessToken]);
+    if (isUserLayoutInteractionRef.current) {
+      scheduleLayoutSave(newLayout);
+    }
+  }, [scheduleLayoutSave]);
+
+  const handleLayoutInteractionStart = useCallback(() => {
+    isUserLayoutInteractionRef.current = true;
+  }, []);
+
+  const handleLayoutInteractionStop = useCallback((newLayout: LayoutItem[]) => {
+    isUserLayoutInteractionRef.current = false;
+    scheduleLayoutSave(newLayout);
+  }, [scheduleLayoutSave]);
 
   const handleResetLayout = () => {
     setLayouts(DEFAULT_LAYOUTS.lg);
-    saveUserPreferences(DEFAULT_LAYOUTS.lg);
+    void saveUserPreferences(DEFAULT_LAYOUTS.lg);
     notifications.show({
       title: 'Layout reset',
       message: 'Dashboard layout has been reset to default',
       color: 'blue',
     });
   };
+
+  useEffect(() => {
+    return () => {
+      if (layoutSaveTimeoutRef.current) {
+        clearTimeout(layoutSaveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -315,6 +397,10 @@ export default function Dashboard() {
         cols={4}
         rowHeight={120}
         onLayoutChange={handleLayoutChange}
+        onDragStart={handleLayoutInteractionStart}
+        onResizeStart={handleLayoutInteractionStart}
+        onDragStop={handleLayoutInteractionStop}
+        onResizeStop={handleLayoutInteractionStop}
         isDraggable={true}
         isResizable={true}
         draggableHandle=".drag-handle"

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Modal,
@@ -12,6 +12,8 @@ import {
   ScrollArea,
   Badge,
   Loader,
+  ActionIcon,
+  Tooltip,
 } from '@mantine/core';
 import { useDisclosure, useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -31,6 +33,8 @@ import {
   IconUser,
   IconArrowLeft,
   IconCalendar,
+  IconMicrophone,
+  IconMicrophoneOff,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
@@ -164,8 +168,11 @@ export function QuickCapture() {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isCreating, setIsCreating] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
   const navigate = useNavigate();
   const { accessToken } = useAuthStore();
+  const speechRecognitionRef = useRef<any>(null);
 
   // Note creation with client selection
   const [noteContent, setNoteContent] = useState<string | null>(null);
@@ -176,6 +183,90 @@ export function QuickCapture() {
   // Check if query is a slash command
   const activeCommand = slashCommands.find(cmd => query.toLowerCase().startsWith(cmd.command));
   const commandContent = activeCommand ? query.slice(activeCommand.command.length).trim() : '';
+
+  useEffect(() => {
+    const SpeechRecognitionCtor =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionCtor) {
+      setSpeechSupported(false);
+      speechRecognitionRef.current = null;
+      return;
+    }
+
+    setSpeechSupported(true);
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event: any) => {
+      const transcript = event?.results?.[0]?.[0]?.transcript?.trim() || '';
+      if (!transcript) {
+        return;
+      }
+
+      setQuery((prev) => (prev.trim() ? `${prev} ${transcript}` : transcript));
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.onerror = (event: any) => {
+      setIsListening(false);
+      if (event?.error !== 'no-speech' && event?.error !== 'aborted') {
+        notifications.show({
+          title: 'Voice Input Error',
+          message: 'Could not capture speech. Please try again.',
+          color: 'red',
+        });
+      }
+    };
+
+    speechRecognitionRef.current = recognition;
+
+    return () => {
+      try {
+        recognition.onresult = null;
+        recognition.onend = null;
+        recognition.onerror = null;
+        recognition.stop();
+      } catch {
+        // no-op during cleanup
+      }
+    };
+  }, []);
+
+  const toggleVoiceInput = () => {
+    if (!speechRecognitionRef.current || !speechSupported) {
+      notifications.show({
+        title: 'Voice Input Unavailable',
+        message: 'Speech recognition is not supported in this browser.',
+        color: 'yellow',
+      });
+      return;
+    }
+
+    if (isListening) {
+      speechRecognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      speechRecognitionRef.current.start();
+      setIsListening(true);
+    } catch {
+      setIsListening(false);
+      notifications.show({
+        title: 'Voice Input Error',
+        message: 'Could not start voice input.',
+        color: 'red',
+      });
+    }
+  };
 
   // Filter clients based on search (for note creation mode)
   const filteredClients = clients.filter(client =>
@@ -748,22 +839,42 @@ export function QuickCapture() {
       <Box>
         {noteContent === null && (
           <Box p="md" pb={0}>
-            <TextInput
-              placeholder={activeCommand ? activeCommand.placeholder : "Type / for commands, or search..."}
-              value={query}
-              onChange={(e) => setQuery(e.currentTarget.value)}
-              onKeyDown={handleKeyDown}
-              leftSection={activeCommand ? activeCommand.icon : <IconSearch size={18} aria-hidden="true" />}
-              size="md"
-              autoFocus
-              disabled={isCreating}
-              styles={{
-                input: {
-                  border: 'none',
-                  fontSize: '16px',
-                },
-              }}
-            />
+            <Group gap="xs" align="flex-end">
+              <TextInput
+                placeholder={activeCommand ? activeCommand.placeholder : "Type / for commands, or search..."}
+                value={query}
+                onChange={(e) => setQuery(e.currentTarget.value)}
+                onKeyDown={handleKeyDown}
+                leftSection={activeCommand ? activeCommand.icon : <IconSearch size={18} aria-hidden="true" />}
+                size="md"
+                autoFocus
+                disabled={isCreating}
+                style={{ flex: 1 }}
+                styles={{
+                  input: {
+                    border: 'none',
+                    fontSize: '16px',
+                  },
+                }}
+              />
+              {speechSupported && (
+                <Tooltip label={isListening ? 'Stop voice input' : 'Start voice input'}>
+                  <ActionIcon
+                    onClick={toggleVoiceInput}
+                    variant={isListening ? 'filled' : 'light'}
+                    color={isListening ? 'red' : 'blue'}
+                    size="lg"
+                    aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
+                  >
+                    {isListening ? (
+                      <IconMicrophoneOff size={18} aria-hidden="true" />
+                    ) : (
+                      <IconMicrophone size={18} aria-hidden="true" />
+                    )}
+                  </ActionIcon>
+                </Tooltip>
+              )}
+            </Group>
           </Box>
         )}
 

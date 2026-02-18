@@ -1,5 +1,6 @@
 import prisma from '../../utils/prisma.js';
 import { ExecutionContext, ActionResult } from './types.js';
+import { logger } from '../../utils/logger.js';
 
 interface ClientActionConfig {
   status?: string;
@@ -33,7 +34,7 @@ export async function executeUpdateClientStatus(
 
     return { success: true, message: 'Client status updated successfully', data: { clientId: updatedClient.id, fromStatus: client.status, toStatus: config.status } };
   } catch (error) {
-    console.error('Error executing UPDATE_CLIENT_STATUS action:', error);
+    logger.error('action_update_client_status_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to update client status' };
   }
 }
@@ -63,7 +64,7 @@ export async function executeAddTag(
 
     return { success: true, message: 'Tags added successfully', data: { clientId: updatedClient.id, addedTags: config.addTags, allTags: newTags } };
   } catch (error) {
-    console.error('Error executing ADD_TAG action:', error);
+    logger.error('action_add_tag_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to add tags' };
   }
 }
@@ -93,7 +94,7 @@ export async function executeRemoveTag(
 
     return { success: true, message: 'Tags removed successfully', data: { clientId: updatedClient.id, removedTags: config.removeTags, remainingTags: newTags } };
   } catch (error) {
-    console.error('Error executing REMOVE_TAG action:', error);
+    logger.error('action_remove_tag_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to remove tags' };
   }
 }
@@ -123,7 +124,7 @@ export async function executeAssignClient(
 
     return { success: true, message: 'Client assigned successfully', data: { clientId: updatedClient.id, fromUserId: client.createdById, toUserId: config.assignedToId, toUserName: newOwner.name } };
   } catch (error) {
-    console.error('Error executing ASSIGN_CLIENT action:', error);
+    logger.error('action_assign_client_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to assign client' };
   }
 }

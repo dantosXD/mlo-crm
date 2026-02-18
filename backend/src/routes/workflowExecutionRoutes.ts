@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
 import { decodeClientPiiField } from '../utils/clientPiiCodec.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
@@ -96,7 +97,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (error) {
-    console.error('Error fetching workflow executions:', error);
+    logger.error('fetch_workflow_executions_failed', { error: error instanceof Error ? error.message : String(error) });
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to fetch workflow executions',
@@ -160,7 +161,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
       createdAt: execution.createdAt,
     });
   } catch (error) {
-    console.error('Error fetching workflow execution:', error);
+    logger.error('fetch_workflow_execution_failed', { error: error instanceof Error ? error.message : String(error) });
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to fetch workflow execution',

@@ -1,5 +1,6 @@
 import prisma from '../../utils/prisma.js';
 import { ExecutionContext, ActionResult, replacePlaceholders, getClientData } from './types.js';
+import { logger } from '../../utils/logger.js';
 
 interface NoteActionConfig {
   text?: string;
@@ -44,7 +45,7 @@ export async function executeCreateNote(
 
     return { success: true, message: 'Note created successfully', data: { noteId: note.id, text: finalText, tags, isPinned: note.isPinned, templateName } };
   } catch (error) {
-    console.error('Error executing CREATE_NOTE action:', error);
+    logger.error('action_create_note_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to create note' };
   }
 }

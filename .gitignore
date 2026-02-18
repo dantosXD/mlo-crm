@@ -47,10 +47,49 @@ tmpclaude-*
 # Tool artifacts
 .playwright-mcp/
 windsurf_sanity/
+.autocoder/
+.autoforge/
+.claude/
+.claude_assistant_settings.json
+.claude_settings.json
+assistant.db
 
 # Local exports
 autocoder-master/
 *.zip
+
+# Process ID files
+*.pid
+
+# One-off root-level scripts (check-*, add-*, verify-*)
+check-*.js
+add-*.js
+add-*.mjs
+verify-*.js
+bypass-*.html
+
+# Feature verification / session reports (generated artifacts)
+FEATURE-*.md
+FEATURES-*.md
+FINAL-SUMMARY-*.md
+SESSION_*.md
+REGRESSION-*.md
+CONCURRENT_*.md
+
+# Misc root artifacts
+api-requests.txt
+app_spec.txt
+backend-dev*.log
+backend-feature*.log
+backend-new.log
+backend-test.log
+backend.log
+backend.pid
+*.png
+calendar-page.png
+
+# Generated output directory (embedded postgres data, minio binaries, playwright artifacts)
+output/
 
 # Database files (for SQLite development)
 *.db

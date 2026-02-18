@@ -2,12 +2,14 @@
 // This script tests all workflow endpoints with proper authentication
 // Uses built-in fetch (Node.js 18+)
 
-const API_URL = 'http://localhost:3000';
+const API_URL = (process.env.API_URL || 'http://localhost:3002').replace(/\/$/, '');
 const ADMIN_EMAIL = 'admin@example.com';
 const ADMIN_PASSWORD = 'password123';
 
 let authToken = null;
 let testWorkflowId = null;
+let csrfToken = null;
+let sessionCookie = null;
 
 // Helper function to make authenticated requests
 async function apiRequest(endpoint, options = {}) {
@@ -15,13 +17,23 @@ async function apiRequest(endpoint, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
     ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+    ...(csrfToken && { 'X-CSRF-Token': csrfToken }),
+    ...(sessionCookie && { 'Cookie': sessionCookie }),
     ...options.headers,
   };
 
   try {
     const response = await fetch(url, { ...options, headers });
+    const responseCsrfToken = response.headers.get('X-CSRF-Token');
+    if (responseCsrfToken) {
+      csrfToken = responseCsrfToken;
+    }
+    const setCookie = response.headers.get('set-cookie');
+    if (setCookie) {
+      sessionCookie = setCookie;
+    }
     const data = await response.json();
-    return { status: response.status, data };
+    return { status: response.status, data, headers: response.headers };
   } catch (error) {
     console.error(`Request failed: ${error.message}`);
     return { status: 0, data: { error: error.message } };
@@ -39,8 +51,8 @@ async function login() {
     }),
   });
 
-  if (result.status === 200 && result.data.token) {
-    authToken = result.data.token;
+  if (result.status === 200 && (result.data.token || result.data.accessToken)) {
+    authToken = result.data.token || result.data.accessToken;
     console.log('✅ Login successful');
     console.log(`   User: ${result.data.user.email} (${result.data.user.role})`);
     return true;
@@ -298,7 +310,7 @@ async function testRBAC() {
     return false;
   }
 
-  const mloToken = mloLogin.data.token;
+  const mloToken = mloLogin.data.token || mloLogin.data.accessToken;
   const headers = { 'Authorization': `Bearer ${mloToken}` };
 
   // Try to create a workflow as MLO (should fail with 403)
@@ -350,14 +362,14 @@ async function runTests() {
     return;
   }
 
-  results.list = await testListWorkflows();
-  results.filter = await testFilteredWorkflows();
-  results.create = await testCreateWorkflow();
-  results.getSingle = await testGetWorkflow();
-  results.update = await testUpdateWorkflow();
-  results.toggle = await testToggleWorkflow();
-  results.triggerTypes = await testGetTriggerTypes();
-  results.actionTypes = await testGetActionTypes();
+  results.list = !!(await testListWorkflows());
+  results.filter = !!(await testFilteredWorkflows());
+  results.create = !!(await testCreateWorkflow());
+  results.getSingle = !!(await testGetWorkflow());
+  results.update = !!(await testUpdateWorkflow());
+  results.toggle = !!(await testToggleWorkflow());
+  results.triggerTypes = !!(await testGetTriggerTypes());
+  results.actionTypes = !!(await testGetActionTypes());
   results.delete = await testDeleteWorkflow();
   results.rbac = await testRBAC();
 

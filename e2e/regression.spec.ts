@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.use({ viewport: { width: 1440, height: 900 } });
 
 const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:5173';
-const apiBaseUrl = process.env.PLAYWRIGHT_API_BASE_URL ?? 'http://localhost:3000/api';
+const apiBaseUrl = process.env.PLAYWRIGHT_API_BASE_URL ?? 'http://localhost:3002/api';
 
 async function assertHeading(page: { getByRole: Function }, heading: string) {
   await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
@@ -13,7 +13,7 @@ async function assertDashboard(page: {
   getByRole: Function;
   locator: Function;
 }) {
-  await expect(page.getByRole('tab', { name: 'Dashboard', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
   await expect(page.locator('nav')).toBeVisible();
 }
 

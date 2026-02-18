@@ -41,9 +41,16 @@ export function replacePlaceholders(template: string, context: ExecutionContext 
     placeholders['{{client_status}}'] = context.clientData.status || '';
   }
 
+  // Add trigger data placeholders (e.g. {{old_status}}, {{new_status}} from status-change triggers)
+  if (context.triggerData && typeof context.triggerData === 'object') {
+    Object.entries(context.triggerData).forEach(([key, value]) => {
+      placeholders[`{{${key}}}`] = String(value ?? '');
+    });
+  }
+
   let result = template;
   Object.entries(placeholders).forEach(([key, value]) => {
-    result = result.replace(new RegExp(key, 'g'), value);
+    result = result.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
   });
 
   return result;

@@ -5,6 +5,7 @@
  */
 import prisma from '../utils/prisma.js';
 import { executeWorkflow } from './workflowExecutor.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Check for clients in stage too long and fire TIME_IN_STAGE_THRESHOLD trigger
@@ -53,12 +54,12 @@ export async function checkTimeInStageThreshold(
             });
           }
         } catch (error) {
-          console.error(`[Scheduled Triggers] Failed to execute threshold workflow ${workflow.id} for client ${client.id}:`, error);
+          logger.error('scheduled_trigger_threshold_workflow_failed', { workflowId: workflow.id, clientId: client.id, error: error instanceof Error ? error.message : String(error) });
         }
       }
     }
   } catch (error) {
-    console.error('[Scheduled Triggers] Failed to check time in stage threshold:', error);
+    logger.error('scheduled_trigger_check_time_in_stage_failed', { error: error instanceof Error ? error.message : String(error) });
   }
 }
 
@@ -109,12 +110,12 @@ export async function checkDocumentDueDates(
             });
           }
         } catch (error) {
-          console.error(`[Scheduled Triggers] Failed to execute due date workflow ${workflow.id} for document ${document.id}:`, error);
+          logger.error('scheduled_trigger_due_date_workflow_failed', { workflowId: workflow.id, documentId: document.id, error: error instanceof Error ? error.message : String(error) });
         }
       }
     }
   } catch (error) {
-    console.error('[Scheduled Triggers] Failed to check document due dates:', error);
+    logger.error('scheduled_trigger_check_document_due_dates_failed', { error: error instanceof Error ? error.message : String(error) });
   }
 }
 
@@ -153,12 +154,12 @@ export async function checkExpiredDocuments(): Promise<void> {
             userId: document.client.createdById,
           });
         } catch (error) {
-          console.error(`[Scheduled Triggers] Failed to execute expired workflow ${workflow.id} for document ${document.id}:`, error);
+          logger.error('scheduled_trigger_expired_workflow_failed', { workflowId: workflow.id, documentId: document.id, error: error instanceof Error ? error.message : String(error) });
         }
       }
     }
   } catch (error) {
-    console.error('[Scheduled Triggers] Failed to check expired documents:', error);
+    logger.error('scheduled_trigger_check_expired_documents_failed', { error: error instanceof Error ? error.message : String(error) });
   }
 }
 
@@ -198,12 +199,12 @@ export async function checkInactiveClients(inactiveDays: number = 7): Promise<vo
             });
           }
         } catch (error) {
-          console.error(`[Scheduled Triggers] Failed to execute inactivity workflow ${workflow.id} for client ${client.id}:`, error);
+          logger.error('scheduled_trigger_inactivity_workflow_failed', { workflowId: workflow.id, clientId: client.id, error: error instanceof Error ? error.message : String(error) });
         }
       }
     }
   } catch (error) {
-    console.error('[Scheduled Triggers] Failed to check inactive clients:', error);
+    logger.error('scheduled_trigger_check_inactive_clients_failed', { error: error instanceof Error ? error.message : String(error) });
   }
 }
 
@@ -245,12 +246,12 @@ export async function checkOverdueTasks(): Promise<void> {
             });
           }
         } catch (error) {
-          console.error(`[Scheduled Triggers] Failed to execute overdue workflow ${workflow.id} for task ${task.id}:`, error);
+          logger.error('scheduled_trigger_overdue_workflow_failed', { workflowId: workflow.id, taskId: task.id, error: error instanceof Error ? error.message : String(error) });
         }
       }
     }
   } catch (error) {
-    console.error('[Scheduled Triggers] Failed to check overdue tasks:', error);
+    logger.error('scheduled_trigger_check_overdue_tasks_failed', { error: error instanceof Error ? error.message : String(error) });
   }
 }
 
@@ -290,11 +291,11 @@ export async function checkTaskDueDates(daysBefore: number = 1): Promise<void> {
             userId: task.client!.createdById,
           });
         } catch (error) {
-          console.error(`[Scheduled Triggers] Failed to execute task due workflow ${workflow.id} for task ${task.id}:`, error);
+          logger.error('scheduled_trigger_task_due_workflow_failed', { workflowId: workflow.id, taskId: task.id, error: error instanceof Error ? error.message : String(error) });
         }
       }
     }
   } catch (error) {
-    console.error('[Scheduled Triggers] Failed to check task due dates:', error);
+    logger.error('scheduled_trigger_check_task_due_dates_failed', { error: error instanceof Error ? error.message : String(error) });
   }
 }

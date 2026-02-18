@@ -1,5 +1,7 @@
 import prisma from '../../utils/prisma.js';
 import { ExecutionContext, ActionResult, getClientData } from './types.js';
+import { logger } from '../../utils/logger.js';
+import { getEnv } from '../../config/env.js';
 
 interface DocumentActionConfig {
   status?: string;
@@ -42,21 +44,22 @@ export async function executeUpdateDocumentStatus(
     const documents = await prisma.document.findMany({ where: { clientId: context.clientId } });
     if (documents.length === 0) return { success: false, message: 'No documents found for client' };
 
-    const updatedDocuments = await Promise.all(
-      documents.map((doc) => prisma.document.update({ where: { id: doc.id }, data: { status: config.status } }))
-    );
+    const { count } = await prisma.document.updateMany({
+      where: { clientId: context.clientId },
+      data: { status: config.status },
+    });
 
     await prisma.activity.create({
       data: {
         clientId: context.clientId, userId: context.userId, type: 'DOCUMENT_STATUS_CHANGED',
-        description: `All documents (${updatedDocuments.length}) status changed to ${config.status} via workflow`,
-        metadata: JSON.stringify({ documentIds: updatedDocuments.map((d) => d.id), toStatus: config.status }),
+        description: `All documents (${count}) status changed to ${config.status} via workflow`,
+        metadata: JSON.stringify({ count, toStatus: config.status }),
       },
     });
 
-    return { success: true, message: `Updated ${updatedDocuments.length} document(s) to ${config.status}`, data: { count: updatedDocuments.length, documentIds: updatedDocuments.map((d) => d.id), toStatus: config.status } };
+    return { success: true, message: `Updated ${count} document(s) to ${config.status}`, data: { count, toStatus: config.status } };
   } catch (error) {
-    console.error('Error executing UPDATE_DOCUMENT_STATUS action:', error);
+    logger.error('action_update_document_status_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to update document status' };
   }
 }
@@ -96,22 +99,21 @@ export async function executeRequestDocument(
       },
     });
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log('\n========================================');
-      console.log('📧 DOCUMENT REQUEST EMAIL (DEV MODE)');
-      console.log('========================================');
-      console.log(`To: ${client.email}`);
-      console.log(`Subject: Document Request: ${documentName}`);
-      console.log(`\nDocument: ${documentName}`);
-      console.log(`Category: ${config.category}`);
-      if (dueDate) console.log(`Due Date: ${dueDate.toLocaleDateString()}`);
-      if (config.message) console.log(`\nMessage: ${config.message}`);
-      console.log('\n========================================\n');
+    const isDev = getEnv().NODE_ENV === 'development';
+    if (isDev) {
+      logger.debug('action_request_document_email_dev', {
+        to: client.email,
+        subject: `Document Request: ${documentName}`,
+        documentName,
+        category: config.category,
+        dueDate: dueDate?.toLocaleDateString(),
+        message: config.message,
+      });
     }
 
-    return { success: true, message: 'Document request sent successfully', data: { documentId: document.id, documentName, category: config.category, dueDate, emailLogged: process.env.NODE_ENV === 'development' } };
+    return { success: true, message: 'Document request sent successfully', data: { documentId: document.id, documentName, category: config.category, dueDate, emailLogged: isDev } };
   } catch (error) {
-    console.error('Error executing REQUEST_DOCUMENT action:', error);
+    logger.error('action_request_document_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to request document' };
   }
 }

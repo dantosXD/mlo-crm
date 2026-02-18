@@ -1,6 +1,17 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { login, register, refresh, logout, getMe, updateProfile, changePassword } from '../controllers/authController.js';
+import {
+  login,
+  register,
+  refresh,
+  logout,
+  getMe,
+  updateProfile,
+  changePassword,
+  forgotPassword,
+  resetPassword,
+  validatePasswordResetToken,
+} from '../controllers/authController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = Router();
@@ -46,11 +57,40 @@ const refreshLimiter = rateLimit({
   skipSuccessfulRequests: true,
 });
 
+// Rate limiter for forgot password requests
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: {
+    error: 'Too many requests',
+    message: 'Too many password reset requests from this IP. Please try again later.',
+    retryAfter: 15,
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiter for reset password attempts
+const resetPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: {
+    error: 'Too many requests',
+    message: 'Too many password reset attempts from this IP. Please try again later.',
+    retryAfter: 15,
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Public routes with rate limiting
 router.post('/login', loginLimiter, login);
 router.post('/register', registerLimiter, register);
 router.post('/refresh', refreshLimiter, refresh);
 router.post('/logout', logout);
+router.post('/forgot-password', forgotPasswordLimiter, forgotPassword);
+router.get('/reset-password/validate', resetPasswordLimiter, validatePasswordResetToken);
+router.post('/reset-password', resetPasswordLimiter, resetPassword);
 
 // Protected routes
 router.get('/me', authenticateToken, getMe);

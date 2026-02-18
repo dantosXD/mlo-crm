@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -32,10 +32,12 @@ model User {
   communications Communication[]
   workflows     Workflow[]
   workflowVersions WorkflowVersion[]
+  passwordResetTokens PasswordResetToken[]
   createdEvents Event[] @relation("EventCreator")
   assignedTasks Task[] @relation("TaskAssignee")
   createdTasks Task[] @relation("TaskCreator")
   createdTaskTemplates TaskTemplate[] @relation("TaskTemplateCreator")
+  calendarConnections CalendarConnection[]
 
   // Loan program templates
   loanProgramTemplates LoanProgramTemplate[] @relation("LoanProgramTemplateCreator")
@@ -415,6 +417,22 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+// Password reset tokens for account recovery
+model PasswordResetToken {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
+  @@map("password_reset_tokens")
+}
+
 // Notifications for users
 model Notification {
   id          String    @id @default(uuid())
@@ -753,6 +771,28 @@ model CalendarShare {
   @@index([isActive])
   @@index([deletedAt])
   @@map("calendar_shares")
+}
+
+model CalendarConnection {
+  id                    String    @id @default(uuid())
+  userId                String    @map("user_id")
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider              String
+  encryptedAccessToken  String    @map("encrypted_access_token")
+  encryptedRefreshToken String?   @map("encrypted_refresh_token")
+  tokenExpiresAt        DateTime? @map("token_expires_at")
+  calendarId            String?   @map("calendar_id")
+  syncEnabled           Boolean   @default(true) @map("sync_enabled")
+  lastSyncedAt          DateTime? @map("last_synced_at")
+  scopes                String?   // JSON array
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@unique([userId, provider])
+  @@index([provider])
+  @@index([syncEnabled])
+  @@index([lastSyncedAt])
+  @@map("calendar_connections")
 }
 
 model EntityVersion {

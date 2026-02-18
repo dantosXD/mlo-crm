@@ -12,17 +12,19 @@
 
 const fetch = require('node-fetch');
 
-const API_URL = 'http://localhost:3000';
+const API_URL = (process.env.API_URL || 'http://localhost:3002').replace(/\/$/, '');
 
 let authToken = '';
 let csrfToken = '';
 let testWorkflowId = '';
+let sessionCookie = '';
 
 async function makeRequest(endpoint, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
     ...(authToken && { Authorization: `Bearer ${authToken}` }),
     ...(csrfToken && { 'X-CSRF-Token': csrfToken }),
+    ...(sessionCookie && { Cookie: sessionCookie }),
     ...options.headers,
   };
 
@@ -37,6 +39,11 @@ async function makeRequest(endpoint, options = {}) {
     csrfToken = responseCsrfToken;
   }
 
+  const responseCookie = response.headers.get('set-cookie');
+  if (responseCookie) {
+    sessionCookie = responseCookie.split(';')[0];
+  }
+
   const data = await response.json().catch(() => ({}));
   return { status: response.status, data, headers: response.headers };
 }
@@ -48,8 +55,8 @@ async function login() {
   const response = await makeRequest('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({
-      email: 'admin@mlocrm.com',
-      password: 'admin123',
+      email: 'admin@example.com',
+      password: 'password123',
     }),
   });
 

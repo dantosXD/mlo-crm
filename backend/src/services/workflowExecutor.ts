@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma.js';
+import { logger } from '../utils/logger.js';
 import {
   executeDocumentAction,
   executeCommunicationAction,
@@ -41,6 +42,7 @@ export async function executeWorkflow(
   context: ExecutionContext,
   options?: { retryCount?: number; isRetry?: boolean; executionId?: string }
 ): Promise<ExecutionResult> {
+  let execution: { id: string } | undefined;
   try {
     // Fetch workflow
     const workflow = await prisma.workflow.findUnique({
@@ -89,7 +91,6 @@ export async function executeWorkflow(
     }
 
     // Create workflow execution record (or update if retry)
-    let execution;
     if (options?.isRetry && options?.executionId) {
       // Update existing execution for retry
       execution = await prisma.workflowExecution.update({
@@ -427,6 +428,18 @@ export async function executeWorkflow(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
+    // Best-effort: mark the execution record as FAILED if it was created
+    if (typeof execution !== 'undefined' && execution?.id) {
+      try {
+        await prisma.workflowExecution.update({
+          where: { id: execution.id },
+          data: { status: 'FAILED', completedAt: new Date(), errorMessage },
+        });
+      } catch {
+        // Ignore secondary DB error — primary error is already captured below
+      }
+    }
+
     return {
       success: false,
       status: 'FAILED',
@@ -679,7 +692,7 @@ export async function testWorkflow(
  */
 export async function cancelWorkflowExecution(
   executionId: string,
-  userId: string
+  _userId: string
 ): Promise<{ success: boolean; message: string }> {
   try {
     const execution = await prisma.workflowExecution.findUnique({
@@ -1100,7 +1113,7 @@ async function sendWorkflowFailureNotification(
       },
     });
   } catch (error) {
-    console.error('Failed to send workflow failure notification:', error);
+    logger.error('workflow_failure_notification_failed', { error: error instanceof Error ? error.message : String(error) });
     // Don't throw - notification failure shouldn't break the workflow
   }
 }

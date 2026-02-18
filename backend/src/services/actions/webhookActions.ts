@@ -1,5 +1,6 @@
 import prisma from '../../utils/prisma.js';
 import { ExecutionContext, ActionResult, replacePlaceholders, getClientData, sleep } from './types.js';
+import { logger } from '../../utils/logger.js';
 
 interface WebhookActionConfig {
   url: string;
@@ -74,7 +75,7 @@ export async function executeCallWebhook(
         lastError = new Error(`Webhook returned status ${fetchResponse.status}: ${responseBody.slice(0, 200)}`);
         if (fetchResponse.status >= 400 && fetchResponse.status < 500 && fetchResponse.status !== 429) break;
         if (config.retryOnFailure !== false && attempt <= maxRetries) {
-          console.log(`Webhook call attempt ${attempt} failed with status ${fetchResponse.status}. Retrying in ${retryDelaySeconds}s...`);
+          logger.warn('action_webhook_retry', { attempt, status: fetchResponse.status, retryDelaySeconds });
           await sleep(retryDelaySeconds * 1000);
           continue;
         }
@@ -82,7 +83,7 @@ export async function executeCallWebhook(
       } catch (fetchError) {
         lastError = fetchError instanceof Error ? fetchError : new Error(String(fetchError));
         if (config.retryOnFailure !== false && attempt <= maxRetries) {
-          console.log(`Webhook call attempt ${attempt} failed: ${lastError.message}. Retrying in ${retryDelaySeconds}s...`);
+          logger.warn('action_webhook_retry_network_error', { attempt, error: lastError.message, retryDelaySeconds });
           await sleep(retryDelaySeconds * 1000);
           continue;
         }
@@ -101,7 +102,7 @@ export async function executeCallWebhook(
 
     return { success: false, message: `Webhook call failed after ${attempt} attempt(s): ${errorMessage}`, data: { url: config.url, method, attempts: attempt, lastResponse: response ? { statusCode: response.statusCode, body: response.body.slice(0, 500) } : null } };
   } catch (error) {
-    console.error('Error executing CALL_WEBHOOK action:', error);
+    logger.error('action_call_webhook_failed', { url: config.url, error: error instanceof Error ? error.message : String(error) });
     try {
       await prisma.activity.create({
         data: {
@@ -110,7 +111,9 @@ export async function executeCallWebhook(
           metadata: JSON.stringify({ url: config.url, error: error instanceof Error ? error.message : String(error) }),
         },
       });
-    } catch (logError) { console.error('Failed to log webhook error:', logError); }
+    } catch (logError) {
+      logger.error('action_webhook_activity_log_failed', { error: logError instanceof Error ? logError.message : String(logError) });
+    }
     return { success: false, message: error instanceof Error ? error.message : 'Failed to call webhook' };
   }
 }

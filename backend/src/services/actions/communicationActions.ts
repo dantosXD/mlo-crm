@@ -1,5 +1,6 @@
 import prisma from '../../utils/prisma.js';
 import { ExecutionContext, ActionResult, replacePlaceholders, getClientData } from './types.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * Communication action configuration
@@ -62,7 +63,7 @@ export async function executeSendEmail(
       data: { communicationId: communication.id, type: 'EMAIL', to: toEmail, subject: finalSubject },
     };
   } catch (error) {
-    console.error('Error executing SEND_EMAIL action:', error);
+    logger.error('action_send_email_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to send email' };
   }
 }
@@ -115,7 +116,7 @@ export async function executeSendSms(
       data: { communicationId: communication.id, type: 'SMS', to: toPhone, body: finalBody },
     };
   } catch (error) {
-    console.error('Error executing SEND_SMS action:', error);
+    logger.error('action_send_sms_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to send SMS' };
   }
 }
@@ -170,7 +171,7 @@ export async function executeGenerateLetter(
       data: { communicationId: communication.id, type: 'LETTER', subject: finalSubject, clientName: client.name },
     };
   } catch (error) {
-    console.error('Error executing GENERATE_LETTER action:', error);
+    logger.error('action_generate_letter_failed', { error: error instanceof Error ? error.message : String(error) });
     return { success: false, message: error instanceof Error ? error.message : 'Failed to generate letter' };
   }
 }

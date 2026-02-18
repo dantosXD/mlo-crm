@@ -4,9 +4,11 @@
   "description": "MLO Dashboard - CRM and Loan Origination System for Mortgage Loan Officers",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev": "node scripts/dev-audit.mjs",
+    "dev:safe": "node scripts/dev-audit.mjs",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
+    "preflight": "node scripts/preflight-dev.mjs",
     "build": "npm run build:frontend && npm run build:backend",
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build",

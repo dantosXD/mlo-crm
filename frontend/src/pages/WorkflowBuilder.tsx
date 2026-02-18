@@ -697,6 +697,7 @@ export default function WorkflowBuilder() {
                     { value: 'NOTE_WITH_TAG', label: 'Note with Tag' },
                     { value: 'WEBHOOK', label: 'Webhook' },
                     { value: 'SCHEDULED', label: 'Scheduled' },
+                    { value: 'DATE_BASED', label: 'Date Based' },
                   ]}
                   value={selectedNode.data.triggerType || ''}
                   onChange={(value) => {
@@ -768,10 +769,13 @@ export default function WorkflowBuilder() {
                   ]}
                   value={selectedNode.data.actionType || ''}
                   onChange={(value) => {
+                    const defaultConfigs: Record<string, Record<string, any>> = {
+                      WAIT: { duration: 1, unit: 'hours' },
+                    };
                     setNodes((nds) =>
                       nds.map((n) =>
                         n.id === selectedNode.id
-                          ? { ...n, data: { ...n.data, actionType: value, config: {} } }
+                          ? { ...n, data: { ...n.data, actionType: value, config: defaultConfigs[value as string] ?? {} } }
                           : n
                       )
                     );

@@ -143,6 +143,11 @@ export default function TriggerConfigPanel({
       icon: IconClock,
       color: 'indigo',
     },
+    DATE_BASED: {
+      description: 'Runs on a fixed date or relative to a client date field',
+      icon: IconCalendar,
+      color: 'teal',
+    },
   };
 
   const info = triggerInfo[triggerType] || {
@@ -502,6 +507,41 @@ export default function TriggerConfigPanel({
           </Stack>
         );
 
+      case 'DATE_BASED':
+        return (
+          <Stack gap="sm">
+            <Select
+              label="Date Field"
+              description="Choose which date to evaluate against"
+              data={[
+                { value: 'client.createdAt', label: 'Client Created Date' },
+                { value: 'client.updatedAt', label: 'Client Updated Date' },
+                { value: 'custom', label: 'Custom Date' },
+              ]}
+              value={config.dateField || 'client.createdAt'}
+              onChange={(value) => updateConfig('dateField', value || 'client.createdAt')}
+              required
+            />
+
+            {config.dateField === 'custom' && (
+              <TextInput
+                label="Custom Date"
+                type="date"
+                value={config.customDate || ''}
+                onChange={(e) => updateConfig('customDate', e.currentTarget.value)}
+                required
+              />
+            )}
+
+            <NumberInput
+              label="Offset Days"
+              description="Negative runs before the base date, positive runs after"
+              value={typeof config.offsetDays === 'number' ? config.offsetDays : 0}
+              onChange={(value) => updateConfig('offsetDays', Number(value || 0))}
+            />
+          </Stack>
+        );
+
       case 'MANUAL':
       case 'CLIENT_CREATED':
       case 'CLIENT_UPDATED':
@@ -556,6 +596,8 @@ export default function TriggerConfigPanel({
               'Notify the manager when tasks are 7+ days overdue.'}
             {triggerType === 'SCHEDULED' &&
               'Generate a daily report of all active clients at 9:00 AM.'}
+            {triggerType === 'DATE_BASED' &&
+              'Run a reminder 2 days before a custom closing date, or 7 days after client creation.'}
             {triggerType === 'WEBHOOK' &&
               'Integrate with external services by calling this webhook URL.'}
             {triggerType === 'CLIENT_INACTIVITY' &&
@@ -567,6 +609,7 @@ export default function TriggerConfigPanel({
               'DOCUMENT_DUE_DATE',
               'TASK_OVERDUE',
               'SCHEDULED',
+              'DATE_BASED',
               'WEBHOOK',
               'CLIENT_INACTIVITY',
               'TIME_IN_STAGE_THRESHOLD',
