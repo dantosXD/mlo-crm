@@ -17,10 +17,14 @@ function getCookie(name: string): string | null {
 /**
  * Ensure the CSRF cookie exists before the first mutating request in a session.
  * This avoids a deterministic 403 on the first write after login/refresh.
+ * Pass force=true to bypass the cached cookie check (e.g. after a CSRF 403).
  */
-async function ensureCsrfCookie(accessToken: string | null): Promise<string | null> {
+async function ensureCsrfCookie(accessToken: string | null, force = false): Promise<string | null> {
   let csrf = getCookie('csrf-token');
-  if (csrf || !accessToken) {
+  if (!force && (csrf || !accessToken)) {
+    return csrf;
+  }
+  if (!accessToken) {
     return csrf;
   }
 
@@ -106,9 +110,22 @@ export async function apiRequest(
     credentials: 'include',
   });
 
-  // Auto-refresh on 401/403 and retry once
+  // Handle 403 — distinguish CSRF errors from auth errors
+  if (response.status === 403 && !_isRetry) {
+    const cloned = response.clone();
+    const body = await cloned.json().catch(() => ({})) as Record<string, string>;
+    const isCsrfError = body?.error === 'CSRF Token Missing' || body?.error === 'CSRF Cookie Missing' || body?.error === 'CSRF Token Mismatch';
+
+    if (isCsrfError) {
+      // Force re-prime the CSRF cookie, then retry the original request
+      const { accessToken: freshToken } = useAuthStore.getState();
+      await ensureCsrfCookie(freshToken, true);
+      return apiRequest(endpoint, options, true);
+    }
+  }
+
+  // Auto-refresh on 401 (and non-CSRF 403) and retry once
   if ((response.status === 401 || response.status === 403) && !_isRetry) {
-    // Coalesce concurrent refresh attempts into a single request
     if (!_refreshPromise) {
       _refreshPromise = useAuthStore.getState().refreshAuth().finally(() => {
         _refreshPromise = null;

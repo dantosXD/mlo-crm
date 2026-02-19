@@ -21,7 +21,8 @@ export function DeleteClientModal({ opened, onClose, clientId, clientName }: Del
       const response = await api.delete(`/clients/${clientId}`);
 
       if (!response.ok) {
-        throw new Error('Failed to delete client');
+        const body = await response.json().catch(() => ({})) as Record<string, string>;
+        throw new Error(body.message || body.error || `Failed to delete client (${response.status})`);
       }
 
       notifications.show({
@@ -36,7 +37,7 @@ export function DeleteClientModal({ opened, onClose, clientId, clientName }: Del
       console.error('Error deleting client:', error);
       notifications.show({
         title: 'Error',
-        message: 'Failed to delete client',
+        message: error instanceof Error ? error.message : 'Failed to delete client',
         color: 'red',
       });
       onClose();
