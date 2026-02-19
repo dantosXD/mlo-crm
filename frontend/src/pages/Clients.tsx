@@ -12,19 +12,17 @@ import {
   Modal,
   Stack,
   Select,
-  LoadingOverlay,
   Paper,
   ActionIcon,
   Tooltip,
   TagsInput,
   Box,
-  ScrollArea,
   Skeleton,
   Checkbox,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar, IconDownload, IconEyeOff, IconMail } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEye, IconTrash, IconFilter, IconX, IconTag, IconArrowUp, IconArrowDown, IconArrowsSort, IconCalendar, IconDownload, IconEyeOff, IconMail, IconArchive } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
 import { canWriteClients } from '../utils/roleUtils';
@@ -127,6 +125,10 @@ export default function Clients() {
   // Archive modal state
   const [archiveModalClient, setArchiveModalClient] = useState<{ id: string; name: string } | null>(null);
 
+  // Bulk archive state
+  const [bulkArchiveModalOpen, setBulkArchiveModalOpen] = useState(false);
+  const [bulkArchiving, setBulkArchiving] = useState(false);
+
   // Navigate to client details while storing current filter state
   const navigateToClient = (clientId: string) => {
     // Store current URL (with search params) in sessionStorage so we can return to it
@@ -222,6 +224,31 @@ export default function Clients() {
 
   const handleArchiveClient = (id: string, name: string) => {
     setArchiveModalClient({ id, name });
+  };
+
+  const handleBulkArchive = async () => {
+    setBulkArchiving(true);
+    try {
+      await Promise.all(
+        selectedClientIds.map(id => api.delete(`/clients/${id}`))
+      );
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      setSelectedClientIds([]);
+      setBulkArchiveModalOpen(false);
+      notifications.show({
+        title: 'Clients Archived',
+        message: `${selectedClientIds.length} client(s) archived successfully.`,
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to archive some clients',
+        color: 'red',
+      });
+    } finally {
+      setBulkArchiving(false);
+    }
   };
 
   const handleBulkStatusUpdate = async () => {
@@ -326,7 +353,6 @@ export default function Clients() {
   // The clients array is already sorted when returned from the API
 
   // Paginate filtered clients
-  const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
   const paginatedClients = filteredClients.slice(0, page * itemsPerPage);
   const hasMore = page * itemsPerPage < filteredClients.length;
 
@@ -476,6 +502,14 @@ export default function Clients() {
                   onClick={() => setBulkStatusModalOpen(true)}
                 >
                   Change Status
+                </Button>
+                <Button
+                  size="sm"
+                  color="orange"
+                  leftSection={<IconArchive size={14} />}
+                  onClick={() => setBulkArchiveModalOpen(true)}
+                >
+                  Archive Selected
                 </Button>
                 <Button
                   size="sm"
@@ -822,6 +856,28 @@ export default function Clients() {
           onClose={() => setBulkComposeModalOpen(false)}
           clientIds={selectedClientIds}
         />
+
+        {/* Bulk Archive Confirmation Modal */}
+        <Modal
+          opened={bulkArchiveModalOpen}
+          onClose={() => setBulkArchiveModalOpen(false)}
+          title={`Archive ${selectedClientIds.length} Client(s)`}
+          centered
+        >
+          <Stack>
+            <Text>
+              Archive <strong>{selectedClientIds.length} selected client(s)</strong>? They will be hidden from the client list but their data will be preserved.
+            </Text>
+            <Group justify="flex-end" mt="md">
+              <Button variant="subtle" onClick={() => setBulkArchiveModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button color="orange" onClick={handleBulkArchive} loading={bulkArchiving} leftSection={<IconArchive size={14} />}>
+                Archive {selectedClientIds.length} Client(s)
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
 
         {/* Archive Client Modal */}
         {archiveModalClient && (
