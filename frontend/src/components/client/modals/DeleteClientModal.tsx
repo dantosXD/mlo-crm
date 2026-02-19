@@ -9,9 +9,10 @@ interface DeleteClientModalProps {
   onClose: () => void;
   clientId: string;
   clientName: string;
+  onSuccess?: () => void;
 }
 
-export function DeleteClientModal({ opened, onClose, clientId, clientName }: DeleteClientModalProps) {
+export function DeleteClientModal({ opened, onClose, clientId, clientName, onSuccess }: DeleteClientModalProps) {
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
 
@@ -22,22 +23,25 @@ export function DeleteClientModal({ opened, onClose, clientId, clientName }: Del
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({})) as Record<string, string>;
-        throw new Error(body.message || body.error || `Failed to delete client (${response.status})`);
+        throw new Error(body.message || body.error || `Failed to archive client (${response.status})`);
       }
 
       notifications.show({
-        title: 'Success',
-        message: 'Client deleted successfully',
+        title: 'Client Archived',
+        message: `${clientName} has been archived and hidden from the client list.`,
         color: 'green',
       });
 
-      // Navigate to clients list after successful deletion
-      navigate('/clients');
+      onClose();
+      if (onSuccess) {
+        onSuccess();
+      } else {
+        navigate('/clients');
+      }
     } catch (error) {
-      console.error('Error deleting client:', error);
       notifications.show({
         title: 'Error',
-        message: error instanceof Error ? error.message : 'Failed to delete client',
+        message: error instanceof Error ? error.message : 'Failed to archive client',
         color: 'red',
       });
       onClose();
@@ -50,19 +54,19 @@ export function DeleteClientModal({ opened, onClose, clientId, clientName }: Del
     <Modal
       opened={opened}
       onClose={onClose}
-      title="Delete Client"
+      title="Archive Client"
       centered
     >
       <Stack>
         <Text>
-          Are you sure you want to delete <strong>{clientName}</strong>? This action cannot be undone.
+          Archive <strong>{clientName}</strong>? They will be hidden from the client list but their data will be preserved.
         </Text>
         <Group justify="flex-end" mt="md">
           <Button variant="subtle" onClick={onClose}>
             Cancel
           </Button>
-          <Button color="red" onClick={handleDelete} loading={deleting}>
-            Delete
+          <Button color="orange" onClick={handleDelete} loading={deleting}>
+            Archive
           </Button>
         </Group>
       </Stack>

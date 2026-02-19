@@ -33,6 +33,7 @@ import { handleFetchError } from '../utils/errorHandler';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../utils/api';
 import { BulkCommunicationComposer } from './BulkCommunicationComposer';
+import { DeleteClientModal } from '../components/client/modals/DeleteClientModal';
 import { CLIENT_STATUS_COLORS } from '../utils/constants';
 import type { Client } from '../types';
 
@@ -122,6 +123,9 @@ export default function Clients() {
   const [bulkStatus, setBulkStatus] = useState<string | null>(null);
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [bulkComposeModalOpen, setBulkComposeModalOpen] = useState(false);
+
+  // Archive modal state
+  const [archiveModalClient, setArchiveModalClient] = useState<{ id: string; name: string } | null>(null);
 
   // Navigate to client details while storing current filter state
   const navigateToClient = (clientId: string) => {
@@ -216,29 +220,8 @@ export default function Clients() {
     }
   };
 
-  const handleDeleteClient = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this client?')) {
-      return;
-    }
-
-    try {
-      const response = await api.delete(`/clients/${id}`);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to delete client');
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
-      notifications.show({
-        title: 'Success',
-        message: 'Client deleted successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error deleting client:', error);
-      handleFetchError(error, 'deleting client');
-    }
+  const handleArchiveClient = (id: string, name: string) => {
+    setArchiveModalClient({ id, name });
   };
 
   const handleBulkStatusUpdate = async () => {
@@ -683,12 +666,12 @@ export default function Clients() {
                             </ActionIcon>
                           </Tooltip>
                           {canWrite && (
-                            <Tooltip label="Delete">
+                            <Tooltip label="Archive">
                               <ActionIcon
                                 variant="subtle"
-                                color="red"
-                                onClick={() => handleDeleteClient(client.id)}
-                                aria-label={`Delete ${client.name}`}
+                                color="orange"
+                                onClick={() => handleArchiveClient(client.id, client.name)}
+                                aria-label={`Archive ${client.name}`}
                               >
                                 <IconTrash size={16} aria-hidden="true" />
                               </ActionIcon>
@@ -839,6 +822,20 @@ export default function Clients() {
           onClose={() => setBulkComposeModalOpen(false)}
           clientIds={selectedClientIds}
         />
+
+        {/* Archive Client Modal */}
+        {archiveModalClient && (
+          <DeleteClientModal
+            opened={!!archiveModalClient}
+            onClose={() => setArchiveModalClient(null)}
+            clientId={archiveModalClient.id}
+            clientName={archiveModalClient.name}
+            onSuccess={() => {
+              setArchiveModalClient(null);
+              queryClient.invalidateQueries({ queryKey: ['clients'] });
+            }}
+          />
+        )}
       </Container>
     </Box>
   );

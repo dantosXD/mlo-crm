@@ -141,7 +141,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
       },
     });
 
-    if (!client) {
+    if (!client || client.deletedAt !== null) {
       return res.status(404).json({
         error: 'Not Found',
         message: 'Client not found',
