@@ -163,17 +163,6 @@ export default function ClientDetails() {
     enabled: false,
   });
 
-  // --- React Query: note templates (on-demand) ---
-  const { data: noteTemplates = [], isLoading: loadingTemplates, refetch: refetchNoteTemplates } = useQuery({
-    queryKey: ['note-templates'],
-    queryFn: async () => {
-      const response = await api.get('/notes/templates/list');
-      if (!response.ok) throw new Error('Failed to fetch note templates');
-      return response.json() as Promise<{ id: string; name: string; content: string }[]>;
-    },
-    enabled: false,
-  });
-
   // Helper to refresh activities after mutations
   const refreshActivities = () => {
     queryClient.invalidateQueries({ queryKey: ['client-activities', id] });

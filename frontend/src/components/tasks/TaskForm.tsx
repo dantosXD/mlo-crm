@@ -7,18 +7,17 @@ import {
   Select,
   Button,
   Group,
-  MultiSelect,
   TagsInput,
   Checkbox,
   Paper,
-  Title,
   Text,
   Divider,
   Alert,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
-import { IconTag, IconRepeat, IconBell, IconClock, IconCalendarEvent } from '@tabler/icons-react';
+import { IconTag, IconRepeat, IconBell, IconCalendarEvent } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { apiRequest } from '../../utils/api';
 
 interface TaskFormProps {
@@ -52,7 +51,10 @@ const recurringPatterns = [
 ];
 
 export default function TaskForm({ opened, onClose, onSuccess, clientId, editTask }: TaskFormProps) {
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [createdTaskId, setCreatedTaskId] = useState<string | null>(null);
   const [text, setText] = useState(editTask?.text || '');
   const [description, setDescription] = useState(editTask?.description || '');
@@ -66,6 +68,26 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
   const [recurringEndDate, setRecurringEndDate] = useState<Date | null>(
     editTask?.recurringEndDate ? new Date(editTask.recurringEndDate) : null
   );
+
+  const { data: taskTemplates = [], isLoading: loadingTemplates } = useQuery({
+    queryKey: ['task-templates'],
+    queryFn: async () => {
+      const response = await api.get('/tasks/templates');
+      if (!response.ok) throw new Error('Failed to fetch task templates');
+      return response.json() as Promise<Array<{
+        id: string;
+        name: string;
+        text: string;
+        description?: string | null;
+        type?: string;
+        priority?: string;
+        tags?: string[];
+        dueDays?: number | null;
+        steps?: string[];
+      }>>;
+    },
+    enabled: opened,
+  });
 
   const handleSubmit = async () => {
     if (!text.trim()) {
@@ -146,8 +168,60 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
     setRecurringPattern('WEEKLY');
     setRecurringInterval(1);
     setRecurringEndDate(null);
+    setSelectedTemplate(null);
     setCreatedTaskId(null);
     onClose();
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!text.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Task text is required to save a template',
+        color: 'red',
+      });
+      return;
+    }
+
+    const nameInput = window.prompt('Template name');
+    if (!nameInput || !nameInput.trim()) return;
+
+    setSavingTemplate(true);
+    try {
+      const dueDays = dueDate
+        ? Math.max(0, Math.ceil((dueDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+        : null;
+
+      const response = await api.post('/tasks/templates', {
+        name: nameInput.trim(),
+        description: description.trim() || undefined,
+        text: text.trim(),
+        type,
+        priority,
+        tags,
+        dueDays,
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to save task template');
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['task-templates'] });
+      notifications.show({
+        title: 'Template Saved',
+        message: 'Task template saved successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to save task template',
+        color: 'red',
+      });
+    } finally {
+      setSavingTemplate(false);
+    }
   };
 
   const handleConvertToEvent = async () => {
@@ -222,6 +296,29 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
       size="lg"
     >
       <Stack>
+        <Select
+          label="Use Template (optional)"
+          placeholder={loadingTemplates ? 'Loading templates...' : 'Select a template'}
+          data={taskTemplates.map((template) => ({ value: template.id, label: template.name }))}
+          value={selectedTemplate}
+          onChange={(value) => {
+            setSelectedTemplate(value);
+            const template = taskTemplates.find((item) => item.id === value);
+            if (!template) return;
+            setText(template.text || '');
+            setDescription(template.description || '');
+            setType(template.type || 'GENERAL');
+            setPriority(template.priority || 'MEDIUM');
+            setTags(template.tags || []);
+            setDueDate(
+              template.dueDays != null
+                ? new Date(Date.now() + (template.dueDays * 24 * 60 * 60 * 1000))
+                : null,
+            );
+          }}
+          clearable
+          disabled={loadingTemplates}
+        />
         {/* Task Text */}
         <TextInput
           label="Task *"
@@ -321,6 +418,9 @@ export default function TaskForm({ opened, onClose, onSuccess, clientId, editTas
 
         {/* Actions */}
         <Group justify="flex-end" mt="md">
+          <Button variant="light" onClick={handleSaveTemplate} loading={savingTemplate}>
+            Save as Template
+          </Button>
           <Button variant="light" onClick={handleClose} disabled={loading}>
             Cancel
           </Button>

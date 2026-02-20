@@ -53,3 +53,22 @@
 3. Inspect structured logs using `X-Request-Id`
 4. Verify database status and connection pool saturation
 5. Verify object storage availability
+
+## Feature migration addendum: Productivity Templates V1
+1. Confirm pre-migration snapshot on staging/production databases.
+2. Execute `DATABASE_URL=<env-url> npx prisma migrate deploy` from `backend/`.
+3. Execute `DATABASE_URL=<env-url> npx prisma generate` from `backend/`.
+4. Verify schema changes:
+   - `task_templates.is_system`
+   - `note_templates.description/is_system/created_by_id/deleted_at`
+   - `reminder_templates` table present
+   - `activity_templates` table present
+5. Run post-deploy checks:
+   - `GET /api/notes/templates/list`
+   - `GET /api/tasks/templates`
+   - `GET /api/reminders/templates`
+   - `GET /api/activities/templates`
+6. If failure is detected:
+   - restore pre-migration snapshot
+   - redeploy previous stable backend/frontend artifact
+   - rerun smoke checks

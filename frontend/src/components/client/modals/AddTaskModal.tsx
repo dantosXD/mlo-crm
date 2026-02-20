@@ -18,11 +18,13 @@ export function AddTaskModal({ opened, onClose, clientId }: AddTaskModalProps) {
   const [taskForm, setTaskForm] = useState({
     text: '',
     description: '',
-    priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH',
+    priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
     dueDate: null as Date | null,
     assignedToId: '' as string | undefined,
   });
   const [saving, setSaving] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
 
   // Fetch team members for assignment
   const { data: teamMembers = [], isLoading: loadingTeamMembers } = useQuery({
@@ -34,8 +36,26 @@ export function AddTaskModal({ opened, onClose, clientId }: AddTaskModalProps) {
     },
   });
 
+  const { data: taskTemplates = [], isLoading: loadingTemplates } = useQuery({
+    queryKey: ['task-templates'],
+    queryFn: async () => {
+      const response = await api.get('/tasks/templates');
+      if (!response.ok) throw new Error('Failed to fetch task templates');
+      return response.json() as Promise<Array<{
+        id: string;
+        name: string;
+        text: string;
+        description?: string | null;
+        priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+        dueDays?: number | null;
+      }>>;
+    },
+    enabled: opened,
+  });
+
   const handleClose = () => {
     setTaskForm({ text: '', description: '', priority: 'MEDIUM', dueDate: null, assignedToId: '' });
+    setSelectedTemplate(null);
     onClose();
   };
 
@@ -86,6 +106,56 @@ export function AddTaskModal({ opened, onClose, clientId }: AddTaskModalProps) {
     }
   };
 
+  const handleSaveTemplate = async () => {
+    if (!taskForm.text.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Task text is required to save a template',
+        color: 'red',
+      });
+      return;
+    }
+
+    const name = window.prompt('Template name');
+    if (!name || !name.trim()) {
+      return;
+    }
+
+    setSavingTemplate(true);
+    try {
+      const dueDays = taskForm.dueDate
+        ? Math.max(0, Math.ceil((taskForm.dueDate.getTime() - new Date().getTime()) / (24 * 60 * 60 * 1000)))
+        : null;
+      const response = await api.post('/tasks/templates', {
+        name: name.trim(),
+        text: taskForm.text.trim(),
+        description: taskForm.description || undefined,
+        priority: taskForm.priority,
+        dueDays,
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to save task template');
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['task-templates'] });
+      notifications.show({
+        title: 'Template Saved',
+        message: 'Task template saved successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to save task template',
+        color: 'red',
+      });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   return (
     <Modal
       opened={opened}
@@ -93,6 +163,30 @@ export function AddTaskModal({ opened, onClose, clientId }: AddTaskModalProps) {
       title="Add Task"
     >
       <Stack>
+        <Select
+          label="Use Template (optional)"
+          placeholder={loadingTemplates ? 'Loading templates...' : 'Select a template'}
+          data={taskTemplates.map((template) => ({ value: template.id, label: template.name }))}
+          value={selectedTemplate}
+          onChange={(value) => {
+            setSelectedTemplate(value);
+            const template = taskTemplates.find((item) => item.id === value);
+            if (!template) return;
+            const dueDate = template.dueDays != null
+              ? new Date(Date.now() + (template.dueDays * 24 * 60 * 60 * 1000))
+              : null;
+
+            setTaskForm((current) => ({
+              ...current,
+              text: template.text || current.text,
+              description: template.description || '',
+              priority: template.priority || 'MEDIUM',
+              dueDate,
+            }));
+          }}
+          clearable
+          disabled={loadingTemplates}
+        />
         <TextInput
           label="Task"
           placeholder="Enter task description..."
@@ -113,9 +207,10 @@ export function AddTaskModal({ opened, onClose, clientId }: AddTaskModalProps) {
             { value: 'LOW', label: 'Low' },
             { value: 'MEDIUM', label: 'Medium' },
             { value: 'HIGH', label: 'High' },
+            { value: 'URGENT', label: 'Urgent' },
           ]}
           value={taskForm.priority}
-          onChange={(value) => setTaskForm({ ...taskForm, priority: (value as 'LOW' | 'MEDIUM' | 'HIGH') || 'MEDIUM' })}
+          onChange={(value) => setTaskForm({ ...taskForm, priority: (value as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT') || 'MEDIUM' })}
         />
         <Select
           label="Assign To (optional)"
@@ -138,6 +233,9 @@ export function AddTaskModal({ opened, onClose, clientId }: AddTaskModalProps) {
           minDate={new Date()}
         />
         <Group justify="flex-end" mt="md">
+          <Button variant="light" onClick={handleSaveTemplate} loading={savingTemplate}>
+            Save as Template
+          </Button>
           <Button variant="subtle" onClick={handleClose}>
             Cancel
           </Button>

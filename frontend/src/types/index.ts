@@ -139,6 +139,106 @@ export interface Activity {
   createdAt: string;
 }
 
+export type TemplateSource = 'SYSTEM' | 'PERSONAL';
+
+export interface NoteTemplate {
+  id: string;
+  name: string;
+  description?: string | null;
+  content: string;
+  tags: string[];
+  isSystem: boolean;
+  source: TemplateSource;
+  createdById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskTemplate {
+  id: string;
+  name: string;
+  description?: string | null;
+  text: string;
+  type: string;
+  priority: string;
+  tags: string[];
+  dueDays?: number | null;
+  steps: string[];
+  isSystem: boolean;
+  source: TemplateSource;
+  createdById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TemplateOffsetUnit = 'minutes' | 'hours' | 'days';
+
+export interface TemplateOffsetConfig {
+  value: number;
+  unit: TemplateOffsetUnit;
+  atTime?: string;
+}
+
+export interface ReminderTemplateConfig {
+  title?: string;
+  description?: string;
+  category?: string;
+  priority?: string;
+  tags?: string[];
+  isRecurring?: boolean;
+  recurringPattern?: string;
+  recurringInterval?: number;
+  recurringEndDays?: number | null;
+  remindOffset?: TemplateOffsetConfig;
+  dueOffset?: TemplateOffsetConfig;
+}
+
+export interface ReminderTemplate {
+  id: string;
+  name: string;
+  description?: string | null;
+  config: ReminderTemplateConfig;
+  isSystem: boolean;
+  source: TemplateSource;
+  createdById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type FollowUpKind = 'TASK' | 'REMINDER';
+
+export interface ActivityTemplateFollowUpConfig {
+  enabled?: boolean;
+  kind: FollowUpKind;
+  text?: string;
+  title?: string;
+  description?: string;
+  priority?: string;
+  category?: string;
+  dueOffset?: TemplateOffsetConfig;
+  remindOffset?: TemplateOffsetConfig;
+  tags?: string[];
+}
+
+export interface ActivityTemplateConfig {
+  type?: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ActivityTemplate {
+  id: string;
+  name: string;
+  description?: string | null;
+  config: ActivityTemplateConfig;
+  autoFollowUp?: ActivityTemplateFollowUpConfig | null;
+  isSystem: boolean;
+  source: TemplateSource;
+  createdById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Reminder {
   id: string;
   title: string;

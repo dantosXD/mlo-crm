@@ -37,6 +37,9 @@ model User {
   assignedTasks Task[] @relation("TaskAssignee")
   createdTasks Task[] @relation("TaskCreator")
   createdTaskTemplates TaskTemplate[] @relation("TaskTemplateCreator")
+  createdNoteTemplates NoteTemplate[] @relation("NoteTemplateCreator")
+  createdReminderTemplates ReminderTemplate[] @relation("ReminderTemplateCreator")
+  createdActivityTemplates ActivityTemplate[] @relation("ActivityTemplateCreator")
   calendarConnections CalendarConnection[]
 
   // Loan program templates
@@ -373,11 +376,19 @@ model DocumentPackage {
 model NoteTemplate {
   id          String    @id @default(uuid())
   name        String
+  description String?
   content     String
   tags        String    @default("[]") // JSON array string
+  isSystem    Boolean   @default(false) @map("is_system")
+  deletedAt   DateTime? @map("deleted_at")
+  createdById String?   @map("created_by_id")
+  createdBy   User?     @relation("NoteTemplateCreator", fields: [createdById], references: [id])
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
+  @@index([isSystem])
+  @@index([deletedAt])
+  @@index([createdById])
   @@map("note_templates")
 }
 
@@ -392,6 +403,7 @@ model TaskTemplate {
   tags        String    @default("[]") // JSON array string
   dueDays     Int?      @map("due_days")
   steps       String?   // JSON array of subtask steps
+  isSystem    Boolean   @default(false) @map("is_system")
   deletedAt   DateTime? @map("deleted_at")
   createdById String?   @map("created_by_id")
   createdBy   User?     @relation("TaskTemplateCreator", fields: [createdById], references: [id])
@@ -399,9 +411,49 @@ model TaskTemplate {
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@index([type])
+  @@index([isSystem])
   @@index([deletedAt])
   @@index([createdById])
   @@map("task_templates")
+}
+
+// Reminder templates
+model ReminderTemplate {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  config      String    // JSON object string
+  isSystem    Boolean   @default(false) @map("is_system")
+  deletedAt   DateTime? @map("deleted_at")
+  createdById String?   @map("created_by_id")
+  createdBy   User?     @relation("ReminderTemplateCreator", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([isSystem])
+  @@index([deletedAt])
+  @@index([createdById])
+  @@map("reminder_templates")
+}
+
+// Activity templates
+model ActivityTemplate {
+  id           String    @id @default(uuid())
+  name         String
+  description  String?
+  config       String    // JSON object string
+  autoFollowUp String?   @map("auto_follow_up") // JSON object string
+  isSystem     Boolean   @default(false) @map("is_system")
+  deletedAt    DateTime? @map("deleted_at")
+  createdById  String?   @map("created_by_id")
+  createdBy    User?     @relation("ActivityTemplateCreator", fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([isSystem])
+  @@index([deletedAt])
+  @@index([createdById])
+  @@map("activity_templates")
 }
 
 // Refresh tokens for JWT authentication

@@ -20,6 +20,192 @@ const REMINDER_INCLUDE = {
   client: { select: { id: true, nameHash: true } },
 } as const;
 
+type ReminderOffsetUnit = 'minutes' | 'hours' | 'days';
+interface ReminderTemplateOffset {
+  value: number;
+  unit: ReminderOffsetUnit;
+  atTime?: string;
+}
+
+interface ReminderTemplateConfig {
+  title?: string;
+  description?: string;
+  category?: string;
+  priority?: string;
+  tags?: string[];
+  isRecurring?: boolean;
+  recurringPattern?: string;
+  recurringInterval?: number;
+  recurringEndDays?: number | null;
+  remindOffset?: ReminderTemplateOffset;
+  dueOffset?: ReminderTemplateOffset;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateOffset(offset: unknown, fieldName: string) {
+  if (!isObject(offset)) throw new ServiceError(400, 'Validation Error', `${fieldName} must be an object`);
+  const value = Number(offset.value);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new ServiceError(400, 'Validation Error', `${fieldName}.value must be a non-negative number`);
+  }
+  if (!['minutes', 'hours', 'days'].includes(`${offset.unit}`)) {
+    throw new ServiceError(400, 'Validation Error', `${fieldName}.unit must be one of: minutes, hours, days`);
+  }
+  if (offset.atTime !== undefined && !/^\d{2}:\d{2}$/.test(`${offset.atTime}`)) {
+    throw new ServiceError(400, 'Validation Error', `${fieldName}.atTime must use HH:MM format`);
+  }
+}
+
+function validateReminderTemplateConfig(config: unknown): ReminderTemplateConfig {
+  if (!isObject(config)) throw new ServiceError(400, 'Validation Error', 'config must be an object');
+
+  if (config.title !== undefined && typeof config.title !== 'string') {
+    throw new ServiceError(400, 'Validation Error', 'config.title must be a string');
+  }
+  if (config.description !== undefined && typeof config.description !== 'string') {
+    throw new ServiceError(400, 'Validation Error', 'config.description must be a string');
+  }
+  if (config.category !== undefined && typeof config.category !== 'string') {
+    throw new ServiceError(400, 'Validation Error', 'config.category must be a string');
+  }
+  if (config.priority !== undefined && typeof config.priority !== 'string') {
+    throw new ServiceError(400, 'Validation Error', 'config.priority must be a string');
+  }
+  if (config.tags !== undefined && !Array.isArray(config.tags)) {
+    throw new ServiceError(400, 'Validation Error', 'config.tags must be an array');
+  }
+  if (Array.isArray(config.tags) && config.tags.some((tag) => typeof tag !== 'string')) {
+    throw new ServiceError(400, 'Validation Error', 'config.tags must contain strings only');
+  }
+  if (config.isRecurring !== undefined && typeof config.isRecurring !== 'boolean') {
+    throw new ServiceError(400, 'Validation Error', 'config.isRecurring must be a boolean');
+  }
+  if (config.recurringPattern !== undefined && typeof config.recurringPattern !== 'string') {
+    throw new ServiceError(400, 'Validation Error', 'config.recurringPattern must be a string');
+  }
+  if (config.recurringInterval !== undefined) {
+    const recurringInterval = Number(config.recurringInterval);
+    if (!Number.isInteger(recurringInterval) || recurringInterval <= 0) {
+      throw new ServiceError(400, 'Validation Error', 'config.recurringInterval must be a positive integer');
+    }
+  }
+  if (config.recurringEndDays !== undefined && config.recurringEndDays !== null) {
+    const recurringEndDays = Number(config.recurringEndDays);
+    if (!Number.isInteger(recurringEndDays) || recurringEndDays < 0) {
+      throw new ServiceError(400, 'Validation Error', 'config.recurringEndDays must be a non-negative integer');
+    }
+  }
+  if (config.remindOffset !== undefined) validateOffset(config.remindOffset, 'config.remindOffset');
+  if (config.dueOffset !== undefined) validateOffset(config.dueOffset, 'config.dueOffset');
+
+  return config as ReminderTemplateConfig;
+}
+
+function normalizeReminderTemplate(template: {
+  id: string;
+  name: string;
+  description: string | null;
+  config: string;
+  isSystem: boolean;
+  createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  let config: ReminderTemplateConfig = {};
+  try {
+    const parsed = JSON.parse(template.config);
+    config = parsed && typeof parsed === 'object' ? (parsed as ReminderTemplateConfig) : {};
+  } catch {
+    config = {};
+  }
+
+  return {
+    id: template.id,
+    name: template.name,
+    description: template.description,
+    config,
+    isSystem: template.isSystem,
+    source: template.isSystem ? 'SYSTEM' : 'PERSONAL',
+    createdById: template.createdById,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+  };
+}
+
+// ─── reminder templates ─────────────────────────────────────────────────────
+
+export async function listReminderTemplates(userId: string) {
+  const templates = await prisma.reminderTemplate.findMany({
+    where: {
+      OR: [
+        { isSystem: true },
+        { createdById: userId },
+      ],
+    },
+    orderBy: [{ isSystem: 'desc' }, { name: 'asc' }],
+  });
+  return templates.map(normalizeReminderTemplate);
+}
+
+export async function createReminderTemplate(
+  data: { name?: string; description?: string; config?: unknown },
+  userId: string,
+) {
+  const name = data.name?.trim();
+  if (!name) throw new ServiceError(400, 'Validation Error', 'Template name is required');
+
+  const config = validateReminderTemplateConfig(data.config);
+  const created = await prisma.reminderTemplate.create({
+    data: {
+      name,
+      description: data.description?.trim() || null,
+      config: JSON.stringify(config),
+      isSystem: false,
+      createdById: userId,
+    },
+  });
+
+  return normalizeReminderTemplate(created);
+}
+
+export async function updateReminderTemplate(
+  templateId: string,
+  data: { name?: string; description?: string | null; config?: unknown },
+  userId: string,
+) {
+  const existing = await prisma.reminderTemplate.findUnique({ where: { id: templateId } });
+  if (!existing) throw new ServiceError(404, 'Not Found', 'Reminder template not found');
+  if (existing.isSystem) throw new ServiceError(403, 'Access Denied', 'System templates are read-only');
+  if (existing.createdById !== userId) throw new ServiceError(403, 'Access Denied', 'You can only update your own templates');
+  if (data.name !== undefined && !data.name.trim()) {
+    throw new ServiceError(400, 'Validation Error', 'Template name cannot be empty');
+  }
+
+  const updated = await prisma.reminderTemplate.update({
+    where: { id: templateId },
+    data: {
+      ...(data.name !== undefined && { name: data.name.trim() }),
+      ...(data.description !== undefined && { description: data.description?.trim() || null }),
+      ...(data.config !== undefined && { config: JSON.stringify(validateReminderTemplateConfig(data.config)) }),
+    },
+  });
+
+  return normalizeReminderTemplate(updated);
+}
+
+export async function deleteReminderTemplate(templateId: string, userId: string) {
+  const existing = await prisma.reminderTemplate.findUnique({ where: { id: templateId } });
+  if (!existing) throw new ServiceError(404, 'Not Found', 'Reminder template not found');
+  if (existing.isSystem) throw new ServiceError(403, 'Access Denied', 'System templates are read-only');
+  if (existing.createdById !== userId) throw new ServiceError(403, 'Access Denied', 'You can only delete your own templates');
+
+  await prisma.reminderTemplate.delete({ where: { id: templateId } });
+  return { message: 'Reminder template archived successfully' };
+}
+
 function calculateNextReminderDate(fromDate: Date, pattern: string, interval: number | null): Date {
   const next = new Date(fromDate);
   switch (pattern) {

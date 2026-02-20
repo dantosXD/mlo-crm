@@ -651,31 +651,148 @@ export async function getReminderHistory(taskId: string, userId: string) {
 
 // ─── templates ──────────────────────────────────────────────────────────────
 
-export async function listTaskTemplates() {
-  return prisma.taskTemplate.findMany({ orderBy: { name: 'asc' } });
+function normalizeTaskTemplate(template: {
+  id: string;
+  name: string;
+  description: string | null;
+  text: string;
+  type: string;
+  priority: string;
+  tags: string;
+  dueDays: number | null;
+  steps: string | null;
+  isSystem: boolean;
+  createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  const parseArrayField = (value: string | null): string[] => {
+    if (!value) return [];
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map((item) => `${item}`.trim()).filter(Boolean);
+    } catch {
+      // Legacy template values may be CSV strings.
+    }
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
+  };
+
+  return {
+    id: template.id,
+    name: template.name,
+    description: template.description,
+    text: template.text,
+    type: template.type,
+    priority: template.priority,
+    tags: parseArrayField(template.tags),
+    dueDays: template.dueDays,
+    steps: parseArrayField(template.steps),
+    isSystem: template.isSystem,
+    source: template.isSystem ? 'SYSTEM' : 'PERSONAL',
+    createdById: template.createdById,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+  };
+}
+
+function normalizeTagsInput(tags: string | string[] | undefined): string {
+  if (Array.isArray(tags)) return JSON.stringify(tags);
+  if (typeof tags === 'string') {
+    const trimmed = tags.trim();
+    if (!trimmed) return '[]';
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return JSON.stringify(parsed.map((tag) => `${tag}`.trim()).filter(Boolean));
+      } catch {
+        // fall through to CSV parsing for malformed JSON-like strings
+      }
+    }
+    return JSON.stringify(trimmed.split(',').map((tag) => tag.trim()).filter(Boolean));
+  }
+  return '[]';
+}
+
+export async function listTaskTemplates(userId: string) {
+  const templates = await prisma.taskTemplate.findMany({
+    where: {
+      OR: [
+        { isSystem: true },
+        { createdById: userId },
+      ],
+    },
+    orderBy: [{ isSystem: 'desc' }, { name: 'asc' }],
+  });
+  return templates.map(normalizeTaskTemplate);
 }
 
 export async function createTaskTemplate(
-  data: { name: string; description?: string; text: string; type?: string; priority?: string; tags?: string; dueDays?: number; steps?: any },
+  data: { name: string; description?: string; text: string; type?: string; priority?: string; tags?: string | string[]; dueDays?: number; steps?: any },
   userId: string,
 ) {
-  if (!data.name || !data.text) throw new ServiceError(400, 'Validation Error', 'Template name and text are required');
-  return prisma.taskTemplate.create({
+  const name = data.name?.trim();
+  const text = data.text?.trim();
+  if (!name || !text) throw new ServiceError(400, 'Validation Error', 'Template name and text are required');
+  if (data.dueDays !== undefined && (Number.isNaN(data.dueDays) || data.dueDays < 0))
+    throw new ServiceError(400, 'Validation Error', 'dueDays must be zero or greater');
+
+  const created = await prisma.taskTemplate.create({
     data: {
-      name: data.name,
-      description: data.description,
-      text: data.text,
+      name,
+      description: data.description?.trim() || null,
+      text,
       type: data.type || 'GENERAL',
       priority: data.priority || 'MEDIUM',
-      tags: data.tags || '[]',
+      tags: normalizeTagsInput(data.tags),
       dueDays: data.dueDays,
       steps: data.steps ? JSON.stringify(data.steps) : null,
+      isSystem: false,
       createdById: userId,
     },
   });
+  return normalizeTaskTemplate(created);
 }
 
-export async function deleteTaskTemplate(templateId: string) {
+export async function updateTaskTemplate(
+  templateId: string,
+  data: { name?: string; description?: string | null; text?: string; type?: string; priority?: string; tags?: string | string[]; dueDays?: number | null; steps?: any[] | null },
+  userId: string,
+) {
+  const existing = await prisma.taskTemplate.findUnique({ where: { id: templateId } });
+  if (!existing) throw new ServiceError(404, 'Not Found', 'Task template not found');
+  if (existing.isSystem) throw new ServiceError(403, 'Access Denied', 'System templates are read-only');
+  if (existing.createdById !== userId) throw new ServiceError(403, 'Access Denied', 'You can only update your own templates');
+
+  if (data.dueDays !== undefined && data.dueDays !== null && (Number.isNaN(data.dueDays) || data.dueDays < 0))
+    throw new ServiceError(400, 'Validation Error', 'dueDays must be zero or greater');
+  if (data.name !== undefined && !data.name.trim())
+    throw new ServiceError(400, 'Validation Error', 'Template name cannot be empty');
+  if (data.text !== undefined && !data.text.trim())
+    throw new ServiceError(400, 'Validation Error', 'Template text cannot be empty');
+
+  const updated = await prisma.taskTemplate.update({
+    where: { id: templateId },
+    data: {
+      ...(data.name !== undefined && { name: data.name.trim() }),
+      ...(data.description !== undefined && { description: data.description?.trim() || null }),
+      ...(data.text !== undefined && { text: data.text.trim() }),
+      ...(data.type !== undefined && { type: data.type }),
+      ...(data.priority !== undefined && { priority: data.priority }),
+      ...(data.tags !== undefined && { tags: normalizeTagsInput(data.tags) }),
+      ...(data.dueDays !== undefined && { dueDays: data.dueDays }),
+      ...(data.steps !== undefined && { steps: data.steps ? JSON.stringify(data.steps) : null }),
+    },
+  });
+
+  return normalizeTaskTemplate(updated);
+}
+
+export async function deleteTaskTemplate(templateId: string, userId: string) {
+  const existing = await prisma.taskTemplate.findUnique({ where: { id: templateId } });
+  if (!existing) throw new ServiceError(404, 'Not Found', 'Task template not found');
+  if (existing.isSystem) throw new ServiceError(403, 'Access Denied', 'System templates are read-only');
+  if (existing.createdById !== userId) throw new ServiceError(403, 'Access Denied', 'You can only delete your own templates');
+
   await prisma.taskTemplate.delete({ where: { id: templateId } });
   return { message: 'Task template archived successfully' };
 }

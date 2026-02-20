@@ -23,6 +23,7 @@ import {
   IconCalendar,
   IconBell,
   IconScale,
+  IconTemplate,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -54,6 +55,7 @@ import Calendar from './pages/Calendar';
 import RemindersDashboard from './pages/RemindersDashboard';
 import LoanScenarios from './pages/LoanScenarios';
 import LoanProgramSettings from './pages/LoanProgramSettings';
+import TemplatesHub from './pages/TemplatesHub';
 
 // Role-protected route wrapper
 function AdminRoute({ children }: { children: React.ReactNode }) {
@@ -119,6 +121,7 @@ const navGroups: NavGroup[] = [
       { icon: IconCheck, label: 'Tasks', href: '/tasks', adminOnly: false },
       { icon: IconBell, label: 'Reminders', href: '/reminders', adminOnly: false },
       { icon: IconNotes, label: 'Notes', href: '/notes', adminOnly: false },
+      { icon: IconTemplate, label: 'Templates', href: '/templates', adminOnly: false },
       { icon: IconMail, label: 'Communications', href: '/communications', adminOnly: false },
     ],
   },
@@ -478,6 +481,7 @@ function ProtectedLayout() {
           <Route path="/pipeline" element={<Pipeline />} />
           <Route path="/tasks" element={<TasksDashboard />} />
           <Route path="/notes" element={<Notes />} />
+          <Route path="/templates" element={<TemplatesHub />} />
           <Route path="/documents" element={<Documents />} />
           <Route path="/communications" element={<CommunicationsHub />} />
           <Route path="/communication-templates" element={<TabRedirect to="/communications" tab="templates" />} />

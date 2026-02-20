@@ -69,6 +69,50 @@ router.get('/suggestions/analytics', authenticateToken, async (req: AuthRequest,
   }
 });
 
+// GET /api/reminders/templates
+router.get('/templates', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const result = await reminderService.listReminderTemplates(req.user.userId);
+    res.json(result);
+  } catch (error) {
+    handleError(res, error, 'Failed to fetch reminder templates');
+  }
+});
+
+// POST /api/reminders/templates
+router.post('/templates', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const result = await reminderService.createReminderTemplate(req.body, req.user.userId);
+    res.status(201).json(result);
+  } catch (error) {
+    handleError(res, error, 'Failed to create reminder template');
+  }
+});
+
+// PUT /api/reminders/templates/:id
+router.put('/templates/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const result = await reminderService.updateReminderTemplate(req.params.id, req.body, req.user.userId);
+    res.json(result);
+  } catch (error) {
+    handleError(res, error, 'Failed to update reminder template');
+  }
+});
+
+// DELETE /api/reminders/templates/:id
+router.delete('/templates/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const result = await reminderService.deleteReminderTemplate(req.params.id, req.user.userId);
+    res.json(result);
+  } catch (error) {
+    handleError(res, error, 'Failed to delete reminder template');
+  }
+});
+
 // GET /api/reminders/:id
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {

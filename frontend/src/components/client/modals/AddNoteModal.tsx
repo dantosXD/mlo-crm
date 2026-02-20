@@ -18,6 +18,7 @@ export function AddNoteModal({ opened, onClose, clientId, existingNoteTags }: Ad
   const [noteText, setNoteText] = useState('');
   const [noteTags, setNoteTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   // Fetch note templates on-demand when modal opens
   const { data: noteTemplates = [], isLoading: loadingTemplates } = useQuery({
@@ -25,7 +26,7 @@ export function AddNoteModal({ opened, onClose, clientId, existingNoteTags }: Ad
     queryFn: async () => {
       const response = await api.get('/notes/templates/list');
       if (!response.ok) throw new Error('Failed to fetch note templates');
-      return response.json() as Promise<{ id: string; name: string; content: string }[]>;
+      return response.json() as Promise<{ id: string; name: string; content: string; tags?: string[] }[]>;
     },
     enabled: opened,
   });
@@ -80,6 +81,51 @@ export function AddNoteModal({ opened, onClose, clientId, existingNoteTags }: Ad
     }
   };
 
+  const handleSaveTemplate = async () => {
+    if (!noteText.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Add note content first',
+        color: 'red',
+      });
+      return;
+    }
+
+    const name = window.prompt('Template name');
+    if (!name || !name.trim()) {
+      return;
+    }
+
+    setSavingTemplate(true);
+    try {
+      const response = await api.post('/notes/templates', {
+        name: name.trim(),
+        content: noteText.trim(),
+        tags: noteTags,
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to save note template');
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['note-templates'] });
+      notifications.show({
+        title: 'Template Saved',
+        message: 'Note template saved successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to save note template',
+        color: 'red',
+      });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   return (
     <Modal
       opened={opened}
@@ -97,6 +143,7 @@ export function AddNoteModal({ opened, onClose, clientId, existingNoteTags }: Ad
             const template = noteTemplates.find(t => t.id === value);
             if (template) {
               setNoteText(template.content);
+              setNoteTags(Array.isArray(template.tags) ? template.tags : []);
             }
           }}
         />
@@ -118,6 +165,9 @@ export function AddNoteModal({ opened, onClose, clientId, existingNoteTags }: Ad
           acceptValueOnBlur
         />
         <Group justify="flex-end" mt="md">
+          <Button variant="light" onClick={handleSaveTemplate} loading={savingTemplate}>
+            Save as Template
+          </Button>
           <Button variant="subtle" onClick={handleClose}>
             Cancel
           </Button>

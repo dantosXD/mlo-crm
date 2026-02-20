@@ -86,6 +86,8 @@ export function useLogInteraction(clientId: string | undefined) {
       description: string;
       metadata?: Record<string, any>;
       occurredAt?: string;
+      templateId?: string;
+      followUp?: Record<string, any>;
     }) => {
       const response = await api.post('/activities', {
         clientId,

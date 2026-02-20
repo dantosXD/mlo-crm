@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:5173';
-const apiBaseUrl = process.env.PLAYWRIGHT_API_BASE_URL ?? 'http://localhost:3002/api';
+const apiBaseUrl = process.env.PLAYWRIGHT_API_BASE_URL ?? 'http://127.0.0.1:3002/api';
 
 type FailedApiRequest = {
   url: string;

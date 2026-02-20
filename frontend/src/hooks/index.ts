@@ -8,3 +8,4 @@ export {
   useClientActivities,
   useLogInteraction,
 } from './useClientData';
+export * from './useTemplates';

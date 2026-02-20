@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../utils/api';
 import { getClients } from '../../utils/api';
 
@@ -30,7 +31,9 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
   onSuccess,
   reminder,
 }) => {
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
 
   // Form fields
@@ -43,12 +46,51 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
 
   // Recurring fields
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringPattern, setRecurringPattern] = useState<string | null>('DAILY');
   const [recurringInterval, setRecurringInterval] = useState<number>(1);
   const [recurringEndDate, setRecurringEndDate] = useState<Date | null>(null);
+
+  const { data: reminderTemplates = [], isLoading: loadingTemplates } = useQuery({
+    queryKey: ['reminder-templates'],
+    queryFn: async () => {
+      const response = await api.get('/reminders/templates');
+      if (!response.ok) throw new Error('Failed to fetch reminder templates');
+      return response.json() as Promise<Array<{
+        id: string;
+        name: string;
+        config: any;
+      }>>;
+    },
+    enabled: opened,
+  });
+
+  const resolveOffsetDate = (offset?: { value: number; unit: 'minutes' | 'hours' | 'days'; atTime?: string }) => {
+    if (!offset) return null;
+    const date = new Date();
+    const value = Number(offset.value) || 0;
+    switch (offset.unit) {
+      case 'minutes':
+        date.setMinutes(date.getMinutes() + value);
+        break;
+      case 'hours':
+        date.setHours(date.getHours() + value);
+        break;
+      default:
+        date.setDate(date.getDate() + value);
+        break;
+    }
+    if (offset.atTime) {
+      const [hours, minutes] = offset.atTime.split(':').map((part: string) => Number(part));
+      if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+        date.setHours(hours, minutes, 0, 0);
+      }
+    }
+    return date;
+  };
 
   useEffect(() => {
     if (opened) {
@@ -99,6 +141,7 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
     setRecurringPattern('DAILY');
     setRecurringInterval(1);
     setRecurringEndDate(null);
+    setSelectedTemplate(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -184,6 +227,79 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
     }
   };
 
+  const handleSaveTemplate = async () => {
+    if (!title.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Title is required to save a template',
+        color: 'red',
+      });
+      return;
+    }
+
+    const templateName = window.prompt('Template name');
+    if (!templateName || !templateName.trim()) return;
+
+    const now = new Date();
+    const remindAt = remindAtDate ? new Date(remindAtDate) : null;
+    if (remindAt && remindAtTime) {
+      const [hours, minutes] = remindAtTime.split(':').map((part) => Number(part));
+      remindAt.setHours(hours, minutes, 0, 0);
+    }
+
+    const remindOffsetValue = remindAt ? Math.max(0, Math.ceil((remindAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))) : 1;
+    const dueOffsetValue = dueDate ? Math.max(0, Math.ceil((dueDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))) : null;
+
+    const config: any = {
+      title: title.trim(),
+      description: description.trim() || undefined,
+      category,
+      priority,
+      tags,
+      remindOffset: {
+        value: remindOffsetValue,
+        unit: 'days',
+        ...(remindAtTime && { atTime: remindAtTime }),
+      },
+      ...(dueOffsetValue !== null && {
+        dueOffset: {
+          value: dueOffsetValue,
+          unit: 'days',
+        },
+      }),
+      isRecurring,
+      recurringPattern: isRecurring ? recurringPattern : undefined,
+      recurringInterval: isRecurring ? recurringInterval : undefined,
+    };
+
+    setSavingTemplate(true);
+    try {
+      const response = await api.post('/reminders/templates', {
+        name: templateName.trim(),
+        description: description.trim() || undefined,
+        config,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to save reminder template');
+      }
+      queryClient.invalidateQueries({ queryKey: ['reminder-templates'] });
+      notifications.show({
+        title: 'Template Saved',
+        message: 'Reminder template saved successfully',
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to save reminder template',
+        color: 'red',
+      });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   const categories = [
     { value: 'GENERAL', label: 'General' },
     { value: 'CLIENT', label: 'Client' },
@@ -215,6 +331,36 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
     >
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
+          <Select
+            label="Use Template (optional)"
+            placeholder={loadingTemplates ? 'Loading templates...' : 'Select a template'}
+            data={reminderTemplates.map((template) => ({ value: template.id, label: template.name }))}
+            value={selectedTemplate}
+            onChange={(value) => {
+              setSelectedTemplate(value);
+              const template = reminderTemplates.find((item) => item.id === value);
+              if (!template?.config) return;
+              const config = template.config;
+              setTitle(config.title || '');
+              setDescription(config.description || '');
+              setCategory(config.category || 'GENERAL');
+              setPriority(config.priority || 'MEDIUM');
+              setTags(Array.isArray(config.tags) ? config.tags : []);
+              setIsRecurring(Boolean(config.isRecurring));
+              setRecurringPattern(config.recurringPattern || 'DAILY');
+              setRecurringInterval(config.recurringInterval || 1);
+
+              const remindAt = resolveOffsetDate(config.remindOffset);
+              if (remindAt) {
+                setRemindAtDate(remindAt);
+                setRemindAtTime(remindAt.toTimeString().slice(0, 5));
+              }
+              const dueAt = resolveOffsetDate(config.dueOffset);
+              setDueDate(dueAt);
+            }}
+            clearable
+            disabled={loadingTemplates}
+          />
           <TextInput
             label="Title"
             placeholder="Enter reminder title"
@@ -333,6 +479,9 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
           )}
 
           <Group mt="md">
+            <Button type="button" variant="light" onClick={handleSaveTemplate} loading={savingTemplate}>
+              Save as Template
+            </Button>
             <Button type="submit" loading={loading} flex={1}>
               {reminder ? 'Update Reminder' : 'Create Reminder'}
             </Button>

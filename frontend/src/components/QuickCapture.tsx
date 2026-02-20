@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Modal,
   TextInput,
@@ -14,6 +15,7 @@ import {
   Loader,
   ActionIcon,
   Tooltip,
+  Select,
 } from '@mantine/core';
 import { useDisclosure, useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -33,10 +35,11 @@ import {
   IconUser,
   IconArrowLeft,
   IconCalendar,
+  IconBell,
+  IconActivity,
   IconMicrophone,
   IconMicrophoneOff,
 } from '@tabler/icons-react';
-import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
 
 interface Client {
@@ -54,8 +57,10 @@ interface QuickAction {
   keywords: string[];
 }
 
+type CommandId = '/task' | '/note' | '/reminder' | '/activity';
+
 interface SlashCommand {
-  command: string;
+  command: CommandId;
   label: string;
   description: string;
   icon: React.ReactNode;
@@ -68,6 +73,46 @@ interface ParsedTask {
   detectedDate: Date | null;
   dateLabel: string;
 }
+
+interface BasicTemplate {
+  id: string;
+  name: string;
+}
+
+interface TaskTemplate extends BasicTemplate {
+  text?: string;
+  description?: string | null;
+  type?: string;
+  priority?: string;
+  dueDays?: number | null;
+  tags?: string[];
+}
+
+interface NoteTemplate extends BasicTemplate {
+  content?: string;
+  tags?: string[];
+}
+
+interface ReminderTemplate extends BasicTemplate {
+  config?: any;
+}
+
+interface ActivityTemplate extends BasicTemplate {
+  config?: any;
+  autoFollowUp?: any;
+}
+
+interface PendingClientAction {
+  command: '/note' | '/activity';
+  content: string;
+}
+
+const commandLabels: Record<CommandId, string> = {
+  '/task': 'task',
+  '/note': 'note',
+  '/reminder': 'reminder',
+  '/activity': 'activity',
+};
 
 // Date keywords mapping
 const dateKeywords: Record<string, () => Date> = {
@@ -161,6 +206,20 @@ const slashCommands: SlashCommand[] = [
     icon: <IconNotes size={20} aria-hidden="true" />,
     placeholder: 'Note content...',
   },
+  {
+    command: '/reminder',
+    label: 'Create Reminder',
+    description: 'Create a quick reminder',
+    icon: <IconBell size={20} aria-hidden="true" />,
+    placeholder: 'Reminder title...',
+  },
+  {
+    command: '/activity',
+    label: 'Log Activity',
+    description: 'Log client activity',
+    icon: <IconActivity size={20} aria-hidden="true" />,
+    placeholder: 'Activity details...',
+  },
 ];
 
 export function QuickCapture() {
@@ -171,14 +230,59 @@ export function QuickCapture() {
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const navigate = useNavigate();
-  const { accessToken } = useAuthStore();
+  const queryClient = useQueryClient();
   const speechRecognitionRef = useRef<any>(null);
 
-  // Note creation with client selection
-  const [noteContent, setNoteContent] = useState<string | null>(null);
+  const [pendingClientAction, setPendingClientAction] = useState<PendingClientAction | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [isLoadingClients, setIsLoadingClients] = useState(false);
+  const [selectedTemplates, setSelectedTemplates] = useState<Record<CommandId, string | null>>({
+    '/task': null,
+    '/note': null,
+    '/reminder': null,
+    '/activity': null,
+  });
+
+  const { data: taskTemplates = [] } = useQuery({
+    queryKey: ['task-templates'],
+    queryFn: async () => {
+      const response = await api.get('/tasks/templates');
+      if (!response.ok) throw new Error('Failed to fetch task templates');
+      return response.json() as Promise<TaskTemplate[]>;
+    },
+    enabled: opened,
+  });
+
+  const { data: noteTemplates = [] } = useQuery({
+    queryKey: ['note-templates'],
+    queryFn: async () => {
+      const response = await api.get('/notes/templates');
+      if (!response.ok) throw new Error('Failed to fetch note templates');
+      return response.json() as Promise<NoteTemplate[]>;
+    },
+    enabled: opened,
+  });
+
+  const { data: reminderTemplates = [] } = useQuery({
+    queryKey: ['reminder-templates'],
+    queryFn: async () => {
+      const response = await api.get('/reminders/templates');
+      if (!response.ok) throw new Error('Failed to fetch reminder templates');
+      return response.json() as Promise<ReminderTemplate[]>;
+    },
+    enabled: opened,
+  });
+
+  const { data: activityTemplates = [] } = useQuery({
+    queryKey: ['activity-templates'],
+    queryFn: async () => {
+      const response = await api.get('/activities/templates');
+      if (!response.ok) throw new Error('Failed to fetch activity templates');
+      return response.json() as Promise<ActivityTemplate[]>;
+    },
+    enabled: opened,
+  });
 
   // Check if query is a slash command
   const activeCommand = slashCommands.find(cmd => query.toLowerCase().startsWith(cmd.command));
@@ -380,7 +484,6 @@ export function QuickCapture() {
     ? slashCommands.filter(cmd => cmd.command.startsWith(query.toLowerCase()))
     : [];
 
-  // Fetch clients when entering note client selection mode
   const fetchClients = async () => {
     setIsLoadingClients(true);
     try {
@@ -396,36 +499,100 @@ export function QuickCapture() {
     }
   };
 
-  // Create task via API with optional client and due date
-  const createTask = async (text: string, clientId?: string, dueDate?: Date) => {
-    if (!text.trim()) return;
+  const parseResponseError = async (response: Response, fallback: string) => {
+    const payload = await response.json().catch(() => ({}));
+    return typeof payload?.message === 'string' ? payload.message : fallback;
+  };
+
+  const resolveOffsetDate = (offset?: { value?: number; unit?: 'minutes' | 'hours' | 'days'; atTime?: string }) => {
+    if (!offset) return null;
+
+    const date = new Date();
+    const value = Number(offset.value ?? 0);
+    switch (offset.unit) {
+      case 'minutes':
+        date.setMinutes(date.getMinutes() + value);
+        break;
+      case 'hours':
+        date.setHours(date.getHours() + value);
+        break;
+      default:
+        date.setDate(date.getDate() + value);
+        break;
+    }
+
+    if (offset.atTime) {
+      const [hours, minutes] = offset.atTime.split(':').map((part: string) => Number(part));
+      if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+        date.setHours(hours, minutes, 0, 0);
+      }
+    }
+
+    return date;
+  };
+
+  const getSelectedTemplate = (command: CommandId) => selectedTemplates[command];
+
+  const startClientSelection = (command: '/note' | '/activity', content: string) => {
+    setPendingClientAction({ command, content });
+    setClientSearchQuery('');
+    setSelectedIndex(0);
+    fetchClients();
+  };
+
+  const cancelClientSelection = () => {
+    setPendingClientAction(null);
+    setClientSearchQuery('');
+    setSelectedIndex(0);
+  };
+
+  const createTask = async (text: string, clientId?: string, dueDate?: Date, templateId?: string | null) => {
+    const template = taskTemplates.find((item) => item.id === (templateId || getSelectedTemplate('/task')));
+    const finalText = text.trim() || template?.text?.trim() || '';
+    if (!finalText) {
+      notifications.show({
+        title: 'Task Text Required',
+        message: 'Enter task text or select a template with text.',
+        color: 'orange',
+      });
+      return;
+    }
+
+    const templateDueDate = template?.dueDays != null
+      ? new Date(Date.now() + (template.dueDays * 24 * 60 * 60 * 1000))
+      : null;
+    const finalDueDate = dueDate || templateDueDate || undefined;
 
     setIsCreating(true);
     try {
       const taskData: Record<string, unknown> = {
-        text: text.trim(),
+        text: finalText,
         status: 'TODO',
-        priority: 'MEDIUM',
+        priority: template?.priority || 'MEDIUM',
+        type: template?.type || 'GENERAL',
       };
 
+      if (template?.description) {
+        taskData.description = template.description;
+      }
+      if (template?.tags?.length) {
+        taskData.tags = JSON.stringify(template.tags);
+      }
       if (clientId) {
         taskData.clientId = clientId;
       }
-
-      if (dueDate) {
-        taskData.dueDate = dueDate.toISOString();
+      if (finalDueDate) {
+        taskData.dueDate = finalDueDate.toISOString();
       }
 
       const response = await api.post('/tasks', taskData);
-
       if (!response.ok) {
-        throw new Error('Failed to create task');
+        throw new Error(await parseResponseError(response, 'Failed to create task'));
       }
 
-      const clientName = clientId ? clients.find(c => c.id === clientId)?.name : null;
-      const dueDateStr = dueDate ? dueDate.toLocaleDateString() : null;
-
-      let message = `"${text.trim()}" has been added to your tasks`;
+      const clientName = clientId ? clients.find((c) => c.id === clientId)?.name : null;
+      const dueDateStr = finalDueDate ? finalDueDate.toLocaleDateString() : null;
+      let message = `"${finalText}" has been added to your tasks`;
       if (clientName && dueDateStr) {
         message = `Task created for ${clientName}, due ${dueDateStr}`;
       } else if (clientName) {
@@ -434,19 +601,19 @@ export function QuickCapture() {
         message = `Task created, due ${dueDateStr}`;
       }
 
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       notifications.show({
         title: 'Task Created',
         message,
         color: 'green',
         icon: <IconCheck size={16} aria-hidden="true" />,
       });
-
       close();
     } catch (error) {
       console.error('Error creating task:', error);
       notifications.show({
         title: 'Error',
-        message: 'Failed to create task. Please try again.',
+        message: error instanceof Error ? error.message : 'Failed to create task. Please try again.',
         color: 'red',
       });
     } finally {
@@ -454,35 +621,43 @@ export function QuickCapture() {
     }
   };
 
-  // Create note via API
-  const createNote = async (text: string, clientId: string) => {
-    if (!text.trim() || !clientId) return;
+  const createNote = async (text: string, clientId: string, templateId?: string | null) => {
+    const template = noteTemplates.find((item) => item.id === (templateId || getSelectedTemplate('/note')));
+    const finalText = text.trim() || template?.content?.trim() || '';
+    if (!clientId || !finalText) {
+      notifications.show({
+        title: 'Note Content Required',
+        message: 'Enter note content or select a template with content.',
+        color: 'orange',
+      });
+      return;
+    }
 
     setIsCreating(true);
     try {
       const response = await api.post('/notes', {
         clientId,
-        text: text.trim(),
+        text: finalText,
+        tags: template?.tags || [],
       });
-
       if (!response.ok) {
-        throw new Error('Failed to create note');
+        throw new Error(await parseResponseError(response, 'Failed to create note'));
       }
 
-      const client = clients.find(c => c.id === clientId);
+      const client = clients.find((c) => c.id === clientId);
+      queryClient.invalidateQueries({ queryKey: ['notes'] });
       notifications.show({
         title: 'Note Created',
         message: `Note added to ${client?.name || 'client'}`,
         color: 'green',
         icon: <IconCheck size={16} aria-hidden="true" />,
       });
-
       close();
     } catch (error) {
       console.error('Error creating note:', error);
       notifications.show({
         title: 'Error',
-        message: 'Failed to create note. Please try again.',
+        message: error instanceof Error ? error.message : 'Failed to create note. Please try again.',
         color: 'red',
       });
     } finally {
@@ -490,19 +665,111 @@ export function QuickCapture() {
     }
   };
 
-  // Start note creation - show client selector
-  const startNoteCreation = (content: string) => {
-    setNoteContent(content);
-    setClientSearchQuery('');
-    setSelectedIndex(0);
-    fetchClients();
+  const createReminder = async (text: string, parsed: ParsedTask, templateId?: string | null) => {
+    const template = reminderTemplates.find((item) => item.id === (templateId || getSelectedTemplate('/reminder')));
+    const config = template?.config || {};
+    const finalTitle = text.trim() || `${config.title || ''}`.trim();
+    if (!finalTitle) {
+      notifications.show({
+        title: 'Reminder Title Required',
+        message: 'Enter reminder text or select a template with a title.',
+        color: 'orange',
+      });
+      return;
+    }
+
+    const remindAt = parsed.detectedDate || resolveOffsetDate(config.remindOffset) || new Date(Date.now() + (24 * 60 * 60 * 1000));
+    const dueDate = resolveOffsetDate(config.dueOffset);
+
+    setIsCreating(true);
+    try {
+      const response = await api.post('/reminders', {
+        title: finalTitle,
+        description: config.description || undefined,
+        category: config.category || 'GENERAL',
+        priority: config.priority || 'MEDIUM',
+        remindAt: remindAt.toISOString(),
+        dueDate: dueDate ? dueDate.toISOString() : undefined,
+        clientId: parsed.detectedClient?.id || undefined,
+        tags: Array.isArray(config.tags) ? config.tags : undefined,
+        isRecurring: Boolean(config.isRecurring),
+        recurringPattern: config.isRecurring ? config.recurringPattern : undefined,
+        recurringInterval: config.isRecurring ? config.recurringInterval : undefined,
+      });
+      if (!response.ok) {
+        throw new Error(await parseResponseError(response, 'Failed to create reminder'));
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['reminders'] });
+      notifications.show({
+        title: 'Reminder Created',
+        message: `Reminder scheduled for ${remindAt.toLocaleDateString()}`,
+        color: 'green',
+        icon: <IconCheck size={16} aria-hidden="true" />,
+      });
+      close();
+    } catch (error) {
+      console.error('Error creating reminder:', error);
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to create reminder. Please try again.',
+        color: 'red',
+      });
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  // Go back from client selection to note input
-  const cancelClientSelection = () => {
-    setNoteContent(null);
-    setClientSearchQuery('');
-    setSelectedIndex(0);
+  const createActivity = async (text: string, clientId: string, templateId?: string | null) => {
+    const selectedTemplateId = templateId || getSelectedTemplate('/activity');
+    const template = activityTemplates.find((item) => item.id === selectedTemplateId);
+    const config = template?.config || {};
+    const finalDescription = text.trim() || `${config.description || ''}`.trim();
+    if (!finalDescription || !clientId) {
+      notifications.show({
+        title: 'Activity Details Required',
+        message: 'Select a client and enter activity details or use a template.',
+        color: 'orange',
+      });
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const response = await api.post('/activities', {
+        clientId,
+        type: config.type || 'INTERACTION_OTHER',
+        description: finalDescription,
+        metadata: config.metadata || undefined,
+        ...(selectedTemplateId ? { templateId: selectedTemplateId } : {}),
+      });
+      if (!response.ok) {
+        throw new Error(await parseResponseError(response, 'Failed to log activity'));
+      }
+
+      const created = await response.json();
+      const followUpText = created?.followUp?.kind
+        ? ` Follow-up ${created.followUp.kind.toLowerCase()} created.`
+        : '';
+
+      queryClient.invalidateQueries({ queryKey: ['client-activities', clientId] });
+      notifications.show({
+        title: 'Activity Logged',
+        message: `Activity logged for client.${followUpText}`,
+        color: 'green',
+        icon: <IconCheck size={16} aria-hidden="true" />,
+      });
+      close();
+    } catch (error) {
+      console.error('Error creating activity:', error);
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to log activity. Please try again.',
+        color: 'red',
+      });
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   // Reset selection when query/clientSearchQuery changes
@@ -515,8 +782,14 @@ export function QuickCapture() {
     if (opened) {
       setQuery('');
       setSelectedIndex(0);
-      setNoteContent(null);
+      setPendingClientAction(null);
       setClientSearchQuery('');
+      setSelectedTemplates({
+        '/task': null,
+        '/note': null,
+        '/reminder': null,
+        '/activity': null,
+      });
       // Fetch clients when modal opens for quick client search
       fetchClients();
     }
@@ -530,10 +803,56 @@ export function QuickCapture() {
     }],
   ]);
 
+  const executeActiveCommand = () => {
+    if (!activeCommand) return;
+    const selectedTemplateId = selectedTemplates[activeCommand.command];
+    if (!commandContent.trim() && !selectedTemplateId) {
+      notifications.show({
+        title: 'Input Needed',
+        message: `Type ${activeCommand.placeholder} or select a template.`,
+        color: 'orange',
+      });
+      return;
+    }
+
+    const parsed = parseNaturalLanguageTask(commandContent, clients);
+
+    if (activeCommand.command === '/task') {
+      createTask(
+        commandContent,
+        parsed.detectedClient?.id,
+        parsed.detectedDate || undefined,
+        selectedTemplateId,
+      );
+      return;
+    }
+
+    if (activeCommand.command === '/note') {
+      if (parsed.detectedClient?.id) {
+        createNote(commandContent, parsed.detectedClient.id, selectedTemplateId);
+      } else {
+        startClientSelection('/note', commandContent);
+      }
+      return;
+    }
+
+    if (activeCommand.command === '/reminder') {
+      createReminder(commandContent, parsed, selectedTemplateId);
+      return;
+    }
+
+    if (activeCommand.command === '/activity') {
+      if (parsed.detectedClient?.id) {
+        createActivity(commandContent, parsed.detectedClient.id, selectedTemplateId);
+      } else {
+        startClientSelection('/activity', commandContent);
+      }
+    }
+  };
+
   // Handle keyboard navigation within the modal
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Handle client selection mode for notes
-    if (noteContent !== null) {
+    if (pendingClientAction !== null) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIndex((prev) => Math.min(prev + 1, filteredClients.length - 1));
@@ -543,7 +862,13 @@ export function QuickCapture() {
       } else if (e.key === 'Enter') {
         e.preventDefault();
         if (filteredClients[selectedIndex]) {
-          createNote(noteContent, filteredClients[selectedIndex].id);
+          const selectedClientId = filteredClients[selectedIndex].id;
+          const selectedTemplateId = selectedTemplates[pendingClientAction.command];
+          if (pendingClientAction.command === '/note') {
+            createNote(pendingClientAction.content, selectedClientId, selectedTemplateId);
+          } else {
+            createActivity(pendingClientAction.content, selectedClientId, selectedTemplateId);
+          }
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
@@ -565,18 +890,8 @@ export function QuickCapture() {
     } else if (e.key === 'Enter') {
       e.preventDefault();
 
-      // Handle slash command execution
       if (activeCommand) {
-        if (activeCommand.command === '/task' && commandContent) {
-          const parsed = parseNaturalLanguageTask(commandContent, clients);
-          createTask(
-            commandContent,
-            parsed.detectedClient?.id,
-            parsed.detectedDate || undefined
-          );
-        } else if (activeCommand.command === '/note' && commandContent) {
-          startNoteCreation(commandContent);
-        }
+        executeActiveCommand();
         return;
       }
 
@@ -602,19 +917,25 @@ export function QuickCapture() {
     }
   };
 
-  // Render client selection for note
+  // Render client selection for note/activity
   const renderClientSelection = () => {
+    if (!pendingClientAction) return null;
+
+    const selectionIcon = pendingClientAction.command === '/activity'
+      ? <IconActivity size={14} aria-hidden="true" />
+      : <IconNotes size={14} aria-hidden="true" />;
+
     return (
       <Box p="sm">
         <Group gap="sm" mb="xs">
           <UnstyledButton onClick={cancelClientSelection}>
             <IconArrowLeft size={16} aria-hidden="true" />
           </UnstyledButton>
-          <Badge color="violet" variant="light" leftSection={<IconNotes size={14} aria-hidden="true" />}>
-            /note
+          <Badge color="violet" variant="light" leftSection={selectionIcon}>
+            {pendingClientAction.command}
           </Badge>
           <Text size="sm" c="dimmed" style={{ flex: 1 }} lineClamp={1}>
-            "{noteContent}"
+            "{pendingClientAction.content || '(template defaults)'}"
           </Text>
         </Group>
         <Text size="sm" fw={500} mb="xs">Select a client:</Text>
@@ -642,7 +963,14 @@ export function QuickCapture() {
             {filteredClients.slice(0, 10).map((client, index) => (
               <UnstyledButton
                 key={client.id}
-                onClick={() => createNote(noteContent!, client.id)}
+                onClick={() => {
+                  const selectedTemplateId = selectedTemplates[pendingClientAction.command];
+                  if (pendingClientAction.command === '/note') {
+                    createNote(pendingClientAction.content, client.id, selectedTemplateId);
+                  } else {
+                    createActivity(pendingClientAction.content, client.id, selectedTemplateId);
+                  }
+                }}
                 p="sm"
                 style={{
                   borderRadius: 8,
@@ -720,10 +1048,23 @@ export function QuickCapture() {
   const renderActiveCommand = () => {
     if (!activeCommand) return null;
 
-    // Parse natural language for /task command
-    const parsedTask = activeCommand.command === '/task' && commandContent
-      ? parseNaturalLanguageTask(commandContent, clients)
-      : null;
+    const parsed = parseNaturalLanguageTask(commandContent, clients);
+    const selectedTemplateId = selectedTemplates[activeCommand.command];
+    const templateOptions = activeCommand.command === '/task'
+      ? taskTemplates.map((template) => ({ value: template.id, label: template.name }))
+      : activeCommand.command === '/note'
+      ? noteTemplates.map((template) => ({ value: template.id, label: template.name }))
+      : activeCommand.command === '/reminder'
+      ? reminderTemplates.map((template) => ({ value: template.id, label: template.name }))
+      : activityTemplates.map((template) => ({ value: template.id, label: template.name }));
+
+    const hasInput = !!commandContent.trim() || !!selectedTemplateId;
+    const actionLabel = commandContent.trim()
+      ? `Create: "${commandContent.trim()}"`
+      : 'Create from selected template';
+    const commandHelp = activeCommand.command === '/note' || activeCommand.command === '/activity'
+      ? 'Press Enter to create with detected client or choose one'
+      : `Press Enter to create this ${commandLabels[activeCommand.command]}`;
 
     return (
       <Box p="sm">
@@ -733,20 +1074,25 @@ export function QuickCapture() {
           </Badge>
           <Text size="sm" c="dimmed">{activeCommand.description}</Text>
         </Group>
-        {commandContent ? (
-          <Stack gap="xs">
+        <Stack gap="xs">
+          <Select
+            label="Template (optional)"
+            placeholder="Select template"
+            data={templateOptions}
+            value={selectedTemplateId}
+            onChange={(value) => {
+              setSelectedTemplates((prev) => ({
+                ...prev,
+                [activeCommand.command]: value,
+              }));
+            }}
+            clearable
+            searchable
+          />
+
+          {hasInput ? (
             <UnstyledButton
-              onClick={() => {
-                if (activeCommand.command === '/task') {
-                  createTask(
-                    commandContent,
-                    parsedTask?.detectedClient?.id,
-                    parsedTask?.detectedDate || undefined
-                  );
-                } else if (activeCommand.command === '/note') {
-                  startNoteCreation(commandContent);
-                }
-              }}
+              onClick={executeActiveCommand}
               p="sm"
               style={{
                 borderRadius: 8,
@@ -770,57 +1116,52 @@ export function QuickCapture() {
                   {isCreating ? <Loader size={20} /> : <IconPlus size={20} aria-hidden="true" />}
                 </Box>
                 <div style={{ flex: 1 }}>
-                  <Text size="sm" fw={500}>
-                    Create: "{commandContent}"
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    Press Enter to {activeCommand.command === '/note' ? 'select client' : `create this ${activeCommand.command.slice(1)}`}
-                  </Text>
+                  <Text size="sm" fw={500}>{actionLabel}</Text>
+                  <Text size="xs" c="dimmed">{commandHelp}</Text>
                 </div>
               </Group>
             </UnstyledButton>
+          ) : (
+            <Text size="sm" c="dimmed" ta="center" py="md">
+              Type {activeCommand.placeholder} or select a template
+            </Text>
+          )}
 
-            {/* Show detected entities for /task command */}
-            {parsedTask && (parsedTask.detectedClient || parsedTask.detectedDate) && (
-              <Box
-                p="xs"
-                style={{
-                  borderRadius: 8,
-                  backgroundColor: 'var(--mantine-color-gray-0)',
-                  border: '1px solid var(--mantine-color-gray-3)',
-                }}
-              >
-                <Text size="xs" fw={600} c="dimmed" mb="xs">
-                  DETECTED:
-                </Text>
-                <Group gap="xs">
-                  {parsedTask.detectedClient && (
-                    <Badge
-                      variant="light"
-                      color="green"
-                      leftSection={<IconUser size={12} aria-hidden="true" />}
-                    >
-                      {parsedTask.detectedClient.name}
-                    </Badge>
-                  )}
-                  {parsedTask.detectedDate && (
-                    <Badge
-                      variant="light"
-                      color="blue"
-                      leftSection={<IconCalendar size={12} aria-hidden="true" />}
-                    >
-                      {parsedTask.dateLabel} ({parsedTask.detectedDate.toLocaleDateString()})
-                    </Badge>
-                  )}
-                </Group>
-              </Box>
-            )}
-          </Stack>
-        ) : (
-          <Text size="sm" c="dimmed" ta="center" py="md">
-            Type {activeCommand.placeholder}
-          </Text>
-        )}
+          {(parsed.detectedClient || parsed.detectedDate) && (
+            <Box
+              p="xs"
+              style={{
+                borderRadius: 8,
+                backgroundColor: 'var(--mantine-color-gray-0)',
+                border: '1px solid var(--mantine-color-gray-3)',
+              }}
+            >
+              <Text size="xs" fw={600} c="dimmed" mb="xs">
+                DETECTED:
+              </Text>
+              <Group gap="xs">
+                {parsed.detectedClient && (
+                  <Badge
+                    variant="light"
+                    color="green"
+                    leftSection={<IconUser size={12} aria-hidden="true" />}
+                  >
+                    {parsed.detectedClient.name}
+                  </Badge>
+                )}
+                {parsed.detectedDate && (
+                  <Badge
+                    variant="light"
+                    color="blue"
+                    leftSection={<IconCalendar size={12} aria-hidden="true" />}
+                  >
+                    {parsed.dateLabel} ({parsed.detectedDate.toLocaleDateString()})
+                  </Badge>
+                )}
+              </Group>
+            </Box>
+          )}
+        </Stack>
       </Box>
     );
   };
@@ -837,7 +1178,7 @@ export function QuickCapture() {
       transitionProps={{ transition: 'pop', duration: 150 }}
     >
       <Box>
-        {noteContent === null && (
+        {pendingClientAction === null && (
           <Box p="md" pb={0}>
             <Group gap="xs" align="flex-end">
               <TextInput
@@ -879,7 +1220,7 @@ export function QuickCapture() {
         )}
 
         <ScrollArea.Autosize mah={350} p="xs">
-          {noteContent !== null ? (
+          {pendingClientAction !== null ? (
             renderClientSelection()
           ) : activeCommand ? (
             renderActiveCommand()

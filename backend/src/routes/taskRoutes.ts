@@ -52,6 +52,50 @@ router.get('/statistics', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// GET /api/tasks/templates - Get visible task templates (system + personal)
+router.get('/templates', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const templates = await taskService.listTaskTemplates(req.user.userId);
+    res.json(templates);
+  } catch (error) {
+    handleError(res, error, 'Failed to fetch task templates');
+  }
+});
+
+// POST /api/tasks/templates - Create personal task template
+router.post('/templates', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const template = await taskService.createTaskTemplate(req.body, req.user.userId);
+    res.status(201).json(template);
+  } catch (error) {
+    handleError(res, error, 'Failed to create task template');
+  }
+});
+
+// PUT /api/tasks/templates/:id - Update personal task template
+router.put('/templates/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const template = await taskService.updateTaskTemplate(req.params.id, req.body, req.user.userId);
+    res.json(template);
+  } catch (error) {
+    handleError(res, error, 'Failed to update task template');
+  }
+});
+
+// DELETE /api/tasks/templates/:id - Delete personal task template
+router.delete('/templates/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const result = await taskService.deleteTaskTemplate(req.params.id, req.user.userId);
+    res.json(result);
+  } catch (error) {
+    handleError(res, error, 'Failed to delete task template');
+  }
+});
+
 // GET /api/tasks/:id - Get single task
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
@@ -190,36 +234,6 @@ router.get('/:taskId/reminder-history', async (req: AuthRequest, res: Response) 
     res.json(result);
   } catch (error) {
     handleError(res, error, 'Failed to fetch reminder history');
-  }
-});
-
-// GET /api/tasks/templates - Get all task templates
-router.get('/templates', async (_req: AuthRequest, res: Response) => {
-  try {
-    const templates = await taskService.listTaskTemplates();
-    res.json(templates);
-  } catch (error) {
-    handleError(res, error, 'Failed to fetch task templates');
-  }
-});
-
-// POST /api/tasks/templates - Create task template
-router.post('/templates', async (req: AuthRequest, res: Response) => {
-  try {
-    const template = await taskService.createTaskTemplate(req.body, req.user!.userId);
-    res.status(201).json(template);
-  } catch (error) {
-    handleError(res, error, 'Failed to create task template');
-  }
-});
-
-// DELETE /api/tasks/templates/:id - Delete task template
-router.delete('/templates/:id', async (req: AuthRequest, res: Response) => {
-  try {
-    const result = await taskService.deleteTaskTemplate(req.params.id);
-    res.json(result);
-  } catch (error) {
-    handleError(res, error, 'Failed to delete task template');
   }
 });
 
