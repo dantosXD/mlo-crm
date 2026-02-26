@@ -66,7 +66,8 @@ describe('Communications filters', () => {
     fireEvent.click(screen.getByLabelText('Follow-up due'));
 
     await waitFor(() => {
-      const latest = String(mocks.get.mock.calls.at(-1)?.[0] || '');
+      const calls = mocks.get.mock.calls;
+      const latest = String(calls[calls.length - 1]?.[0] || '');
       expect(latest).toContain('scheduled=true');
       expect(latest).toContain('follow_up=true');
     });
@@ -74,7 +75,8 @@ describe('Communications filters', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear Filters' }));
 
     await waitFor(() => {
-      const latest = String(mocks.get.mock.calls.at(-1)?.[0] || '');
+      const calls = mocks.get.mock.calls;
+      const latest = String(calls[calls.length - 1]?.[0] || '');
       expect(latest).not.toContain('q=');
       expect(latest).not.toContain('scheduled=true');
       expect(latest).not.toContain('follow_up=true');

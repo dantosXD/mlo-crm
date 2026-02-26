@@ -51,7 +51,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <Text c="dimmed" ta="center">
                 An unexpected error occurred. You can try again or reload the page.
               </Text>
-              {process.env.NODE_ENV !== 'production' && this.state.error && (
+              {!import.meta.env.PROD && this.state.error && (
                 <Code block style={{ maxWidth: '100%', overflow: 'auto' }}>
                   {this.state.error.toString()}
                   {this.state.errorInfo?.componentStack}
