@@ -210,6 +210,7 @@ npx prisma migrate reset
 ## Production Operations
 
 - Deployment and rollback runbook: `docs/production-runbook.md`
+- CapRover deployment guide (SeaweedFS S3-compatible storage): `docs/caprover-deploy.md`
 - Backend API runs as a stateless service (`npm start`)
 - Scheduled jobs run in dedicated worker process (`npm run worker`)
 - Staging smoke check: `npm run ops:staging-smoke -- --base-url=https://<staging-host>`
