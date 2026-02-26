@@ -415,7 +415,10 @@ export async function bulkUpdateTasks(params: BulkUpdateParams) {
   const clientIds = userClients.map((c) => c.id);
 
   const tasks = await prisma.task.findMany({
-    where: { id: { in: taskIds }, clientId: { in: clientIds } },
+    where: {
+      id: { in: taskIds },
+      OR: [{ clientId: null }, { clientId: { in: clientIds } }],
+    },
     include: { client: { select: { id: true, createdById: true } } },
   });
 
