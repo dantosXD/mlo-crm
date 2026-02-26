@@ -8,6 +8,7 @@ interface User {
   email: string;
   name: string;
   role: string;
+  phone?: string;
 }
 
 interface AuthState {
@@ -17,13 +18,14 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   lastActivity: number | null; // Timestamp of last user activity
+  hadSession: boolean; // Indicates whether this browser recently had an authenticated session
   hasHydrated: boolean;
   sessionExpired: boolean; // Set when token refresh fails mid-session
 
   // Actions
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  refreshAuth: () => Promise<boolean>;
+  refreshAuth: (silent?: boolean) => Promise<boolean>;
   setUser: (user: User | null) => void;
   updateUser: (updates: Partial<User>) => void;
   clearError: () => void;
@@ -35,7 +37,12 @@ interface AuthState {
 
 type PersistedAuthState = {
   lastActivity: number | null;
+  hadSession: boolean;
 };
+
+export function normalizeHadSession(value: unknown): boolean {
+  return value === true;
+}
 
 export function normalizeLastActivity(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
@@ -58,6 +65,7 @@ export function migratePersistedAuthState(
   const persisted = (persistedState as Partial<AuthState> | undefined) ?? {};
   return {
     lastActivity: normalizeLastActivity(persisted.lastActivity),
+    hadSession: normalizeHadSession(persisted.hadSession),
   };
 }
 
@@ -70,6 +78,7 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       error: null,
       lastActivity: null,
+      hadSession: false,
       hasHydrated: false,
       sessionExpired: false,
 
@@ -99,6 +108,7 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             error: null,
             lastActivity: Date.now(),
+            hadSession: true,
           });
 
           return true;
@@ -141,6 +151,7 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           error: null,
           lastActivity: null,
+          hadSession: false,
         });
       },
 
@@ -159,7 +170,7 @@ export const useAuthStore = create<AuthState>()(
         return inactiveMs >= timeoutMs;
       },
 
-      refreshAuth: async () => {
+      refreshAuth: async (silent = false) => {
         try {
           const response = await fetch(`${API_URL}/auth/refresh`, {
             method: 'POST',
@@ -170,27 +181,41 @@ export const useAuthStore = create<AuthState>()(
           });
 
           if (!response.ok) {
-            if (response.status === 400 || response.status === 401) {
+            if (!silent && (response.status === 400 || response.status === 401)) {
               set({
                 user: null,
                 accessToken: null,
                 isAuthenticated: false,
                 error: null,
                 lastActivity: null,
+                hadSession: false,
                 sessionExpired: true,
+              });
+            } else if (silent) {
+              set({
+                user: null,
+                accessToken: null,
+                isAuthenticated: false,
+                error: null,
+                lastActivity: null,
+                hadSession: false,
               });
             }
             return false;
           }
 
           const data = await response.json();
+          const preservedLastActivity = get().lastActivity;
 
           set({
             user: data.user,
             accessToken: data.accessToken,
             isAuthenticated: true,
             error: null,
-            lastActivity: Date.now(),
+            // Preserve inactivity timer across refreshes so stale sessions do not
+            // become "active" only because a token refresh succeeded.
+            lastActivity: preservedLastActivity ?? Date.now(),
+            hadSession: true,
           });
 
           return true;
@@ -224,18 +249,20 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'mlo-auth-storage',
-      version: 2,
+      version: 3,
       migrate: (persistedState) => {
         return migratePersistedAuthState(persistedState);
       },
       partialize: (state) => ({
         lastActivity: state.lastActivity,
+        hadSession: state.hadSession,
       }),
       merge: (persistedState, currentState) => {
         const persisted = migratePersistedAuthState(persistedState);
         return {
           ...currentState,
           lastActivity: persisted.lastActivity ?? null,
+          hadSession: persisted.hadSession,
         };
       },
       onRehydrateStorage: () => {

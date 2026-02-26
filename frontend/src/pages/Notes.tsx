@@ -14,6 +14,8 @@ import {
   Anchor,
   ActionIcon,
   Tooltip,
+  Button,
+  Pagination,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconSearch, IconPin, IconEye, IconNotes } from '@tabler/icons-react';
@@ -24,31 +26,62 @@ import { api } from '../utils/api';
 import { formatRelativeTime } from '../utils/dateUtils';
 import type { Note } from '../types';
 
+interface NotesListResponse {
+  notes: Note[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 export default function Notes() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { accessToken } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
+  const [page, setPage] = useState(() => {
+    const parsed = parseInt(searchParams.get('page') || '1', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  });
+  const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
+  const notesPerPage = 25;
 
   // Sync search to URL
   useEffect(() => {
     const params = new URLSearchParams();
     if (searchQuery) params.set('q', searchQuery);
+    if (page > 1) params.set('page', String(page));
     setSearchParams(params, { replace: true });
-  }, [searchQuery, setSearchParams]);
+  }, [searchQuery, page, setSearchParams]);
 
-  const { data: notes = [], isLoading: loading } = useQuery({
-    queryKey: ['notes', searchQuery],
+  const { data: notesResponse, isLoading: loading } = useQuery<NotesListResponse>({
+    queryKey: ['notes', searchQuery, page],
     queryFn: async () => {
-      const url = searchQuery
-        ? `/notes?search=${encodeURIComponent(searchQuery)}`
-        : `/notes`;
+      const query = new URLSearchParams({
+        paginated: 'true',
+        page: String(page),
+        limit: String(notesPerPage),
+      });
+      if (searchQuery) {
+        query.set('search', searchQuery);
+      }
+      const url = `/notes?${query.toString()}`;
       const response = await api.get(url);
       if (!response.ok) throw new Error('Failed to fetch notes');
-      return response.json() as Promise<Note[]>;
+      return response.json() as Promise<NotesListResponse>;
     },
     enabled: !!accessToken,
   });
+
+  const notes = notesResponse?.notes || [];
+  const pagination = notesResponse?.pagination || {
+    page,
+    limit: notesPerPage,
+    total: 0,
+    totalPages: 0,
+  };
 
   // Sort notes: pinned first, then by date
   const sortedNotes = [...notes].sort((a, b) => {
@@ -72,13 +105,19 @@ export default function Notes() {
       {/* Search */}
       <Group mb="md" gap="md">
         <TextInput
-          placeholder="Search all notes..."
+          placeholder="Search notes or client names..."
           leftSection={<IconSearch size={16} aria-hidden="true" />}
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setPage(1);
+          }}
           style={{ flex: 1 }}
         />
       </Group>
+      <Text size="xs" c="dimmed" mb="md">
+        Search matches note text and exact full client name.
+      </Text>
 
       {/* Notes List */}
       <Paper shadow="xs" p="md" withBorder>
@@ -89,7 +128,10 @@ export default function Notes() {
               title="No matching notes"
               description="No notes match your search. Try a different search term."
               ctaLabel="Clear Search"
-              onCtaClick={() => setSearchQuery('')}
+              onCtaClick={() => {
+                setSearchQuery('');
+                setPage(1);
+              }}
             />
           ) : (
             <EmptyState
@@ -135,9 +177,24 @@ export default function Notes() {
                   </Group>
                 </Group>
 
-                <Text size="sm" mb="xs" style={{ whiteSpace: 'pre-wrap' }}>
+                <Text
+                  size="sm"
+                  mb="xs"
+                  style={{ whiteSpace: 'pre-wrap' }}
+                  lineClamp={expandedNotes[note.id] ? undefined : 6}
+                >
                   {note.text}
                 </Text>
+                {note.text.length > 280 && (
+                  <Button
+                    variant="subtle"
+                    size="compact-xs"
+                    onClick={() => setExpandedNotes((prev) => ({ ...prev, [note.id]: !prev[note.id] }))}
+                    mb="xs"
+                  >
+                    {expandedNotes[note.id] ? 'Show less' : 'Show more'}
+                  </Button>
+                )}
 
                 <Group justify="space-between">
                   <Group gap={4}>
@@ -158,9 +215,21 @@ export default function Notes() {
 
         {sortedNotes.length > 0 && (
           <Text c="dimmed" size="sm" ta="center" mt="md">
-            Showing {sortedNotes.length} note{sortedNotes.length !== 1 ? 's' : ''}
+            Showing {Math.max((pagination.page - 1) * pagination.limit + 1, 1)}-
+            {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} note
+            {pagination.total !== 1 ? 's' : ''}
             {searchQuery && ` matching "${searchQuery}"`}
           </Text>
+        )}
+
+        {pagination.totalPages > 1 && (
+          <Group justify="center" mt="md">
+            <Pagination
+              total={pagination.totalPages}
+              value={pagination.page}
+              onChange={(nextPage) => setPage(nextPage)}
+            />
+          </Group>
         )}
       </Paper>
     </Container>

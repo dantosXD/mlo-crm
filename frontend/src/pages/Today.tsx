@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Container,
   Title,
@@ -69,15 +69,49 @@ interface TodayData {
     eventsToday: number;
     remindersToday: number;
   };
+  limits?: {
+    tasks?: {
+      requested: number;
+      returned: number;
+      total: number;
+      truncated: boolean;
+    };
+    events?: {
+      requested: number;
+      returned: number;
+      total: number;
+      truncated: boolean;
+    };
+    reminders?: {
+      requested: number;
+      returned: number;
+      total: number;
+      truncated: boolean;
+    };
+  };
+}
+
+function dedupeById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const unique: T[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    unique.push(item);
+  }
+  return unique;
 }
 
 const Today: React.FC = () => {
   const navigate = useNavigate();
+  const [tasksLimit, setTasksLimit] = useState(50);
+  const [eventsLimit, setEventsLimit] = useState(50);
+  const [remindersLimit, setRemindersLimit] = useState(50);
 
-  const { data: todayData, isLoading, error, refetch } = useQuery<TodayData>({
-    queryKey: ['today-view'],
+  const { data: todayData, isLoading, isFetching, error, refetch } = useQuery<TodayData>({
+    queryKey: ['today-view', tasksLimit, eventsLimit, remindersLimit],
     queryFn: async () => {
-      const response = await api.get('/integration/today');
+      const response = await api.get(`/integration/today?tasksLimit=${tasksLimit}&eventsLimit=${eventsLimit}&remindersLimit=${remindersLimit}`);
       if (!response.ok) {
         throw new Error('Failed to load today view');
       }
@@ -179,6 +213,10 @@ const Today: React.FC = () => {
       </Container>
     );
   }
+
+  const uniqueTasks = dedupeById(todayData?.tasks || []);
+  const uniqueEvents = dedupeById(todayData?.events || []);
+  const uniqueReminders = dedupeById(todayData?.reminders || []);
 
   if (!todayData) {
     return null;
@@ -312,7 +350,7 @@ const Today: React.FC = () => {
                     <IconCheckbox size={18} />
                   </ThemeIcon>
                   <Text fw={600}>Tasks Due Today</Text>
-                  <Badge size="sm">{todayData.tasks.length}</Badge>
+                  <Badge size="sm">{uniqueTasks.length}</Badge>
                 </Group>
                 <Button
                   size="xs"
@@ -322,14 +360,34 @@ const Today: React.FC = () => {
                   View All
                 </Button>
               </Group>
+              {todayData.limits?.tasks?.truncated && (
+                <Group justify="space-between" mb="sm">
+                  <Text size="xs" c="dimmed">
+                    Showing first {todayData.limits.tasks.returned} of {todayData.limits.tasks.total} tasks due today.
+                  </Text>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    onClick={() => setTasksLimit((current) => current + 50)}
+                    loading={isFetching}
+                  >
+                    Load 50 more
+                  </Button>
+                </Group>
+              )}
               <ScrollArea.Autosize mah={400}>
                 <Stack gap="sm">
-                  {todayData.tasks.length === 0 ? (
-                    <Text size="sm" c="dimmed" ta="center" py="md">
-                      No tasks due today
-                    </Text>
+                  {uniqueTasks.length === 0 ? (
+                    <Stack align="center" py="md" gap="xs">
+                      <Text size="sm" c="dimmed" ta="center">
+                        No tasks due today
+                      </Text>
+                      <Button size="xs" variant="light" color="grape" onClick={() => navigate('/tasks')}>
+                        + Create Task
+                      </Button>
+                    </Stack>
                   ) : (
-                    todayData.tasks.map((task) => (
+                    uniqueTasks.map((task) => (
                       <Card key={task.id} padding="sm" radius="md" withBorder>
                         <Group justify="space-between" align="flex-start" wrap="nowrap">
                           <Stack gap={0} style={{ flex: 1 }}>
@@ -371,7 +429,7 @@ const Today: React.FC = () => {
                     <IconCalendar size={18} />
                   </ThemeIcon>
                   <Text fw={600}>Events Today</Text>
-                  <Badge size="sm">{todayData.events.length}</Badge>
+                  <Badge size="sm">{uniqueEvents.length}</Badge>
                 </Group>
                 <Button
                   size="xs"
@@ -381,14 +439,34 @@ const Today: React.FC = () => {
                   View Calendar
                 </Button>
               </Group>
+              {todayData.limits?.events?.truncated && (
+                <Group justify="space-between" mb="sm">
+                  <Text size="xs" c="dimmed">
+                    Showing first {todayData.limits.events.returned} of {todayData.limits.events.total} events.
+                  </Text>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    onClick={() => setEventsLimit((current) => current + 50)}
+                    loading={isFetching}
+                  >
+                    Load 50 more
+                  </Button>
+                </Group>
+              )}
               <ScrollArea.Autosize mah={400}>
                 <Stack gap="sm">
-                  {todayData.events.length === 0 ? (
-                    <Text size="sm" c="dimmed" ta="center" py="md">
-                      No events today
-                    </Text>
+                  {uniqueEvents.length === 0 ? (
+                    <Stack align="center" py="md" gap="xs">
+                      <Text size="sm" c="dimmed" ta="center">
+                        No events today
+                      </Text>
+                      <Button size="xs" variant="light" color="green" onClick={() => navigate('/calendar')}>
+                        + Add Event
+                      </Button>
+                    </Stack>
                   ) : (
-                    todayData.events.map((event) => (
+                    uniqueEvents.map((event) => (
                       <Card key={event.id} padding="sm" radius="md" withBorder>
                         <Stack gap="xs">
                           <Group gap="xs" wrap="wrap">
@@ -431,7 +509,7 @@ const Today: React.FC = () => {
                     <IconBell size={18} />
                   </ThemeIcon>
                   <Text fw={600}>Reminders</Text>
-                  <Badge size="sm">{todayData.reminders.length}</Badge>
+                  <Badge size="sm">{uniqueReminders.length}</Badge>
                 </Group>
                 <Button
                   size="xs"
@@ -441,14 +519,29 @@ const Today: React.FC = () => {
                   View All
                 </Button>
               </Group>
+              {todayData.limits?.reminders?.truncated && (
+                <Group justify="space-between" mb="sm">
+                  <Text size="xs" c="dimmed">
+                    Showing first {todayData.limits.reminders.returned} of {todayData.limits.reminders.total} reminders.
+                  </Text>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    onClick={() => setRemindersLimit((current) => current + 50)}
+                    loading={isFetching}
+                  >
+                    Load 50 more
+                  </Button>
+                </Group>
+              )}
               <ScrollArea.Autosize mah={400}>
                 <Stack gap="sm">
-                  {todayData.reminders.length === 0 ? (
+                  {uniqueReminders.length === 0 ? (
                     <Text size="sm" c="dimmed" ta="center" py="md">
                       No reminders today
                     </Text>
                   ) : (
-                    todayData.reminders.map((reminder) => (
+                    uniqueReminders.map((reminder) => (
                       <Card key={reminder.id} padding="sm" radius="md" withBorder>
                         <Group justify="space-between" align="flex-start" wrap="nowrap">
                           <Stack gap={0} style={{ flex: 1 }}>

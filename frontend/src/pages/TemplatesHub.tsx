@@ -19,6 +19,7 @@ import {
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import { useSearchParams } from 'react-router-dom';
 import { IconEdit, IconPlus, IconTemplate, IconTrash } from '@tabler/icons-react';
 import {
@@ -185,14 +186,21 @@ function NotesTemplatesTab() {
     }
   };
 
-  const handleDelete = async (t: NoteTemplate) => {
-    if (!window.confirm(`Delete template "${t.name}"?`)) return;
-    try {
-      await deleteMutation.mutateAsync(t.id);
-      notifications.show({ title: 'Deleted', message: 'Template deleted', color: 'green' });
-    } catch (error) {
-      notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Failed to delete template', color: 'red' });
-    }
+  const handleDelete = (t: NoteTemplate) => {
+    modals.openConfirmModal({
+      title: 'Delete Template',
+      children: `Delete template "${t.name}"? This action cannot be undone.`,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          await deleteMutation.mutateAsync(t.id);
+          notifications.show({ title: 'Deleted', message: 'Template deleted', color: 'green' });
+        } catch (error) {
+          notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Failed to delete template', color: 'red' });
+        }
+      },
+    });
   };
 
   return (
@@ -322,14 +330,21 @@ function TasksTemplatesTab() {
     }
   };
 
-  const handleDelete = async (t: TaskTemplate) => {
-    if (!window.confirm(`Delete template "${t.name}"?`)) return;
-    try {
-      await deleteMutation.mutateAsync(t.id);
-      notifications.show({ title: 'Deleted', message: 'Template deleted', color: 'green' });
-    } catch (error) {
-      notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Failed to delete template', color: 'red' });
-    }
+  const handleDelete = (t: TaskTemplate) => {
+    modals.openConfirmModal({
+      title: 'Delete Template',
+      children: `Delete template "${t.name}"? This action cannot be undone.`,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          await deleteMutation.mutateAsync(t.id);
+          notifications.show({ title: 'Deleted', message: 'Template deleted', color: 'green' });
+        } catch (error) {
+          notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Failed to delete template', color: 'red' });
+        }
+      },
+    });
   };
 
   return (
@@ -522,14 +537,21 @@ function RemindersTemplatesTab() {
     }
   };
 
-  const handleDelete = async (t: ReminderTemplate) => {
-    if (!window.confirm(`Delete template "${t.name}"?`)) return;
-    try {
-      await deleteMutation.mutateAsync(t.id);
-      notifications.show({ title: 'Deleted', message: 'Template deleted', color: 'green' });
-    } catch (error) {
-      notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Failed to delete template', color: 'red' });
-    }
+  const handleDelete = (t: ReminderTemplate) => {
+    modals.openConfirmModal({
+      title: 'Delete Template',
+      children: `Delete template "${t.name}"? This action cannot be undone.`,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          await deleteMutation.mutateAsync(t.id);
+          notifications.show({ title: 'Deleted', message: 'Template deleted', color: 'green' });
+        } catch (error) {
+          notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Failed to delete template', color: 'red' });
+        }
+      },
+    });
   };
 
   return (
@@ -865,14 +887,21 @@ function ActivitiesTemplatesTab() {
     }
   };
 
-  const handleDelete = async (t: ActivityTemplate) => {
-    if (!window.confirm(`Delete template "${t.name}"?`)) return;
-    try {
-      await deleteMutation.mutateAsync(t.id);
-      notifications.show({ title: 'Deleted', message: 'Template deleted', color: 'green' });
-    } catch (error) {
-      notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Failed to delete template', color: 'red' });
-    }
+  const handleDelete = (t: ActivityTemplate) => {
+    modals.openConfirmModal({
+      title: 'Delete Template',
+      children: `Delete template "${t.name}"? This action cannot be undone.`,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          await deleteMutation.mutateAsync(t.id);
+          notifications.show({ title: 'Deleted', message: 'Template deleted', color: 'green' });
+        } catch (error) {
+          notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Failed to delete template', color: 'red' });
+        }
+      },
+    });
   };
 
   return (

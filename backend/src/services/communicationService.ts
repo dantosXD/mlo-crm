@@ -58,13 +58,35 @@ function formatCommunication(c: any) {
     updatedAt: c.updatedAt,
   };
 }
+function scoreTextMatch(
+  value: string | null | undefined,
+  query: string,
+  exactBoost: number,
+  prefixBoost: number,
+  includeBoost: number
+): number {
+  if (!value) return 0;
+  const normalized = value.toLowerCase();
+  if (normalized === query) return exactBoost;
+  if (normalized.startsWith(query)) return prefixBoost;
+  if (normalized.includes(query)) return includeBoost;
+  return 0;
+}
 
+function scoreCommunicationMatch(communication: any, query: string): number {
+  const clientName = communication.client ? decodeClientName(communication.client.nameEncrypted) : '';
+  const clientScore = scoreTextMatch(clientName, query, 160, 120, 90);
+  const subjectScore = scoreTextMatch(communication.subject, query, 120, 90, 60);
+  const bodyScore = scoreTextMatch(communication.body, query, 70, 55, 35);
+  return clientScore + subjectScore + bodyScore;
+}
 // ─── communications CRUD ────────────────────────────────────────────────────
 
 export interface ListCommunicationsParams {
   userId: string;
   userRole: string;
   clientId?: string;
+  q?: string;
   type?: string;
   status?: string;
   scheduled?: string;
@@ -75,9 +97,18 @@ export interface ListCommunicationsParams {
   limit?: number;
 }
 
-export async function listCommunications(params: ListCommunicationsParams) {
-  const { userId, userRole, clientId, type, status, scheduled, followUp, startDate, endDate, page = 1, limit = 50 } = params;
-  const skip = (page - 1) * limit;
+function buildCommunicationsWhere(params: ListCommunicationsParams) {
+  const {
+    userId,
+    userRole,
+    clientId,
+    type,
+    status,
+    scheduled,
+    followUp,
+    startDate,
+    endDate,
+  } = params;
 
   const where: any = {};
   if (clientId) where.clientId = clientId;
@@ -92,14 +123,97 @@ export async function listCommunications(params: ListCommunicationsParams) {
   }
   if (userRole !== 'ADMIN' && userRole !== 'MANAGER') where.createdById = userId;
 
-  const [communications, total] = await Promise.all([
-    prisma.communication.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: limit, include: COMM_INCLUDE }),
-    prisma.communication.count({ where }),
+  return where;
+}
+
+export async function listCommunications(params: ListCommunicationsParams) {
+  const { page = 1, limit = 50 } = params;
+  const skip = (page - 1) * limit;
+  const searchQuery = params.q?.trim();
+  const baseWhere = buildCommunicationsWhere(params);
+
+  if (!searchQuery) {
+    const [communications, total] = await Promise.all([
+      prisma.communication.findMany({ where: baseWhere, orderBy: { createdAt: 'desc' }, skip, take: limit, include: COMM_INCLUDE }),
+      prisma.communication.count({ where: baseWhere }),
+    ]);
+
+    return {
+      data: communications.map(formatCommunication),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  const contentWhere: any = {
+    ...baseWhere,
+    OR: [{ subject: { contains: searchQuery } }, { body: { contains: searchQuery } }],
+  };
+
+  const [contentMatches, visibleClients] = await Promise.all([
+    prisma.communication.findMany({ where: contentWhere, orderBy: { createdAt: 'desc' }, include: COMM_INCLUDE }),
+    prisma.client.findMany({
+      where: params.userRole !== 'ADMIN' && params.userRole !== 'MANAGER' ? { createdById: params.userId } : {},
+      select: { id: true, nameEncrypted: true },
+    }),
   ]);
 
+  const lowerSearchQuery = searchQuery.toLowerCase();
+  const matchingClientIds = visibleClients
+    .filter((client) => decodeClientName(client.nameEncrypted).toLowerCase().includes(lowerSearchQuery))
+    .map((client) => client.id);
+
+  let clientNameMatches: any[] = [];
+  if (matchingClientIds.length > 0) {
+    let clientIdFilter: string | { in: string[] } | null = null;
+
+    if (params.clientId) {
+      clientIdFilter = matchingClientIds.includes(params.clientId) ? params.clientId : null;
+    } else {
+      clientIdFilter = { in: matchingClientIds };
+    }
+
+    if (clientIdFilter) {
+      const clientNameWhere: any = {
+        ...baseWhere,
+        clientId: clientIdFilter,
+      };
+
+      clientNameMatches = await prisma.communication.findMany({
+        where: clientNameWhere,
+        orderBy: { createdAt: 'desc' },
+        include: COMM_INCLUDE,
+      });
+    }
+  }
+
+  const dedupedById = new Map<string, any>();
+  [...contentMatches, ...clientNameMatches].forEach((communication) => {
+    dedupedById.set(communication.id, communication);
+  });
+
+  const mergedResults = Array.from(dedupedById.values())
+    .map((communication) => ({
+      communication,
+      score: scoreCommunicationMatch(communication, lowerSearchQuery),
+    }))
+    .sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return new Date(b.communication.createdAt).getTime() - new Date(a.communication.createdAt).getTime();
+    })
+    .map((entry) => entry.communication);
+
+  const paginatedResults = mergedResults.slice(skip, skip + limit);
+
   return {
-    data: communications.map(formatCommunication),
-    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    data: paginatedResults.map(formatCommunication),
+    pagination: {
+      page,
+      limit,
+      total: mergedResults.length,
+      totalPages: Math.ceil(mergedResults.length / limit),
+    },
   };
 }
 
@@ -107,58 +221,28 @@ export interface SearchCommunicationsParams {
   userId: string;
   userRole: string;
   q: string;
+  clientId?: string;
   type?: string;
   status?: string;
+  scheduled?: string;
+  followUp?: string;
+  startDate?: string;
+  endDate?: string;
   page?: number;
   limit?: number;
 }
 
 export async function searchCommunications(params: SearchCommunicationsParams) {
-  const { userId, userRole, q, type, status, page = 1, limit = 50 } = params;
-  const skip = (page - 1) * limit;
+  const searchQuery = (params.q || '').trim();
+  if (!searchQuery) throw new ServiceError(400, 'Validation Error', 'Search query is required');
 
-  if (!q.trim()) throw new ServiceError(400, 'Validation Error', 'Search query is required');
-
-  const searchQuery = q.trim();
-  const where: any = { OR: [{ subject: { contains: searchQuery } }, { body: { contains: searchQuery } }] };
-  if (type) where.type = type;
-  if (status) where.status = status;
-  if (userRole !== 'ADMIN' && userRole !== 'MANAGER') where.createdById = userId;
-
-  const [communications, _total] = await Promise.all([
-    prisma.communication.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: limit, include: COMM_INCLUDE }),
-    prisma.communication.count({ where }),
-  ]);
-
-  // Also search by client name (encrypted, so must fetch & filter)
-  const allClients = await prisma.client.findMany({
-    where: userRole !== 'ADMIN' && userRole !== 'MANAGER' ? { createdById: userId } : {},
-    select: { id: true, nameEncrypted: true },
+  const result = await listCommunications({
+    ...params,
+    q: searchQuery,
   });
 
-  const matchingClientIds = allClients
-    .filter((c) => decodeClientName(c.nameEncrypted).toLowerCase().includes(searchQuery.toLowerCase()))
-    .map((c) => c.id);
-
-  let clientMatchCommunications: any[] = [];
-  if (matchingClientIds.length > 0) {
-    const clientWhere: any = { clientId: { in: matchingClientIds } };
-    if (type) clientWhere.type = type;
-    if (status) clientWhere.status = status;
-    if (userRole !== 'ADMIN' && userRole !== 'MANAGER') clientWhere.createdById = userId;
-    clientMatchCommunications = await prisma.communication.findMany({ where: clientWhere, orderBy: { createdAt: 'desc' }, include: COMM_INCLUDE });
-  }
-
-  // Merge & deduplicate
-  const allResults = [...communications];
-  const existingIds = new Set(communications.map((c) => c.id));
-  clientMatchCommunications.forEach((c) => { if (!existingIds.has(c.id)) allResults.push(c); });
-
-  const paginatedResults = allResults.slice(skip, skip + limit);
-
   return {
-    data: paginatedResults.map(formatCommunication),
-    pagination: { page, limit, total: allResults.length, totalPages: Math.ceil(allResults.length / limit) },
+    ...result,
     query: searchQuery,
   };
 }
@@ -585,3 +669,4 @@ export const PLACEHOLDER_VARS_META = [
   { value: 'current_date', label: 'Current Date', description: "Today's date" },
   { value: 'company_name', label: 'Company Name', description: 'Your company name' },
 ];
+

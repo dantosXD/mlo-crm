@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const prismaMock = {
   user: {
     findUnique: vi.fn(),
+    findFirst: vi.fn(),
     update: vi.fn(),
   },
   refreshToken: {
@@ -147,5 +148,59 @@ describe('auth controller cookie-based refresh flow', () => {
     });
     expect(res.clearCookie).toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith({ message: 'Logged out successfully' });
+  });
+
+  it('updateProfile persists phone in preferences and returns phone in payload', async () => {
+    const { updateProfile } = await import('./authController.js');
+
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      preferences: JSON.stringify({
+        profile: {
+          locale: 'en-US',
+        },
+      }),
+    });
+    prismaMock.user.update.mockResolvedValue({
+      id: 'user-1',
+      email: 'admin@example.com',
+      name: 'Admin',
+      role: 'ADMIN',
+      preferences: JSON.stringify({
+        profile: {
+          locale: 'en-US',
+          phone: '555-101-2020',
+        },
+      }),
+      createdAt: new Date(),
+      lastLoginAt: new Date(),
+    });
+    prismaMock.activity.create.mockResolvedValue(undefined);
+
+    const req: any = {
+      user: { userId: 'user-1' },
+      body: { phone: '555-101-2020' },
+      ip: '127.0.0.1',
+      get: vi.fn().mockReturnValue('unit-test-agent'),
+    };
+    const res = createResponseMock();
+
+    await updateProfile(req, res);
+
+    expect(prismaMock.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'user-1' },
+        data: expect.objectContaining({
+          preferences: expect.any(String),
+        }),
+      }),
+    );
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Profile updated successfully',
+        user: expect.objectContaining({
+          phone: '555-101-2020',
+        }),
+      }),
+    );
   });
 });

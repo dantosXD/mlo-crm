@@ -44,7 +44,7 @@ async function verifyTaskOwnership(taskId: string, userId: string | undefined) {
     },
   });
   assertFound(task, 'Task');
-  if (!userId || task.client?.createdById !== userId)
+  if (!userId || (task.client !== null && task.client?.createdById !== userId))
     throw new ServiceError(403, 'Access Denied', 'You do not have permission to access this task');
   return task;
 }
@@ -238,7 +238,9 @@ export interface CreateTaskData {
 }
 
 export async function createTask(data: CreateTaskData, userId: string) {
-  if (!data.text) throw new ServiceError(400, 'Validation Error', 'Task text is required');
+  const trimmedText = data.text?.trim();
+  if (!trimmedText) throw new ServiceError(400, 'Validation Error', 'Task text is required');
+  data = { ...data, text: trimmedText };
 
   if (data.clientId) {
     const hasAccess = await canAccessClientTasks(userId, data.clientId);
@@ -302,7 +304,7 @@ export async function updateTask(taskId: string, data: UpdateTaskData, userId: s
     },
   });
   assertFound(existingTask, 'Task');
-  if (existingTask.client?.createdById !== userId)
+  if (existingTask.client !== null && existingTask.client?.createdById !== userId)
     throw new ServiceError(403, 'Access Denied', 'You do not have permission to update this task');
 
   const task = await prisma.task.update({

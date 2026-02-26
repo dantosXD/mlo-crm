@@ -39,8 +39,8 @@ export function NotesTab({
         <EmptyState
           iconType="notes"
           title="No notes yet"
-          description="Add notes to keep track of important information about this client."
-          ctaLabel="Add Note"
+          description="Capture call outcomes, borrower preferences, and blockers here so anyone can pick up the file quickly."
+          ctaLabel="Add First Note"
           onCtaClick={onAddNote}
         />
       ) : (

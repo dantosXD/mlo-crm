@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   Stack,
@@ -59,7 +59,8 @@ interface Event {
 
 interface Client {
   id: string;
-  nameEncrypted: string;
+  name?: string;
+  nameEncrypted?: string;
 }
 
 interface EventFormModalProps {
@@ -85,6 +86,48 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
   const [reminders, setReminders] = useState<number[]>(
     event?.reminders || []
   );
+  const [startTime, setStartTime] = useState(() => {
+    const initialStart = event?.startTime
+      ? dayjs(event.startTime)
+      : selectedDate
+        ? dayjs(selectedDate)
+        : dayjs();
+    return initialStart.format('YYYY-MM-DDTHH:mm');
+  });
+  const [endTime, setEndTime] = useState(() => {
+    if (event?.endTime) {
+      return dayjs(event.endTime).format('YYYY-MM-DDTHH:mm');
+    }
+    const initialStart = event?.startTime
+      ? dayjs(event.startTime)
+      : selectedDate
+        ? dayjs(selectedDate)
+        : dayjs();
+    return initialStart.add(1, 'hour').format('YYYY-MM-DDTHH:mm');
+  });
+  const [endTimeManuallyEdited, setEndTimeManuallyEdited] = useState(Boolean(event?.endTime));
+
+  useEffect(() => {
+    if (!opened) {
+      return;
+    }
+
+    const nextStart = event?.startTime
+      ? dayjs(event.startTime)
+      : selectedDate
+        ? dayjs(selectedDate)
+        : dayjs();
+    const formattedStart = nextStart.format('YYYY-MM-DDTHH:mm');
+    const formattedEnd = event?.endTime
+      ? dayjs(event.endTime).format('YYYY-MM-DDTHH:mm')
+      : nextStart.add(1, 'hour').format('YYYY-MM-DDTHH:mm');
+
+    setStartTime(formattedStart);
+    setEndTime(formattedEnd);
+    setEndTimeManuallyEdited(Boolean(event?.endTime));
+    setAttendees(event?.attendees?.map((attendee) => ({ email: attendee.email, name: attendee.name || undefined })) || []);
+    setReminders(event?.reminders || []);
+  }, [opened, event, selectedDate]);
 
   // Fetch clients for linking
   const { data: clients = [] } = useQuery({
@@ -92,14 +135,21 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
     queryFn: async () => {
       const response = await apiRequest('/clients?limit=100');
       if (!response.ok) throw new Error('Failed to fetch clients');
-      return response.json();
+      const payload = await response.json();
+      if (Array.isArray(payload)) {
+        return payload as Client[];
+      }
+      if (Array.isArray(payload?.data)) {
+        return payload.data as Client[];
+      }
+      return [] as Client[];
     },
     enabled: opened,
   });
 
   const clientOptions = clients.map((client: Client) => {
-    let label = 'Unknown Client';
-    if (client.nameEncrypted) {
+    let label = client.name?.trim() || 'Unknown Client';
+    if (!client.name && client.nameEncrypted) {
       try {
         const parsed = JSON.parse(client.nameEncrypted);
         label = parsed?.name || label;
@@ -141,8 +191,8 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
       title: formData.get('title'),
       description: formData.get('description'),
       eventType: formData.get('eventType'),
-      startTime: formData.get('startTime'),
-      endTime: formData.get('endTime') || null,
+      startTime,
+      endTime: endTime || null,
       allDay: formData.get('allDay') === 'on',
       location: formData.get('location') || null,
       clientId: formData.get('clientId') || null,
@@ -215,6 +265,22 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
 
   const removeReminder = (minutes: number) => {
     setReminders(reminders.filter(r => r !== minutes));
+  };
+
+  const handleStartTimeChange = (value: string) => {
+    setStartTime(value);
+
+    if (endTimeManuallyEdited || !value) {
+      return;
+    }
+
+    const autoEnd = dayjs(value).add(1, 'hour').format('YYYY-MM-DDTHH:mm');
+    setEndTime(autoEnd);
+  };
+
+  const handleEndTimeChange = (value: string) => {
+    setEndTime(value);
+    setEndTimeManuallyEdited(value.trim().length > 0);
   };
 
   const reminderOptions = [
@@ -294,19 +360,15 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
                   name="startTime"
                   type="datetime-local"
                   required
-                  defaultValue={
-                    event?.startTime
-                      ? dayjs(event.startTime).format('YYYY-MM-DDTHH:mm')
-                      : selectedDate
-                      ? dayjs(selectedDate).format('YYYY-MM-DDTHH:mm')
-                      : dayjs().format('YYYY-MM-DDTHH:mm')
-                  }
+                  value={startTime}
+                  onChange={(e) => handleStartTimeChange(e.currentTarget.value)}
                 />
                 <TextInput
                   label="End Time"
                   name="endTime"
                   type="datetime-local"
-                  defaultValue={event?.endTime ? dayjs(event.endTime).format('YYYY-MM-DDTHH:mm') : ''}
+                  value={endTime}
+                  onChange={(e) => handleEndTimeChange(e.currentTarget.value)}
                 />
               </Group>
 

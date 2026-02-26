@@ -95,8 +95,8 @@ export function LoansTab({
         <EmptyState
           iconType="scenarios"
           title="No loan scenarios yet"
-          description="Create loan comparisons with multiple programs to find the best option for this client."
-          ctaLabel="New Comparison"
+          description="Build side-by-side program comparisons, then mark one as preferred before sharing with the borrower."
+          ctaLabel="Create First Comparison"
           onCtaClick={onAddScenario}
         />
       ) : (

@@ -1,20 +1,31 @@
-import { SimpleGrid, Card, Stack, Paper, Group, Text, Title, Badge, ThemeIcon } from '@mantine/core';
-import { IconNotes, IconChecklist } from '@tabler/icons-react';
+import { SimpleGrid, Card, Stack, Paper, Group, Text, Title, Badge, ThemeIcon, Button } from '@mantine/core';
+import { IconNotes, IconChecklist, IconChevronRight } from '@tabler/icons-react';
 import type { Client } from '../../types';
 
 interface OverviewTabProps {
   client: Client;
+  onNavigateTab: (tab: string) => void;
 }
 
-export function OverviewTab({ client }: OverviewTabProps) {
+export function OverviewTab({ client, onNavigateTab }: OverviewTabProps) {
   return (
     <SimpleGrid cols={{ base: 1, md: 2 }}>
       <Card withBorder>
-        <Title order={4} mb="sm">Recent Notes</Title>
+        <Group justify="space-between" mb="sm">
+          <Title order={4}>Recent Notes</Title>
+          <Button
+            variant="subtle"
+            size="xs"
+            rightSection={<IconChevronRight size={14} />}
+            onClick={() => onNavigateTab('notes')}
+          >
+            View All
+          </Button>
+        </Group>
         {(client.notes?.length ?? 0) > 0 ? (
           <Stack gap="xs">
-            {client.notes!.map((note: any) => (
-              <Paper key={note.id} p="sm" withBorder>
+            {client.notes!.slice(0, 3).map((note: any) => (
+              <Paper key={note.id} p="sm" withBorder style={{ cursor: 'pointer' }} onClick={() => onNavigateTab('notes')}>
                 <Text size="sm" lineClamp={2}>{note.text}</Text>
                 <Text size="xs" c="dimmed" mt="xs">
                   {new Date(note.createdAt).toLocaleDateString()}
@@ -36,11 +47,21 @@ export function OverviewTab({ client }: OverviewTabProps) {
       </Card>
 
       <Card withBorder>
-        <Title order={4} mb="sm">Recent Tasks</Title>
+        <Group justify="space-between" mb="sm">
+          <Title order={4}>Recent Tasks</Title>
+          <Button
+            variant="subtle"
+            size="xs"
+            rightSection={<IconChevronRight size={14} />}
+            onClick={() => onNavigateTab('tasks')}
+          >
+            View All
+          </Button>
+        </Group>
         {(client.tasks?.length ?? 0) > 0 ? (
           <Stack gap="xs">
-            {client.tasks!.map((task: any) => (
-              <Paper key={task.id} p="sm" withBorder>
+            {client.tasks!.slice(0, 3).map((task: any) => (
+              <Paper key={task.id} p="sm" withBorder style={{ cursor: 'pointer' }} onClick={() => onNavigateTab('tasks')}>
                 <Group justify="space-between">
                   <Text size="sm">{task.text}</Text>
                   <Badge size="sm" color={task.status === 'COMPLETE' ? 'green' : 'blue'}>

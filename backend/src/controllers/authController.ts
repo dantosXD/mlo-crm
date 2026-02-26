@@ -23,6 +23,32 @@ interface JwtPayload {
   role: string;
 }
 
+type UserPreferences = Record<string, unknown>;
+
+function parseUserPreferences(raw: string | null | undefined): UserPreferences {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as UserPreferences;
+    }
+  } catch {
+    // Ignore malformed preferences payloads and fall back to empty object.
+  }
+  return {};
+}
+
+function getProfilePhone(preferencesRaw: string | null | undefined): string {
+  const preferences = parseUserPreferences(preferencesRaw);
+  const profile = preferences.profile;
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+    return '';
+  }
+
+  const phone = (profile as Record<string, unknown>).phone;
+  return typeof phone === 'string' ? phone : '';
+}
+
 function generateAccessToken(payload: JwtPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as SignOptions);
 }
@@ -205,6 +231,7 @@ export async function login(req: Request, res: Response) {
           email: user.email,
           name: user.name,
           role: user.role,
+          phone: getProfilePhone(user.preferences),
         },
       });
   } catch (error) {
@@ -394,6 +421,7 @@ export async function refresh(req: Request, res: Response) {
           email: user.email,
           name: user.name,
           role: user.role,
+          phone: getProfilePhone(user.preferences),
         },
       });
   } catch (error) {
@@ -664,6 +692,7 @@ export async function getMe(req: Request, res: Response) {
         email: true,
         name: true,
         role: true,
+        preferences: true,
         createdAt: true,
         lastLoginAt: true,
       },
@@ -676,7 +705,15 @@ export async function getMe(req: Request, res: Response) {
       });
     }
 
-    return res.json(user);
+    return res.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      phone: getProfilePhone(user.preferences),
+      createdAt: user.createdAt,
+      lastLoginAt: user.lastLoginAt,
+    });
   } catch (error) {
     logger.error('auth_get_me_failed', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({
@@ -779,10 +816,10 @@ export async function updateProfile(req: Request, res: Response) {
       });
     }
 
-    const { name, email } = req.body;
+    const { name, email, phone } = req.body;
 
     // Build update data - only include fields that are provided
-    const updateData: { name?: string; email?: string } = {};
+    const updateData: { name?: string; email?: string; preferences?: string } = {};
 
     if (name && typeof name === 'string' && name.trim().length > 0) {
       updateData.name = name.trim();
@@ -807,6 +844,33 @@ export async function updateProfile(req: Request, res: Response) {
       updateData.email = email.toLowerCase().trim();
     }
 
+    if (typeof phone === 'string') {
+      const currentUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { preferences: true },
+      });
+      const preferences = parseUserPreferences(currentUser?.preferences);
+      const profilePrefs =
+        preferences.profile && typeof preferences.profile === 'object' && !Array.isArray(preferences.profile)
+          ? ({ ...(preferences.profile as Record<string, unknown>) })
+          : {};
+
+      const normalizedPhone = phone.trim();
+      if (normalizedPhone.length > 0) {
+        profilePrefs.phone = normalizedPhone;
+        preferences.profile = profilePrefs;
+      } else {
+        delete profilePrefs.phone;
+        if (Object.keys(profilePrefs).length > 0) {
+          preferences.profile = profilePrefs;
+        } else {
+          delete preferences.profile;
+        }
+      }
+
+      updateData.preferences = JSON.stringify(preferences);
+    }
+
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({
         error: 'Validation Error',
@@ -822,6 +886,7 @@ export async function updateProfile(req: Request, res: Response) {
         email: true,
         name: true,
         role: true,
+        preferences: true,
         createdAt: true,
         lastLoginAt: true,
       },
@@ -845,6 +910,7 @@ export async function updateProfile(req: Request, res: Response) {
         email: user.email,
         name: user.name,
         role: user.role,
+        phone: getProfilePhone(user.preferences),
       },
     });
   } catch (error) {

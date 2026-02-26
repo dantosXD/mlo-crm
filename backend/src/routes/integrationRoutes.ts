@@ -5,6 +5,14 @@ import { decrypt } from '../utils/crypto.js';
 
 const router = Router();
 
+function parseListLimit(value: unknown, fallback: number): number {
+  const parsed = typeof value === 'string' ? parseInt(value, 10) : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.min(parsed, 200);
+}
+
 // All routes require authentication
 router.use(authenticateToken);
 
@@ -15,13 +23,16 @@ router.get('/today', async (req: AuthRequest, res: Response) => {
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    const tasksLimit = parseListLimit(req.query.tasksLimit, 50);
+    const eventsLimit = parseListLimit(req.query.eventsLimit, 50);
+    const remindersLimit = parseListLimit(req.query.remindersLimit, 50);
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Fetch tasks due today
-    const tasksDueToday = await prisma.task.findMany({
+    const taskWhere = {
       where: {
         OR: [
           { createdById: userId },
@@ -33,36 +44,9 @@ router.get('/today', async (req: AuthRequest, res: Response) => {
         },
         deletedAt: null,
       },
-      include: {
-        client: {
-          select: {
-            id: true,
-            nameEncrypted: true,
-          },
-        },
-        assignedTo: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-      orderBy: {
-        dueDate: 'asc',
-      },
-    });
+    };
 
-    // Decrypt client names
-    const tasksWithDecryptedClients = tasksDueToday.map(task => ({
-      ...task,
-      client: task.client ? {
-        ...task.client,
-        name: decrypt(task.client.nameEncrypted),
-      } : null,
-    }));
-
-    // Fetch events for today
-    const eventsToday = await prisma.event.findMany({
+    const eventWhere = {
       where: {
         createdById: userId,
         startTime: {
@@ -70,40 +54,9 @@ router.get('/today', async (req: AuthRequest, res: Response) => {
           lt: tomorrow.toISOString(),
         },
       },
-      include: {
-        client: {
-          select: {
-            id: true,
-            nameEncrypted: true,
-          },
-        },
-        eventAttendees: {
-          select: {
-            id: true,
-            userId: true,
-            email: true,
-            name: true,
-            rsvpStatus: true,
-            respondedAt: true,
-          },
-        },
-      },
-      orderBy: {
-        startTime: 'asc',
-      },
-    });
+    };
 
-    // Decrypt client names for events
-    const eventsWithDecryptedClients = eventsToday.map(event => ({
-      ...event,
-      client: event.client ? {
-        ...event.client,
-        name: decrypt(event.client.nameEncrypted),
-      } : null,
-    }));
-
-    // Fetch reminders due today
-    const remindersToday = await prisma.reminder.findMany({
+    const reminderWhere = {
       where: {
         userId,
         remindAt: {
@@ -114,30 +67,13 @@ router.get('/today', async (req: AuthRequest, res: Response) => {
           in: ['PENDING', 'SNOOZED'],
         },
       },
-      include: {
-        client: {
-          select: {
-            id: true,
-            nameEncrypted: true,
-          },
-        },
-      },
-      orderBy: {
-        remindAt: 'asc',
-      },
-    });
+    };
 
-    // Decrypt client names for reminders
-    const remindersWithDecryptedClients = remindersToday.map(reminder => ({
-      ...reminder,
-      client: reminder.client ? {
-        ...reminder.client,
-        name: decrypt(reminder.client.nameEncrypted),
-      } : null,
-    }));
-
-    // Get statistics
-    const [totalTasks, overdueTasks, completedTasksToday] = await Promise.all([
+    // Fetch counts and summary stats first so UI can show accurate totals even when lists are capped.
+    const [tasksDueTodayCount, eventsTodayCount, remindersTodayCount, totalTasks, overdueTasks, completedTasksToday] = await Promise.all([
+      prisma.task.count(taskWhere),
+      prisma.event.count(eventWhere),
+      prisma.reminder.count(reminderWhere),
       prisma.task.count({
         where: {
           OR: [
@@ -177,6 +113,98 @@ router.get('/today', async (req: AuthRequest, res: Response) => {
       }),
     ]);
 
+    // Fetch a capped list for each section to keep the Today page responsive on high-volume accounts.
+    const [tasksDueToday, eventsToday, remindersToday] = await Promise.all([
+      prisma.task.findMany({
+        ...taskWhere,
+        include: {
+          client: {
+            select: {
+              id: true,
+              nameEncrypted: true,
+            },
+          },
+          assignedTo: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          dueDate: 'asc',
+        },
+        take: tasksLimit,
+      }),
+      prisma.event.findMany({
+        ...eventWhere,
+        include: {
+          client: {
+            select: {
+              id: true,
+              nameEncrypted: true,
+            },
+          },
+          eventAttendees: {
+            select: {
+              id: true,
+              userId: true,
+              email: true,
+              name: true,
+              rsvpStatus: true,
+              respondedAt: true,
+            },
+          },
+        },
+        orderBy: {
+          startTime: 'asc',
+        },
+        take: eventsLimit,
+      }),
+      prisma.reminder.findMany({
+        ...reminderWhere,
+        include: {
+          client: {
+            select: {
+              id: true,
+              nameEncrypted: true,
+            },
+          },
+        },
+        orderBy: {
+          remindAt: 'asc',
+        },
+        take: remindersLimit,
+      }),
+    ]);
+
+    // Decrypt client names
+    const tasksWithDecryptedClients = tasksDueToday.map(task => ({
+      ...task,
+      client: task.client ? {
+        ...task.client,
+        name: decrypt(task.client.nameEncrypted),
+      } : null,
+    }));
+
+    // Decrypt client names for events
+    const eventsWithDecryptedClients = eventsToday.map(event => ({
+      ...event,
+      client: event.client ? {
+        ...event.client,
+        name: decrypt(event.client.nameEncrypted),
+      } : null,
+    }));
+
+    // Decrypt client names for reminders
+    const remindersWithDecryptedClients = remindersToday.map(reminder => ({
+      ...reminder,
+      client: reminder.client ? {
+        ...reminder.client,
+        name: decrypt(reminder.client.nameEncrypted),
+      } : null,
+    }));
+
     res.json({
       tasks: tasksWithDecryptedClients,
       events: eventsWithDecryptedClients,
@@ -185,9 +213,29 @@ router.get('/today', async (req: AuthRequest, res: Response) => {
         totalTasks,
         overdueTasks,
         completedTasksToday,
-        tasksDueToday: tasksDueToday.length,
-        eventsToday: eventsToday.length,
-        remindersToday: remindersToday.length,
+        tasksDueToday: tasksDueTodayCount,
+        eventsToday: eventsTodayCount,
+        remindersToday: remindersTodayCount,
+      },
+      limits: {
+        tasks: {
+          requested: tasksLimit,
+          returned: tasksWithDecryptedClients.length,
+          total: tasksDueTodayCount,
+          truncated: tasksDueTodayCount > tasksLimit,
+        },
+        events: {
+          requested: eventsLimit,
+          returned: eventsWithDecryptedClients.length,
+          total: eventsTodayCount,
+          truncated: eventsTodayCount > eventsLimit,
+        },
+        reminders: {
+          requested: remindersLimit,
+          returned: remindersWithDecryptedClients.length,
+          total: remindersTodayCount,
+          truncated: remindersTodayCount > remindersLimit,
+        },
       },
     });
   } catch (error) {

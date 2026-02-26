@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -12,11 +12,11 @@ import {
   LoadingOverlay,
   ScrollArea,
   Box,
-  SegmentedControl,
+  Button,
   Table,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconUser, IconMail, IconPhone, IconLayoutKanban, IconTable } from '@tabler/icons-react';
+import { IconUser, IconMail, IconPhone, IconLayoutKanban, IconTable, IconClock } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { EmptyState } from '../components/EmptyState';
@@ -24,7 +24,6 @@ import { api } from '../utils/api';
 import {
   DndContext,
   DragEndEvent,
-  DragOverlay,
   DragStartEvent,
   PointerSensor,
   useSensor,
@@ -37,8 +36,22 @@ import { CSS } from '@dnd-kit/utilities';
 import { PIPELINE_STAGES } from '../utils/constants';
 import type { Client, LoanScenario } from '../types';
 
+function maskEmail(email: string): string {
+  if (!email || !email.includes('@')) return email;
+  const [local, domain] = email.split('@');
+  if (local.length <= 2) return `${local[0]}***@${domain}`;
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
+function maskPhone(phone: string): string {
+  if (!phone) return '-';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 4) return '***';
+  return `***-***-${digits.slice(-4)}`;
+}
+
 // Draggable client card component
-function DraggableClientCard({ client, onClick }: { client: Client; onClick: () => void }) {
+function DraggableClientCard({ client, daysInStage, onClick }: { client: Client; daysInStage: number; onClick: () => void }) {
   const {
     attributes,
     listeners,
@@ -78,23 +91,34 @@ function DraggableClientCard({ client, onClick }: { client: Client; onClick: () 
         {...attributes}
       >
         <Stack gap="xs">
-          <Group gap="xs">
-            <IconUser size={14} aria-hidden="true" />
-            <Text fw={500} size="sm" lineClamp={1}>
-              {client.name}
-            </Text>
+          <Group justify="space-between" wrap="nowrap">
+            <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+              <IconUser size={14} aria-hidden="true" />
+              <Text fw={500} size="sm" lineClamp={1}>
+                {client.name}
+              </Text>
+            </Group>
+            <Badge
+              size="xs"
+              variant="light"
+              color={daysInStage > 30 ? 'red' : daysInStage > 14 ? 'orange' : 'gray'}
+              leftSection={<IconClock size={9} />}
+              style={{ flexShrink: 0 }}
+            >
+              {daysInStage}d
+            </Badge>
           </Group>
           <Group gap="xs">
             <IconMail size={12} color="gray" aria-hidden="true" />
             <Text size="xs" c="dimmed" lineClamp={1}>
-              {client.email}
+              {maskEmail(client.email)}
             </Text>
           </Group>
           {client.phone && (
             <Group gap="xs">
               <IconPhone size={12} color="gray" aria-hidden="true" />
               <Text size="xs" c="dimmed">
-                {client.phone}
+                {maskPhone(client.phone)}
               </Text>
             </Group>
           )}
@@ -105,6 +129,12 @@ function DraggableClientCard({ client, onClick }: { client: Client; onClick: () 
 }
 
 // Pipeline column component
+function getDaysInPipeline(createdAt: string): number {
+  const created = new Date(createdAt);
+  const now = new Date();
+  return Math.ceil(Math.abs(now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 function PipelineColumn({
   stage,
   clients,
@@ -116,11 +146,14 @@ function PipelineColumn({
 }) {
   const { setNodeRef } = useDroppable({
     id: stage.key,
+    data: {
+      type: 'stage',
+      status: stage.key,
+    },
   });
 
   return (
     <div
-      ref={setNodeRef}
       style={{
         minWidth: 280,
         maxWidth: 280,
@@ -130,6 +163,7 @@ function PipelineColumn({
       }}
     >
       <Paper
+        ref={setNodeRef}
         shadow="xs"
         p="md"
         withBorder
@@ -161,6 +195,7 @@ function PipelineColumn({
                 <DraggableClientCard
                   key={client.id}
                   client={client}
+                  daysInStage={getDaysInPipeline(client.createdAt)}
                   onClick={() => onClientClick(client)}
                 />
               ))
@@ -176,8 +211,15 @@ export default function Pipeline() {
   const navigate = useNavigate();
   const { accessToken } = useAuthStore();
   const queryClient = useQueryClient();
-  const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'kanban' | 'table'>(() => {
+    const saved = localStorage.getItem('pipelineViewMode');
+    return saved === 'table' ? 'table' : 'kanban';
+  });
+  const [_activeId, setActiveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('pipelineViewMode', viewMode);
+  }, [viewMode]);
 
   // Configure sensors for drag detection
   const sensors = useSensors(
@@ -225,8 +267,14 @@ export default function Pipeline() {
 
     // Get the drop target ID
     const dropTargetId = over.id as string;
+    const stageFromDropData = over.data.current?.status as string | undefined;
 
-    console.log('Drag end:', { clientId, dropTargetId, currentStatus: client.status });
+    if (stageFromDropData && PIPELINE_STAGES.some((s) => s.key === stageFromDropData)) {
+      if (stageFromDropData !== client.status) {
+        await updateClientStatus(clientId, stageFromDropData);
+      }
+      return;
+    }
 
     // Check if we dropped on a valid stage (column)
     const isValidStage = PIPELINE_STAGES.some(s => s.key === dropTargetId);
@@ -236,9 +284,7 @@ export default function Pipeline() {
       const droppedOnClient = clients.find((c) => c.id === dropTargetId);
       if (droppedOnClient) {
         const newStatus = droppedOnClient.status;
-        console.log('Dropped on client, using status:', newStatus);
         if (newStatus === client.status) {
-          console.log('Status unchanged:', newStatus);
           return;
         }
 
@@ -248,11 +294,8 @@ export default function Pipeline() {
       return;
     }
 
-    console.log('Dropped on stage:', dropTargetId);
-
     // Check if status actually changed
     if (dropTargetId === client.status) {
-      console.log('Status unchanged:', dropTargetId);
       return;
     }
 
@@ -303,15 +346,6 @@ export default function Pipeline() {
     return acc;
   }, {} as Record<string, Client[]>);
 
-  // Calculate days in pipeline
-  const getDaysInPipeline = (createdAt: string) => {
-    const created = new Date(createdAt);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - created.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
   // Get status color
   const getStatusColor = (status: string) => {
     const stage = PIPELINE_STAGES.find(s => s.key === status);
@@ -348,30 +382,26 @@ export default function Pipeline() {
       <Group justify="space-between" mb="lg">
         <Group>
           <Title order={2}>Pipeline</Title>
-          <SegmentedControl
-            value={viewMode}
-            onChange={(value) => setViewMode(value as 'kanban' | 'table')}
-            data={[
-              {
-                value: 'kanban',
-                label: (
-                  <Group gap={4}>
-                    <IconLayoutKanban size={16} aria-hidden="true" />
-                    <span>Board</span>
-                  </Group>
-                ),
-              },
-              {
-                value: 'table',
-                label: (
-                  <Group gap={4}>
-                    <IconTable size={16} aria-hidden="true" />
-                    <span>Table</span>
-                  </Group>
-                ),
-              },
-            ]}
-          />
+          <Button.Group aria-label="Pipeline view mode toggle">
+            <Button
+              variant={viewMode === 'kanban' ? 'filled' : 'light'}
+              leftSection={<IconLayoutKanban size={16} aria-hidden="true" />}
+              onClick={() => setViewMode('kanban')}
+              aria-pressed={viewMode === 'kanban'}
+              data-testid="pipeline-view-board-toggle"
+            >
+              Board
+            </Button>
+            <Button
+              variant={viewMode === 'table' ? 'filled' : 'light'}
+              leftSection={<IconTable size={16} aria-hidden="true" />}
+              onClick={() => setViewMode('table')}
+              aria-pressed={viewMode === 'table'}
+              data-testid="pipeline-view-table-toggle"
+            >
+              Table
+            </Button>
+          </Button.Group>
         </Group>
         <Text c="dimmed">
           {clients.length} total clients
@@ -385,7 +415,7 @@ export default function Pipeline() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <Box style={{ height: 'calc(100vh - 200px)' }}>
+          <Box style={{ height: 'calc(100vh - 200px)', position: 'relative' }} data-testid="pipeline-view-board">
             <ScrollArea type="auto" style={{ width: '100%', height: '100%' }}>
               <Group gap="md" align="stretch" wrap="nowrap" style={{ minHeight: '100%' }}>
                 {PIPELINE_STAGES.map((stage) => (
@@ -398,10 +428,22 @@ export default function Pipeline() {
                 ))}
               </Group>
             </ScrollArea>
+            {/* Right-edge fade to hint at horizontal scrollability */}
+            <Box
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: 48,
+                height: '100%',
+                background: 'linear-gradient(to right, transparent, rgba(248,249,250,0.85))',
+                pointerEvents: 'none',
+              }}
+            />
           </Box>
         </DndContext>
       ) : (
-        <Paper shadow="xs" withBorder>
+        <Paper shadow="xs" withBorder data-testid="pipeline-view-table">
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>

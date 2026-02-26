@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -31,6 +31,8 @@ import {
   ActionIcon,
   Tooltip,
   Alert,
+  Modal,
+  ScrollArea,
 } from '@mantine/core';
 import {
   IconArrowLeft,
@@ -42,8 +44,9 @@ import {
   IconTrash,
   IconPlus,
   IconPlayerPlay,
-  IconVersions,
   IconAlertCircle,
+  IconX,
+  IconInfoCircle,
 } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
 import ActionConfigPanel from '../components/workflows/ActionConfigPanel';
@@ -176,6 +179,12 @@ export default function WorkflowBuilder() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [testModalOpened, setTestModalOpened] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [isDirty, setIsDirty] = useState(false);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [tipDismissed, setTipDismissed] = useState(() => {
+    try { return localStorage.getItem('wf-builder-tip-dismissed') === '1'; } catch { return false; }
+  });
+  const savedRef = useRef(false);
 
   const isEditing = !!id;
 
@@ -262,7 +271,29 @@ export default function WorkflowBuilder() {
     loadWorkflow();
   }, [isEditing, id]);
 
+  // Mark dirty when user edits name, description, nodes, or edges
+  useEffect(() => { setIsDirty(true); }, [workflowName, workflowDescription]);
+  useEffect(() => {
+    if (nodes.length > 0 || edges.length > 0) setIsDirty(true);
+  // setNodes/setEdges are stable refs from useNodesState/useEdgesState
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges]);
+
+  const handleBack = () => {
+    if (isDirty && !savedRef.current) {
+      setLeaveConfirmOpen(true);
+    } else {
+      navigate('/workflows');
+    }
+  };
+
+  const dismissTip = () => {
+    setTipDismissed(true);
+    try { localStorage.setItem('wf-builder-tip-dismissed', '1'); } catch (_e) { /* storage unavailable */ }
+  };
+
   // Clear validation errors when workflow changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (validationErrors.length > 0) {
       // Re-validate after a short delay to clear errors if they're fixed
@@ -437,7 +468,7 @@ export default function WorkflowBuilder() {
 
   // Save workflow mutation
   const saveWorkflow = useMutation<void, Error, boolean>({
-    mutationFn: async (saveAsNewVersion = false) => {
+    mutationFn: async (_saveAsNewVersion = false) => {
       // Validate workflow before saving
       const validation = validateWorkflow();
       if (!validation.isValid) {
@@ -488,12 +519,12 @@ export default function WorkflowBuilder() {
         return await response.json();
       }
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
+      savedRef.current = true;
+      setIsDirty(false);
       notifications.show({
         title: 'Success',
-        message: isEditing
-          ? 'Workflow updated successfully'
-          : 'Workflow created successfully',
+        message: isEditing ? 'Workflow updated successfully' : 'Workflow created successfully',
         color: 'green',
       });
       navigate('/workflows');
@@ -513,9 +544,11 @@ export default function WorkflowBuilder() {
         {/* Header */}
         <Group justify="space-between">
           <Group>
-            <ActionIcon variant="light" onClick={() => navigate('/workflows')}>
-              <IconArrowLeft />
-            </ActionIcon>
+            <Tooltip label={isDirty ? 'You have unsaved changes' : 'Back to workflows'} withArrow>
+              <ActionIcon variant="light" onClick={handleBack}>
+                <IconArrowLeft />
+              </ActionIcon>
+            </Tooltip>
             <div>
               <Title order={3}>
                 {isEditing ? 'Edit Workflow' : 'Create New Workflow'}
@@ -526,15 +559,16 @@ export default function WorkflowBuilder() {
             </div>
           </Group>
           <Group>
-            <Button
-              variant="light"
-              color="red"
-              leftSection={<IconTrash size={16} />}
-              onClick={deleteSelectedNode}
-              disabled={!selectedNode}
-            >
-              Delete Selected
-            </Button>
+            {selectedNode && (
+              <Button
+                variant="light"
+                color="red"
+                leftSection={<IconTrash size={16} />}
+                onClick={deleteSelectedNode}
+              >
+                Delete Selected
+              </Button>
+            )}
             {isEditing && (
               <Button
                 variant="light"
@@ -628,51 +662,62 @@ export default function WorkflowBuilder() {
           </Group>
         </Paper>
 
-        {/* Canvas */}
-        <Paper withBorder style={{ height: '600px', position: 'relative' }}>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={(_, node) => setSelectedNode(node)}
-            onPaneClick={() => setSelectedNode(null)}
-            nodeTypes={nodeTypes}
-            fitView
-            attributionPosition="bottom-left"
-          >
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-            <Controls />
-            <MiniMap
-              nodeColor={(node) => {
-                switch (node.type) {
-                  case 'trigger':
-                    return '#228be6';
-                  case 'condition':
-                    return '#fab005';
-                  case 'action':
-                    return '#15aabf';
-                  default:
-                    return '#868e96';
-                }
-              }}
-            />
-          </ReactFlow>
-        </Paper>
+        {/* Canvas + Node Properties side-by-side */}
+        <Group align="flex-start" gap="md" wrap="nowrap">
+          {/* Canvas */}
+          <Paper withBorder style={{ flex: 1, height: '560px', position: 'relative', minWidth: 0 }}>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={(_, node) => setSelectedNode(node)}
+              onPaneClick={() => setSelectedNode(null)}
+              nodeTypes={nodeTypes}
+              fitView
+              attributionPosition="bottom-left"
+            >
+              <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+              <Controls />
+              <MiniMap
+                nodeColor={(node) => {
+                  switch (node.type) {
+                    case 'trigger': return '#228be6';
+                    case 'condition': return '#fab005';
+                    case 'action': return '#15aabf';
+                    default: return '#868e96';
+                  }
+                }}
+              />
+            </ReactFlow>
+          </Paper>
 
-        {/* Selected Node Panel */}
-        {selectedNode && (
-          <Paper withBorder p="md" shadow="sm">
-            <Group justify="space-between" mb="sm">
-              <Text fw={600}>Node Properties</Text>
-              <ActionIcon size="sm" onClick={() => setSelectedNode(null)}>
-                <IconTrash size={14} />
-              </ActionIcon>
-            </Group>
+          {/* Node Properties — right panel, always same height as canvas */}
+          <Paper
+            withBorder
+            p="md"
+            shadow="sm"
+            style={{
+              width: 320,
+              flexShrink: 0,
+              height: '560px',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {selectedNode ? (
+              <>
+                <Group justify="space-between" mb="sm">
+                  <Text fw={600}>Node Properties</Text>
+                  <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => setSelectedNode(null)} aria-label="Close panel">
+                    <IconX size={14} />
+                  </ActionIcon>
+                </Group>
+                <ScrollArea style={{ flex: 1 }}>
 
             {selectedNode.type === 'trigger' && (
-              <Stack gap="sm">
+              <Stack gap="sm" pb="sm">
                 <Select
                   label="Trigger Type"
                   data={[
@@ -730,7 +775,7 @@ export default function WorkflowBuilder() {
             )}
 
             {selectedNode.type === 'condition' && (
-              <Stack gap="sm">
+              <Stack gap="sm" pb="sm">
                 <ConditionConfigPanel
                   condition={selectedNode.data.condition || {}}
                   onChange={(newCondition) => {
@@ -747,7 +792,7 @@ export default function WorkflowBuilder() {
             )}
 
             {selectedNode.type === 'action' && (
-              <Stack gap="sm">
+              <Stack gap="sm" pb="sm">
                 <Select
                   label="Action Type"
                   data={[
@@ -799,18 +844,32 @@ export default function WorkflowBuilder() {
                 )}
               </Stack>
             )}
+                </ScrollArea>
+              </>
+            ) : (
+              <Stack align="center" justify="center" style={{ flex: 1 }} gap="xs">
+                <IconInfoCircle size={32} color="var(--mantine-color-gray-4)" />
+                <Text size="sm" c="dimmed" ta="center">
+                  Click a node on the canvas to view and edit its properties.
+                </Text>
+              </Stack>
+            )}
           </Paper>
-        )}
+        </Group>
 
-        {/* Info Alert */}
-        <Alert color="blue" icon={<IconSettings size={16} />}>
-          <Text size="sm">
-            <strong>Tip:</strong> Drag nodes to position them. Click and drag from
-            the right handle of one node to the left handle of another to connect
-            them. Use the mouse wheel or pinch to zoom. Click and drag the canvas
-            to pan.
-          </Text>
-        </Alert>
+        {/* Dismissible tip banner */}
+        {!tipDismissed && (
+          <Alert
+            color="blue"
+            icon={<IconSettings size={16} />}
+            withCloseButton
+            onClose={dismissTip}
+          >
+            <Text size="sm">
+              <strong>Tip:</strong> Drag nodes to position them. Click and drag from the right handle of one node to the left handle of another to connect them. Use the mouse wheel to zoom.
+            </Text>
+          </Alert>
+        )}
 
         {/* Instructions */}
         {!nodes.length && (
@@ -832,6 +891,22 @@ export default function WorkflowBuilder() {
           </Paper>
         )}
       </Stack>
+
+      {/* Unsaved changes guard */}
+      <Modal
+        opened={leaveConfirmOpen}
+        onClose={() => setLeaveConfirmOpen(false)}
+        title="Unsaved Changes"
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text size="sm">You have unsaved changes. Leave anyway and discard them?</Text>
+          <Group justify="flex-end" gap="sm">
+            <Button variant="light" onClick={() => setLeaveConfirmOpen(false)}>Keep editing</Button>
+            <Button color="red" onClick={() => { setLeaveConfirmOpen(false); navigate('/workflows'); }}>Discard & leave</Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       {/* Test Workflow Modal */}
       {isEditing && id && (

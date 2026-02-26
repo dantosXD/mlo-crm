@@ -19,11 +19,12 @@ function handleError(res: Response, error: unknown, fallbackMessage: string) {
 // GET /api/communications
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { client_id, type, status, scheduled, follow_up, start_date, end_date, page, limit } = req.query;
+    const { client_id, q, type, status, scheduled, follow_up, start_date, end_date, page, limit } = req.query;
     const result = await commService.listCommunications({
       userId: req.user!.userId,
       userRole: req.user!.role,
       clientId: client_id as string | undefined,
+      q: q as string | undefined,
       type: type as string | undefined,
       status: status as string | undefined,
       scheduled: scheduled as string | undefined,
@@ -42,13 +43,18 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // GET /api/communications/search
 router.get('/search', async (req: AuthRequest, res: Response) => {
   try {
-    const { q, type, status, page, limit } = req.query;
+    const { q, client_id, type, status, scheduled, follow_up, start_date, end_date, page, limit } = req.query;
     const result = await commService.searchCommunications({
       userId: req.user!.userId,
       userRole: req.user!.role,
       q: q as string,
+      clientId: client_id as string | undefined,
       type: type as string | undefined,
       status: status as string | undefined,
+      scheduled: scheduled as string | undefined,
+      followUp: follow_up as string | undefined,
+      startDate: start_date as string | undefined,
+      endDate: end_date as string | undefined,
       page: page ? parseInt(page as string) : undefined,
       limit: limit ? parseInt(limit as string) : undefined,
     });

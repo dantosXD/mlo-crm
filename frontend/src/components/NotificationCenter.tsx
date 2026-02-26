@@ -4,7 +4,6 @@ import {
   UnstyledButton,
   Text,
   Group,
-  Avatar,
   Stack,
   Badge,
   ActionIcon,
@@ -13,7 +12,7 @@ import {
   Divider,
   Loader,
 } from '@mantine/core';
-import { IconBell, IconBellRinging, IconCheck, IconTrash } from '@tabler/icons-react';
+import { IconBell, IconBellRinging, IconTrash } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { api, isTransientRequestError } from '../utils/api';
 import { useAuthStore } from '../stores/authStore';
@@ -61,22 +60,25 @@ export function NotificationCenter() {
   };
 
   // Fetch unread count
-  const fetchUnreadCount = async () => {
+  const fetchUnreadCount = async (): Promise<boolean> => {
     try {
       if (!accessToken) {
         setUnreadCount(0);
-        return;
+        return true;
       }
       const response = await api.get('/notifications/unread-count');
 
       if (response.ok) {
         const data = await response.json();
         setUnreadCount(data.count);
+        return true;
       }
+      return false;
     } catch (error) {
       if (!isTransientRequestError(error)) {
         console.error('Error fetching unread count:', error);
       }
+      return false;
     }
   };
 
@@ -151,21 +153,108 @@ export function NotificationCenter() {
 
   // Fetch notifications when menu opens
   useEffect(() => {
-    if (opened) {
+    const isVisible = typeof document === 'undefined' || document.visibilityState === 'visible';
+    if (opened && isVisible) {
       fetchNotifications();
     }
   }, [opened, accessToken]);
 
-  // Poll for unread count every 30 seconds
+  // Poll for unread count with adaptive cadence and retry backoff.
   useEffect(() => {
     if (!accessToken) {
       setUnreadCount(0);
       return undefined;
     }
-    fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000);
-    return () => clearInterval(interval);
-  }, [accessToken]);
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let inFlight = false;
+    let failureCount = 0;
+
+    const clearTimer = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const scheduleNext = (delayMs: number) => {
+      if (cancelled) {
+        return;
+      }
+      clearTimer();
+      timer = setTimeout(() => {
+        void run();
+      }, Math.max(0, delayMs));
+    };
+
+    const getBaseInterval = () => (opened ? 30_000 : 120_000);
+
+    const isPollingAllowed = () => {
+      const isVisible = typeof document === 'undefined' || document.visibilityState === 'visible';
+      const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+      return isVisible && isOnline;
+    };
+
+    const run = async () => {
+      if (cancelled) {
+        return;
+      }
+
+      if (!isPollingAllowed()) {
+        scheduleNext(15_000);
+        return;
+      }
+
+      if (inFlight) {
+        scheduleNext(5_000);
+        return;
+      }
+
+      inFlight = true;
+      const ok = await fetchUnreadCount();
+      inFlight = false;
+
+      if (cancelled) {
+        return;
+      }
+
+      if (ok) {
+        failureCount = 0;
+        scheduleNext(getBaseInterval());
+        return;
+      }
+
+      failureCount += 1;
+      const backoffMultiplier = Math.min(4, 2 ** Math.max(0, failureCount - 1));
+      scheduleNext(getBaseInterval() * backoffMultiplier);
+    };
+
+    scheduleNext(0);
+
+    if (typeof document !== 'undefined') {
+      const onVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          scheduleNext(0);
+        }
+      };
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      window.addEventListener('online', onVisibilityChange);
+      window.addEventListener('offline', clearTimer);
+      return () => {
+        cancelled = true;
+        clearTimer();
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        window.removeEventListener('online', onVisibilityChange);
+        window.removeEventListener('offline', clearTimer);
+      };
+    }
+
+    return () => {
+      cancelled = true;
+      clearTimer();
+    };
+  }, [accessToken, opened]);
 
   return (
     <Menu

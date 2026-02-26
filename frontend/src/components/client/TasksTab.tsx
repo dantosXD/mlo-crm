@@ -29,6 +29,11 @@ export function TasksTab({
   const [taskPriorityFilter, setTaskPriorityFilter] = useState<string | null>(null);
   const [taskDateFilter, setTaskDateFilter] = useState<string | null>(null);
   const priorityColors = PRIORITY_COLORS;
+  const filteredTasks = tasks.filter((task) => {
+    const matchesPriority = !taskPriorityFilter || task.priority === taskPriorityFilter;
+    const matchesDate = !taskDateFilter || (taskDateFilter === 'today' && isTaskDueToday(task.dueDate));
+    return matchesPriority && matchesDate;
+  });
 
   return (
     <>
@@ -71,15 +76,11 @@ export function TasksTab({
         <EmptyState
           iconType="tasks"
           title="No tasks yet"
-          description="Create tasks to track what needs to be done for this client."
-          ctaLabel="Add Task"
+          description="Create next-step actions with owners and due dates to keep this loan moving."
+          ctaLabel="Add First Task"
           onCtaClick={onAddTask}
         />
-      ) : tasks.filter(task => {
-        const matchesPriority = !taskPriorityFilter || task.priority === taskPriorityFilter;
-        const matchesDate = !taskDateFilter || (taskDateFilter === 'today' && isTaskDueToday(task.dueDate));
-        return matchesPriority && matchesDate;
-      }).length === 0 ? (
+      ) : filteredTasks.length === 0 ? (
         <EmptyState
           iconType="tasks"
           title="No matching tasks"
@@ -89,7 +90,7 @@ export function TasksTab({
         />
       ) : (
         <Stack gap="md">
-          {tasks.filter(task => !taskPriorityFilter || task.priority === taskPriorityFilter).map((task) => {
+          {filteredTasks.map((task) => {
             const overdue = isTaskOverdue(task.dueDate, task.status);
             return (
               <Paper

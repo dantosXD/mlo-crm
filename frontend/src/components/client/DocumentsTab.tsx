@@ -62,8 +62,8 @@ export function DocumentsTab({
         <EmptyState
           iconType="documents"
           title="No documents yet"
-          description="Upload and manage documents for this client's loan application."
-          ctaLabel="Add Document"
+          description="Start with Request Document to send a checklist, or Add Document if the file is already on hand."
+          ctaLabel="Add First Document"
           onCtaClick={onAddDocument}
         />
       ) : (

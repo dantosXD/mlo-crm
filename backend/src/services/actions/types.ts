@@ -20,6 +20,29 @@ export interface ActionResult {
   data?: Record<string, any>;
 }
 
+const PLACEHOLDER_ALIAS_GROUPS: string[][] = [
+  ['fromStatus', 'from_status', 'old_status', 'oldStatus', 'previous_status', 'previousStatus'],
+  ['toStatus', 'to_status', 'new_status', 'newStatus', 'next_status', 'nextStatus'],
+  ['fromStage', 'from_stage', 'old_stage', 'oldStage', 'previous_stage', 'previousStage'],
+  ['toStage', 'to_stage', 'new_stage', 'newStage', 'next_stage', 'nextStage'],
+];
+
+function toSnakeCase(value: string): string {
+  return value.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
+function getTriggerKeyAliases(key: string): string[] {
+  const aliases = new Set<string>([key, toSnakeCase(key)]);
+
+  PLACEHOLDER_ALIAS_GROUPS.forEach((group) => {
+    if (group.includes(key)) {
+      group.forEach((entry) => aliases.add(entry));
+    }
+  });
+
+  return Array.from(aliases);
+}
+
 /**
  * Replace placeholders in template with values from context
  * Supported placeholders: {{client_name}}, {{client_email}}, {{client_phone}},
@@ -41,10 +64,13 @@ export function replacePlaceholders(template: string, context: ExecutionContext 
     placeholders['{{client_status}}'] = context.clientData.status || '';
   }
 
-  // Add trigger data placeholders (e.g. {{old_status}}, {{new_status}} from status-change triggers)
+  // Add trigger data placeholders and compatibility aliases (old/new + snake/camel forms).
   if (context.triggerData && typeof context.triggerData === 'object') {
     Object.entries(context.triggerData).forEach(([key, value]) => {
-      placeholders[`{{${key}}}`] = String(value ?? '');
+      const normalizedValue = String(value ?? '');
+      getTriggerKeyAliases(key).forEach((aliasKey) => {
+        placeholders[`{{${aliasKey}}}`] = normalizedValue;
+      });
     });
   }
 

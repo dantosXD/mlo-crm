@@ -112,12 +112,17 @@ export const COMM_TYPE_CONFIG: Record<string, { label: string; color: string }> 
 export const COMM_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   DRAFT: { label: 'Draft', color: 'gray' },
   READY: { label: 'Ready', color: 'blue' },
-  PENDING: { label: 'Pending', color: 'yellow' },
   SENT: { label: 'Sent', color: 'green' },
   FAILED: { label: 'Failed', color: 'red' },
-  DELIVERED: { label: 'Delivered', color: 'green' },
-  SCHEDULED: { label: 'Scheduled', color: 'cyan' },
 };
+
+export const COMM_STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All Statuses' },
+  { value: 'DRAFT', label: 'Draft' },
+  { value: 'READY', label: 'Ready' },
+  { value: 'SENT', label: 'Sent' },
+  { value: 'FAILED', label: 'Failed' },
+];
 
 export const PLACEHOLDER_INFO: Record<string, { description: string; example: string }> = {
   '{{client_name}}': { description: 'Full name of the client', example: 'John Smith' },

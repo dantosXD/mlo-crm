@@ -33,6 +33,7 @@ import {
 } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import dayjs from 'dayjs';
 import { apiRequest } from '../../utils/api';
 
@@ -176,9 +177,13 @@ export const CalendarShareModal: React.FC<CalendarShareModalProps> = ({ opened, 
   };
 
   const handleRevoke = (shareId: string) => {
-    if (window.confirm('Are you sure you want to revoke this calendar share?')) {
-      deleteShareMutation.mutate(shareId);
-    }
+    modals.openConfirmModal({
+      title: 'Revoke Calendar Share',
+      children: 'Are you sure you want to revoke this calendar share? This action cannot be undone.',
+      labels: { confirm: 'Revoke', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => deleteShareMutation.mutate(shareId),
+    });
   };
 
   const copyShareLink = (token: string) => {

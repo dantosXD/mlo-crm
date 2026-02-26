@@ -101,6 +101,16 @@ describe('QuickCapture template commands', () => {
     expect(await screen.findByText('/activity')).toBeInTheDocument();
   });
 
+  it('opens from global launcher event', async () => {
+    renderWithProviders(<QuickCapture />);
+
+    act(() => {
+      window.dispatchEvent(new Event('mlo:open-quick-capture'));
+    });
+
+    expect(await screen.findByPlaceholderText(/Type \/ for commands/i)).toBeInTheDocument();
+  });
+
   it('applies template selection for /task and /reminder', async () => {
     renderWithProviders(<QuickCapture />);
     openQuickCapture();

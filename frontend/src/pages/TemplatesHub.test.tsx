@@ -64,6 +64,14 @@ vi.mock('../hooks', () => ({
   useDeleteActivityTemplate: () => ({ mutateAsync: (...args: unknown[]) => mocks.deleteActivity(...args), isPending: false }),
 }));
 
+vi.mock('@mantine/modals', () => ({
+  modals: {
+    openConfirmModal: ({ onConfirm }: { onConfirm?: () => void | Promise<void> }) => {
+      void onConfirm?.();
+    },
+  },
+}));
+
 describe('TemplatesHub', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -91,7 +99,6 @@ describe('TemplatesHub', () => {
   });
 
   it('supports create in notes tab and delete in tasks tab', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderWithProviders(<TemplatesHub />, '/templates?tab=notes');
 
     fireEvent.click(screen.getByRole('button', { name: /New Note Template/i }));
@@ -114,7 +121,5 @@ describe('TemplatesHub', () => {
     await waitFor(() => {
       expect(mocks.deleteTask).toHaveBeenCalledWith('task-personal');
     });
-
-    confirmSpy.mockRestore();
   });
 });

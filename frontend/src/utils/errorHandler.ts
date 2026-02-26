@@ -34,9 +34,9 @@ export function getUserFriendlyErrorMessage(error: unknown, context: string): st
       return getTimeoutErrorMessage(context);
     }
 
-    // Generic error with message
+    // Generic error with message — return it directly without a context prefix
     if (error.message) {
-      return `${context} failed: ${error.message}`;
+      return error.message;
     }
   }
 

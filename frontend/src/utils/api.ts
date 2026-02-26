@@ -111,10 +111,16 @@ export async function apiRequest(
   });
 
   // Handle 403 — distinguish CSRF errors from auth errors
+  let shouldRefreshOnForbidden = false;
   if (response.status === 403 && !_isRetry) {
     const cloned = response.clone();
     const body = await cloned.json().catch(() => ({})) as Record<string, string>;
     const isCsrfError = body?.error === 'CSRF Token Missing' || body?.error === 'CSRF Cookie Missing' || body?.error === 'CSRF Token Mismatch';
+    const isAccessDenied = body?.error === 'Access Denied';
+    const looksLikeExpiredToken =
+      body?.error === 'Invalid Token' ||
+      body?.message?.toLowerCase().includes('access token is invalid or expired');
+    shouldRefreshOnForbidden = looksLikeExpiredToken && !isAccessDenied;
 
     if (isCsrfError) {
       // Force re-prime the CSRF cookie, then retry the original request
@@ -124,10 +130,17 @@ export async function apiRequest(
     }
   }
 
-  // Auto-refresh on 401 (and non-CSRF 403) and retry once
-  if ((response.status === 401 || response.status === 403) && !_isRetry) {
+  // Auto-refresh on 401 and token-expired 403, then retry once.
+  if ((response.status === 401 || (response.status === 403 && shouldRefreshOnForbidden)) && !_isRetry) {
+    const authState = useAuthStore.getState();
+    // If there is no active access token (or session is already marked expired),
+    // do not keep retrying refresh in the background.
+    if (!authState.accessToken || authState.sessionExpired) {
+      return response;
+    }
+
     if (!_refreshPromise) {
-      _refreshPromise = useAuthStore.getState().refreshAuth().finally(() => {
+      _refreshPromise = authState.refreshAuth().finally(() => {
         _refreshPromise = null;
       });
     }

@@ -34,6 +34,8 @@ export function AddTaskModal({ opened, onClose, clientId }: AddTaskModalProps) {
       if (!response.ok) throw new Error('Failed to fetch team members');
       return response.json() as Promise<{ id: string; name: string; role: string }[]>;
     },
+    enabled: opened,
+    staleTime: 300_000,
   });
 
   const { data: taskTemplates = [], isLoading: loadingTemplates } = useQuery({
@@ -51,6 +53,7 @@ export function AddTaskModal({ opened, onClose, clientId }: AddTaskModalProps) {
       }>>;
     },
     enabled: opened,
+    staleTime: 300_000,
   });
 
   const handleClose = () => {

@@ -3,7 +3,7 @@ import { IconSend, IconEye, IconCopy } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../EmptyState';
 import { formatRelativeTime } from '../../utils/dateUtils';
-import { COMM_TYPE_CONFIG, COMM_STATUS_CONFIG } from '../../utils/constants';
+import { COMM_TYPE_CONFIG, COMM_STATUS_CONFIG, COMM_STATUS_FILTER_OPTIONS } from '../../utils/constants';
 
 interface CommunicationsTabProps {
   clientId: string;
@@ -58,16 +58,7 @@ export function CommunicationsTab({
           placeholder="Filter by status"
           value={communicationsStatusFilter}
           onChange={(value) => onStatusFilterChange(value || 'all')}
-          data={[
-            { value: 'all', label: 'All Statuses' },
-            { value: 'DRAFT', label: 'Draft' },
-            { value: 'READY', label: 'Ready' },
-            { value: 'PENDING', label: 'Pending' },
-            { value: 'SENT', label: 'Sent' },
-            { value: 'FAILED', label: 'Failed' },
-            { value: 'DELIVERED', label: 'Delivered' },
-            { value: 'SCHEDULED', label: 'Scheduled' },
-          ]}
+          data={COMM_STATUS_FILTER_OPTIONS}
           style={{ width: 150 }}
           clearable
         />

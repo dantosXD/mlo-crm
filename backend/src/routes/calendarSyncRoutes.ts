@@ -46,6 +46,52 @@ function isOAuthProvider(provider: string): provider is 'google' | 'outlook' {
   return provider === 'google' || provider === 'outlook';
 }
 
+function getOAuthAvailability(provider: 'google' | 'outlook', requestBaseUrl: string): {
+  available: boolean;
+  reason?: string;
+  message: string;
+} {
+  if (!env.CALENDAR_OAUTH_ENABLED && !env.CALENDAR_OAUTH_TEST_MODE) {
+    return {
+      available: false,
+      reason: 'OAUTH_DISABLED',
+      message: 'Calendar OAuth is disabled in environment configuration.',
+    };
+  }
+
+  if (env.CALENDAR_OAUTH_TEST_MODE) {
+    return {
+      available: true,
+      reason: 'TEST_MODE',
+      message: 'Calendar OAuth is enabled in test mode.',
+    };
+  }
+
+  const clientId = provider === 'google' ? env.GOOGLE_OAUTH_CLIENT_ID : env.MICROSOFT_OAUTH_CLIENT_ID;
+  const clientSecret = provider === 'google' ? env.GOOGLE_OAUTH_CLIENT_SECRET : env.MICROSOFT_OAUTH_CLIENT_SECRET;
+  const redirectUri = provider === 'google'
+    ? env.GOOGLE_OAUTH_REDIRECT_URI || `${requestBaseUrl}/api/calendar-sync/oauth/google/callback`
+    : env.MICROSOFT_OAUTH_REDIRECT_URI || `${requestBaseUrl}/api/calendar-sync/oauth/outlook/callback`;
+
+  const missing: string[] = [];
+  if (!clientId) missing.push('client_id');
+  if (!clientSecret) missing.push('client_secret');
+  if (!redirectUri) missing.push('redirect_uri');
+
+  if (missing.length > 0) {
+    return {
+      available: false,
+      reason: 'MISSING_CONFIGURATION',
+      message: `Missing OAuth configuration for ${provider}: ${missing.join(', ')}`,
+    };
+  }
+
+  return {
+    available: true,
+    message: `${providerLabel(provider)} OAuth is configured.`,
+  };
+}
+
 function buildFrontendOAuthResultUrl(result: {
   status: 'success' | 'error';
   provider: string;
@@ -83,6 +129,21 @@ router.get('/oauth/:provider/start', authenticateToken, async (req: Request, res
     });
     return res.status(500).json({ error: 'Failed to start calendar OAuth flow' });
   }
+});
+
+router.get('/oauth/:provider/availability', authenticateToken, async (req: Request, res: Response) => {
+  const { provider } = req.params;
+  if (!isOAuthProvider(provider)) {
+    return res.status(400).json({ error: 'Invalid OAuth provider. Must be google or outlook.' });
+  }
+
+  const requestBaseUrl = getRequestBaseUrl(req);
+  const availability = getOAuthAvailability(provider, requestBaseUrl);
+
+  return res.json({
+    provider,
+    ...availability,
+  });
 });
 
 router.get('/oauth/:provider/callback', async (req: Request, res: Response) => {

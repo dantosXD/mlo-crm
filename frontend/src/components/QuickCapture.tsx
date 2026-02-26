@@ -237,6 +237,7 @@ export function QuickCapture() {
   const [clients, setClients] = useState<Client[]>([]);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [isLoadingClients, setIsLoadingClients] = useState(false);
+  const clientsFetchPromiseRef = useRef<Promise<Client[]> | null>(null);
   const [selectedTemplates, setSelectedTemplates] = useState<Record<CommandId, string | null>>({
     '/task': null,
     '/note': null,
@@ -484,19 +485,36 @@ export function QuickCapture() {
     ? slashCommands.filter(cmd => cmd.command.startsWith(query.toLowerCase()))
     : [];
 
-  const fetchClients = async () => {
-    setIsLoadingClients(true);
-    try {
-      const response = await api.get('/clients');
-      if (response.ok) {
-        const data = await response.json();
-        setClients(data);
-      }
-    } catch (error) {
-      console.error('Error fetching clients:', error);
-    } finally {
-      setIsLoadingClients(false);
+  const fetchClients = async (): Promise<Client[]> => {
+    if (clientsFetchPromiseRef.current) {
+      return clientsFetchPromiseRef.current;
     }
+
+    const fetchPromise = (async () => {
+      setIsLoadingClients(true);
+      try {
+        const response = await api.get('/clients');
+        if (!response.ok) {
+          return [] as Client[];
+        }
+
+        const payload = await response.json();
+        const normalizedClients = Array.isArray(payload)
+          ? payload
+          : (Array.isArray(payload?.data) ? payload.data : []);
+        setClients(normalizedClients);
+        return normalizedClients as Client[];
+      } catch (error) {
+        console.error('Error fetching clients:', error);
+        return [] as Client[];
+      } finally {
+        setIsLoadingClients(false);
+        clientsFetchPromiseRef.current = null;
+      }
+    })();
+
+    clientsFetchPromiseRef.current = fetchPromise;
+    return fetchPromise;
   };
 
   const parseResponseError = async (response: Response, fallback: string) => {
@@ -803,7 +821,18 @@ export function QuickCapture() {
     }],
   ]);
 
-  const executeActiveCommand = () => {
+  useEffect(() => {
+    const onOpenRequest = () => {
+      open();
+    };
+
+    window.addEventListener('mlo:open-quick-capture', onOpenRequest);
+    return () => {
+      window.removeEventListener('mlo:open-quick-capture', onOpenRequest);
+    };
+  }, [open]);
+
+  const executeActiveCommand = async () => {
     if (!activeCommand) return;
     const selectedTemplateId = selectedTemplates[activeCommand.command];
     if (!commandContent.trim() && !selectedTemplateId) {
@@ -815,7 +844,12 @@ export function QuickCapture() {
       return;
     }
 
-    const parsed = parseNaturalLanguageTask(commandContent, clients);
+    let availableClients = clients;
+    if ((activeCommand.command === '/note' || activeCommand.command === '/activity') && commandContent.trim() && clients.length === 0) {
+      availableClients = await fetchClients();
+    }
+
+    const parsed = parseNaturalLanguageTask(commandContent, availableClients);
 
     if (activeCommand.command === '/task') {
       createTask(
@@ -887,13 +921,13 @@ export function QuickCapture() {
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedIndex((prev) => Math.max(prev - 1, 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
 
-      if (activeCommand) {
-        executeActiveCommand();
-        return;
-      }
+        if (activeCommand) {
+          void executeActiveCommand();
+          return;
+        }
 
       // Handle slash command selection
       if (showSlashSuggestions && filteredSlashCommands[selectedIndex]) {
@@ -1092,7 +1126,9 @@ export function QuickCapture() {
 
           {hasInput ? (
             <UnstyledButton
-              onClick={executeActiveCommand}
+              onClick={() => {
+                void executeActiveCommand();
+              }}
               p="sm"
               style={{
                 borderRadius: 8,

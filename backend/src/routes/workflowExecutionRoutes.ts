@@ -24,6 +24,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       workflow_id,
       client_id,
       status,
+      search,
     } = req.query;
 
     const pageNum = parseInt(page as string, 10);
@@ -43,6 +44,24 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     if (status) {
       where.status = status as string;
+    }
+
+    const searchTerm = typeof search === 'string' ? search.trim() : '';
+    if (searchTerm.length > 0) {
+      where.OR = [
+        {
+          id: {
+            contains: searchTerm,
+          },
+        },
+        {
+          workflow: {
+            name: {
+              contains: searchTerm,
+            },
+          },
+        },
+      ];
     }
 
     // Get total count for pagination

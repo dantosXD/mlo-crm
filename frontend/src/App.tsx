@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AppShell, Text, Center, NavLink, Group, Avatar, Menu, UnstyledButton, Stack, Divider, Badge, Tooltip, ActionIcon, Burger, Notification } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
@@ -24,38 +24,48 @@ import {
   IconBell,
   IconScale,
   IconTemplate,
+  IconSparkles,
+  IconBolt,
 } from '@tabler/icons-react';
 import { useAuthStore } from './stores/authStore';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { QuickCapture } from './components/QuickCapture';
 import { NotificationCenter } from './components/NotificationCenter';
-import { AiChatSidebar } from './components/AiChatSidebar';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
-import Admin from './pages/Admin';
-import AccessDenied from './pages/AccessDenied';
-import Clients from './pages/Clients';
-import ClientDetails from './pages/ClientDetails';
-import NotFound from './pages/NotFound';
-import Pipeline from './pages/Pipeline';
-import Documents from './pages/Documents';
-import Settings from './pages/Settings';
-import DashboardHub from './pages/DashboardHub';
-import Notes from './pages/Notes';
-import Calculator from './pages/Calculator';
-import Analytics from './pages/Analytics';
-import WorkflowBuilder from './pages/WorkflowBuilder';
-import WorkflowsHub from './pages/WorkflowsHub';
-import { CommunicationTemplateEditor } from './pages/CommunicationTemplateEditor';
-import { CommunicationComposer } from './pages/CommunicationComposer';
-import CommunicationsHub from './pages/CommunicationsHub';
-import TasksDashboard from './pages/TasksDashboard';
-import Calendar from './pages/Calendar';
-import RemindersDashboard from './pages/RemindersDashboard';
-import LoanScenarios from './pages/LoanScenarios';
-import LoanProgramSettings from './pages/LoanProgramSettings';
-import TemplatesHub from './pages/TemplatesHub';
+import { resolveSessionTimeoutMinutes } from './utils/sessionTimeout';
+
+const Admin = lazy(() => import('./pages/Admin'));
+const AccessDenied = lazy(() => import('./pages/AccessDenied'));
+const Clients = lazy(() => import('./pages/Clients'));
+const ClientDetails = lazy(() => import('./pages/ClientDetails'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const Pipeline = lazy(() => import('./pages/Pipeline'));
+const Documents = lazy(() => import('./pages/Documents'));
+const Settings = lazy(() => import('./pages/Settings'));
+const DashboardHub = lazy(() => import('./pages/DashboardHub'));
+const Notes = lazy(() => import('./pages/Notes'));
+const Calculator = lazy(() => import('./pages/Calculator'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const WorkflowBuilder = lazy(() => import('./pages/WorkflowBuilder'));
+const WorkflowsHub = lazy(() => import('./pages/WorkflowsHub'));
+const CommunicationTemplateEditor = lazy(async () => {
+  const module = await import('./pages/CommunicationTemplateEditor');
+  return { default: module.CommunicationTemplateEditor };
+});
+const CommunicationComposer = lazy(async () => {
+  const module = await import('./pages/CommunicationComposer');
+  return { default: module.CommunicationComposer };
+});
+const CommunicationsHub = lazy(() => import('./pages/CommunicationsHub'));
+const TasksDashboard = lazy(() => import('./pages/TasksDashboard'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const RemindersDashboard = lazy(() => import('./pages/RemindersDashboard'));
+const LoanScenarios = lazy(() => import('./pages/LoanScenarios'));
+const LoanProgramSettings = lazy(() => import('./pages/LoanProgramSettings'));
+const TemplatesHub = lazy(() => import('./pages/TemplatesHub'));
+const AiChatSidebar = lazy(() => import('./components/AiChatSidebar'));
 
 // Role-protected route wrapper
 function AdminRoute({ children }: { children: React.ReactNode }) {
@@ -263,7 +273,7 @@ function ProtectedLayout() {
   const isReadOnly = isReadOnlyRole(user?.role);
 
   // Session timeout configuration
-  const SESSION_TIMEOUT_MINUTES = parseInt(import.meta.env.VITE_SESSION_TIMEOUT_MINUTES || '15', 10);
+  const SESSION_TIMEOUT_MINUTES = resolveSessionTimeoutMinutes(import.meta.env.VITE_SESSION_TIMEOUT_MINUTES);
 
   // Track session expiry notification and its cause
   const [showSessionExpiry, setShowSessionExpiry] = useState(false);
@@ -296,13 +306,19 @@ function ProtectedLayout() {
   }, [checkSessionTimeout, logout, navigate]);
 
   // Update last activity on user interactions
-  const handleUserActivity = useCallback(() => {
+  const handleUserActivity = useCallback((event: Event) => {
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      return;
+    }
+    if ('isTrusted' in event && !event.isTrusted) {
+      return;
+    }
     updateLastActivity();
   }, [updateLastActivity]);
 
   // Set up activity listeners
   useEffect(() => {
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    const events = ['mousedown', 'keydown', 'touchstart', 'pointerdown'];
     events.forEach(event => {
       window.addEventListener(event, handleUserActivity);
     });
@@ -314,9 +330,11 @@ function ProtectedLayout() {
     };
   }, [handleUserActivity]);
 
-  // Check for session timeout every 30 seconds
+  // Check for session timeout every 30 seconds (skipped when "Remember me" was used)
   useEffect(() => {
-    checkIntervalRef.current = setInterval(async () => {
+    const runSessionTimeoutCheck = async () => {
+      const isPersistent = localStorage.getItem('mlo-session-persistent') === 'true';
+      if (isPersistent) return;
       const didExpire = checkSessionTimeoutRef.current(SESSION_TIMEOUT_MINUTES);
       if (didExpire) {
         // Show notification first
@@ -330,6 +348,12 @@ function ProtectedLayout() {
           navigateRef.current('/login');
         }, 5000);
       }
+    };
+
+    // Run once immediately so stale sessions do not survive until the first interval tick.
+    void runSessionTimeoutCheck();
+    checkIntervalRef.current = setInterval(() => {
+      void runSessionTimeoutCheck();
     }, 30000); // Check every 30 seconds
 
     return () => {
@@ -422,6 +446,19 @@ function ProtectedLayout() {
             )}
           </Group>
           <Group gap="sm">
+            <Tooltip label="Quick Capture (Ctrl+K)" position="bottom" withArrow>
+              <ActionIcon
+                variant="subtle"
+                color="blue"
+                aria-label="Open Quick Capture"
+                data-testid="quick-capture-launcher"
+                onClick={() => {
+                  window.dispatchEvent(new Event('mlo:open-quick-capture'));
+                }}
+              >
+                <IconBolt size={18} aria-hidden="true" />
+              </ActionIcon>
+            </Tooltip>
             <NotificationCenter />
             <UserMenu />
           </Group>
@@ -470,38 +507,47 @@ function ProtectedLayout() {
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Routes>
-          <Route path="/" element={<DashboardHub />} />
-          <Route path="/dashboard" element={<DashboardHub />} />
-          <Route path="/today" element={<DashboardHub />} />
-          <Route path="/clients" element={<Clients />} />
-          <Route path="/clients/:id" element={<ClientDetails />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/reminders" element={<RemindersDashboard />} />
-          <Route path="/pipeline" element={<Pipeline />} />
-          <Route path="/tasks" element={<TasksDashboard />} />
-          <Route path="/notes" element={<Notes />} />
-          <Route path="/templates" element={<TemplatesHub />} />
-          <Route path="/documents" element={<Documents />} />
-          <Route path="/communications" element={<CommunicationsHub />} />
-          <Route path="/communication-templates" element={<TabRedirect to="/communications" tab="templates" />} />
-          <Route path="/communication-templates/new" element={<CommunicationTemplateEditor />} />
-          <Route path="/communication-templates/:id/edit" element={<CommunicationTemplateEditor />} />
-          <Route path="/communications/compose" element={<WriteRoute><CommunicationComposer /></WriteRoute>} />
-          <Route path="/communications/:clientId/compose" element={<WriteRoute><CommunicationComposer /></WriteRoute>} />
-          <Route path="/calculator" element={<Calculator />} />
-          <Route path="/loan-scenarios" element={<LoanScenarios />} />
-          <Route path="/loan-programs" element={<LoanProgramSettings />} />
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="/workflows" element={<WorkflowsHub />} />
-          <Route path="/workflows/executions" element={<TabRedirect to="/workflows" tab="executions" />} />
-          <Route path="/workflows/builder" element={<WorkflowBuilder />} />
-          <Route path="/workflows/:id/edit" element={<WorkflowBuilder />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
-          <Route path="/admin/*" element={<AdminRoute><Admin /></AdminRoute>} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <Suspense
+          fallback={(
+            <Center h="60vh">
+              <Text c="dimmed">Loading page...</Text>
+            </Center>
+          )}
+        >
+          <Routes>
+            <Route path="/" element={<DashboardHub />} />
+            <Route path="/dashboard" element={<DashboardHub />} />
+            <Route path="/today" element={<DashboardHub />} />
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="/clients" element={<Clients />} />
+            <Route path="/clients/:id" element={<ClientDetails />} />
+            <Route path="/calendar" element={<Calendar />} />
+            <Route path="/reminders" element={<RemindersDashboard />} />
+            <Route path="/pipeline" element={<Pipeline />} />
+            <Route path="/tasks" element={<TasksDashboard />} />
+            <Route path="/notes" element={<Notes />} />
+            <Route path="/templates" element={<TemplatesHub />} />
+            <Route path="/documents" element={<Documents />} />
+            <Route path="/communications" element={<CommunicationsHub />} />
+            <Route path="/communication-templates" element={<TabRedirect to="/communications" tab="templates" />} />
+            <Route path="/communication-templates/new" element={<CommunicationTemplateEditor />} />
+            <Route path="/communication-templates/:id/edit" element={<CommunicationTemplateEditor />} />
+            <Route path="/communications/compose" element={<WriteRoute><CommunicationComposer /></WriteRoute>} />
+            <Route path="/communications/:clientId/compose" element={<WriteRoute><CommunicationComposer /></WriteRoute>} />
+            <Route path="/calculator" element={<Calculator />} />
+            <Route path="/loan-scenarios" element={<LoanScenarios />} />
+            <Route path="/loan-programs" element={<LoanProgramSettings />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/workflows" element={<WorkflowsHub />} />
+            <Route path="/workflows/executions" element={<TabRedirect to="/workflows" tab="executions" />} />
+            <Route path="/workflows/builder" element={<WorkflowBuilder />} />
+            <Route path="/workflows/:id/edit" element={<WorkflowBuilder />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+            <Route path="/admin/*" element={<AdminRoute><Admin /></AdminRoute>} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
       </AppShell.Main>
     </AppShell>
     </>
@@ -515,10 +561,10 @@ function RequireAuth() {
 }
 
 function App() {
-  const { isAuthenticated, hasHydrated, refreshAuth, lastActivity } = useAuthStore();
+  const { isAuthenticated, hasHydrated, hadSession, refreshAuth } = useAuthStore();
   const [authInitialized, setAuthInitialized] = useState(false);
+  const [loadAiAssistant, setLoadAiAssistant] = useState(false);
   const authInitRef = useRef(false);
-  const sessionTimeoutMinutes = parseInt(import.meta.env.VITE_SESSION_TIMEOUT_MINUTES || '15', 10);
 
   useEffect(() => {
     if (!hasHydrated || authInitRef.current) {
@@ -526,19 +572,21 @@ function App() {
     }
 
     authInitRef.current = true;
-    const hasRecentSessionHint = typeof lastActivity === 'number'
-      && Number.isFinite(lastActivity)
-      && Date.now() - lastActivity < (sessionTimeoutMinutes * 60 * 1000);
 
-    if (!hasRecentSessionHint) {
+    // Attempt silent refresh only when this browser previously held a session.
+    // This avoids noisy refresh calls on fresh unauthenticated visits.
+    if (!hadSession) {
       setAuthInitialized(true);
       return;
     }
 
-    void refreshAuth().finally(() => {
+    // Pass silent=true so a missing cookie at load doesn't trigger the
+    // session-expired notification/redirect — it just leaves the user
+    // unauthenticated and the router handles the redirect normally.
+    void refreshAuth(true).finally(() => {
       setAuthInitialized(true);
     });
-  }, [hasHydrated, lastActivity, refreshAuth, sessionTimeoutMinutes]);
+  }, [hadSession, hasHydrated, refreshAuth]);
 
   // Wait for auth store to hydrate from persisted state before making routing decisions
   if (!hasHydrated || !authInitialized) {
@@ -564,7 +612,31 @@ function App() {
     <ErrorBoundary>
       <QuickCapture />
       <ProtectedLayout />
-      <AiChatSidebar />
+      {!loadAiAssistant ? (
+        <Tooltip label="AI Assistant" position="left" withArrow>
+          <ActionIcon
+            variant="filled"
+            color="blue"
+            size={48}
+            radius="xl"
+            onClick={() => setLoadAiAssistant(true)}
+            style={{
+              position: 'fixed',
+              bottom: 24,
+              right: 24,
+              zIndex: 1000,
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            }}
+            aria-label="Open AI Assistant"
+          >
+            <IconSparkles size={24} aria-hidden="true" />
+          </ActionIcon>
+        </Tooltip>
+      ) : (
+        <Suspense fallback={null}>
+          <AiChatSidebar autoOpenOnMount />
+        </Suspense>
+      )}
     </ErrorBoundary>
   );
 }

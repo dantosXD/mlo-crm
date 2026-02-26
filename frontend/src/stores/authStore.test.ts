@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { migratePersistedAuthState, normalizeLastActivity, useAuthStore } from './authStore';
+import { migratePersistedAuthState, normalizeHadSession, normalizeLastActivity, useAuthStore } from './authStore';
 
 describe('authStore migration helpers', () => {
   it('normalizes numeric string lastActivity to number', () => {
@@ -15,6 +15,13 @@ describe('authStore migration helpers', () => {
   it('migrates persisted auth state to normalized lastActivity', () => {
     const migrated = migratePersistedAuthState({ lastActivity: '1700000001000' });
     expect(migrated.lastActivity).toBe(1700000001000);
+    expect(migrated.hadSession).toBe(false);
+  });
+
+  it('normalizes hadSession to strict boolean true only', () => {
+    expect(normalizeHadSession(true)).toBe(true);
+    expect(normalizeHadSession(false)).toBe(false);
+    expect(normalizeHadSession('true')).toBe(false);
   });
 });
 
@@ -29,7 +36,9 @@ describe('authStore refreshAuth', () => {
       isLoading: false,
       error: null,
       lastActivity: null,
+      hadSession: false,
       hasHydrated: true,
+      sessionExpired: false,
     });
   });
 
@@ -61,6 +70,49 @@ describe('authStore refreshAuth', () => {
     expect(state.accessToken).toBe('token-1');
     expect(state.user?.email).toBe('admin@example.com');
     expect(state.lastActivity).toBe(1700000000000);
+    expect(state.hadSession).toBe(true);
+  });
+
+  it('preserves existing lastActivity on successful refresh', async () => {
+    useAuthStore.setState({
+      user: {
+        id: 'u1',
+        email: 'admin@example.com',
+        name: 'Admin User',
+        role: 'ADMIN',
+      },
+      accessToken: 'token-1',
+      isAuthenticated: true,
+      lastActivity: 1600000000000,
+      hadSession: true,
+    });
+
+    vi.spyOn(Date, 'now').mockReturnValue(1700000000000);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          accessToken: 'token-2',
+          user: {
+            id: 'u1',
+            email: 'admin@example.com',
+            name: 'Admin User',
+            role: 'ADMIN',
+          },
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+
+    const refreshed = await useAuthStore.getState().refreshAuth();
+    const state = useAuthStore.getState();
+
+    expect(refreshed).toBe(true);
+    expect(state.accessToken).toBe('token-2');
+    expect(state.lastActivity).toBe(1600000000000);
+    expect(state.hadSession).toBe(true);
   });
 
   it('clears auth state on definitive invalid session responses (400/401)', async () => {
@@ -74,6 +126,7 @@ describe('authStore refreshAuth', () => {
       accessToken: 'token-1',
       isAuthenticated: true,
       lastActivity: 1700000000000,
+      hadSession: true,
     });
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -94,6 +147,7 @@ describe('authStore refreshAuth', () => {
     expect(state.user).toBeNull();
     expect(state.accessToken).toBeNull();
     expect(state.lastActivity).toBeNull();
+    expect(state.hadSession).toBe(false);
   });
 
   it('does not clear in-memory auth state on rate-limit or transient failures', async () => {
@@ -107,6 +161,7 @@ describe('authStore refreshAuth', () => {
       accessToken: 'token-1',
       isAuthenticated: true,
       lastActivity: 1700000000000,
+      hadSession: true,
     });
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -127,5 +182,6 @@ describe('authStore refreshAuth', () => {
     expect(state.user?.email).toBe('admin@example.com');
     expect(state.accessToken).toBe('token-1');
     expect(state.lastActivity).toBe(1700000000000);
+    expect(state.hadSession).toBe(true);
   });
 });

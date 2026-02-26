@@ -217,10 +217,10 @@ export default function Documents() {
                         {doc.category}
                       </Badge>
                     </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <Badge color={statusColors[doc.status] || 'gray'} size="sm">
-                          {doc.status.replace('_', ' ')}
+                    <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                      <Group gap="xs" wrap="nowrap">
+                        <Badge color={statusColors[doc.status] || 'gray'} size="sm" style={{ whiteSpace: 'nowrap' }}>
+                          {doc.status.replace(/_/g, ' ')}
                         </Badge>
                         {expired && (
                           <Badge color="red" variant="filled" size="xs">EXPIRED</Badge>

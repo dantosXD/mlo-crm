@@ -117,9 +117,13 @@ export function WorkflowStatusWidget({
                 {completedToday}
               </Text>
             </div>
-            <div>
+            <div
+              style={{ cursor: failedToday > 0 ? 'pointer' : 'default' }}
+              onClick={() => failedToday > 0 && navigate('/workflows/executions?status=FAILED')}
+              title={failedToday > 0 ? 'View failed executions' : undefined}
+            >
               <Text size="xs" c="dimmed">Failed Today</Text>
-              <Text size="lg" fw={700} c="red">
+              <Text size="lg" fw={700} c="red" style={{ textDecoration: failedToday > 0 ? 'underline' : 'none' }}>
                 {failedToday}
               </Text>
             </div>

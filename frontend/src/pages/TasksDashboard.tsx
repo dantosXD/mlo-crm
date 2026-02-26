@@ -16,7 +16,6 @@ import {
   Stack,
   Text,
   Grid,
-  Card,
   Loader,
   Menu,
   ScrollArea,
@@ -43,12 +42,11 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import { api } from '../utils/api';
 import { TaskSnoozeButton } from '../components/tasks/TaskSnoozeButton';
 import TaskForm from '../components/tasks/TaskForm';
-import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
 import { PullToRefresh } from '../components/common/PullToRefresh';
-import { SimpleFab } from '../components/common/MobileFloatingActionButton';
 import { PRIORITY_COLORS } from '../utils/constants';
 import type { Task, TaskStatistics, TasksResponse } from '../types';
 
@@ -85,10 +83,6 @@ const sortByOptions = [
   { value: 'text', label: 'Name' },
 ];
 
-const sortDirectionOptions = [
-  { value: 'desc', label: 'Descending' },
-  { value: 'asc', label: 'Ascending' },
-];
 
 export default function TasksDashboard() {
   const navigate = useNavigate();
@@ -97,13 +91,13 @@ export default function TasksDashboard() {
 
   // State
   const queryClient = useQueryClient();
-  const [refreshing, setRefreshing] = useState(false);
+  const [_refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [selectedPriority, setSelectedPriority] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [sortBy, setSortBy] = useState('createdAt');
-  const [sortDirection, setSortDirection] = useState('desc');
+  const [sortDirection, _setSortDirection] = useState('desc');
   const [page, setPage] = useState(1);
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -112,7 +106,7 @@ export default function TasksDashboard() {
 
   const { data: tasksData, isLoading: loading } = useQuery({
     queryKey: ['tasks', selectedFilter, selectedPriority, selectedStatus, sortBy, sortDirection, page],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
       params.append('page', page.toString());
       params.append('limit', '50');
@@ -129,12 +123,14 @@ export default function TasksDashboard() {
       if (selectedPriority) params.append('priority', selectedPriority);
       if (selectedStatus) params.append('status', selectedStatus);
 
-      const response = await api.get(`/tasks?${params}`);
+      const response = await api.get(`/tasks?${params}`, { signal });
       if (!response.ok) throw new Error('Failed to fetch tasks');
       const data: TasksResponse = await response.json();
       setSelectedTasks(new Set());
       return data;
     },
+    retry: 0,
+    refetchOnWindowFocus: false,
   });
 
   const tasks = tasksData?.tasks ?? [];
@@ -142,11 +138,13 @@ export default function TasksDashboard() {
 
   const { data: statistics = null } = useQuery({
     queryKey: ['task-statistics'],
-    queryFn: async () => {
-      const response = await api.get('/tasks/statistics');
+    queryFn: async ({ signal }) => {
+      const response = await api.get('/tasks/statistics', { signal });
       if (!response.ok) throw new Error('Failed to fetch statistics');
       return response.json() as Promise<TaskStatistics>;
     },
+    retry: 0,
+    refetchOnWindowFocus: false,
   });
 
   const refreshAll = () => {
@@ -196,11 +194,17 @@ export default function TasksDashboard() {
   };
 
   // Handle delete task
-  const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('Are you sure you want to delete this task?')) {
-      return;
-    }
+  const handleDeleteTask = (taskId: string) => {
+    modals.openConfirmModal({
+      title: 'Delete Task',
+      children: <Text size="sm">Are you sure you want to delete this task? This cannot be undone.</Text>,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => doDeleteTask(taskId),
+    });
+  };
 
+  const doDeleteTask = async (taskId: string) => {
     try {
       const response = await api.delete(`/tasks/${taskId}`);
 
@@ -216,7 +220,6 @@ export default function TasksDashboard() {
         color: 'green',
       });
     } catch (error) {
-      console.error('Error deleting task:', error);
       notifications.show({
         title: 'Error',
         message: 'Failed to delete task',
@@ -513,28 +516,35 @@ export default function TasksDashboard() {
 
         {/* Tasks Table */}
         <Paper p="md" radius="md" withBorder>
+          <Text size="xs" c="dimmed" mb="sm">
+            Use row checkboxes for bulk actions. Use the check action in each row to mark tasks complete or incomplete.
+          </Text>
           <ScrollArea>
             <Table striped highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th w={40}>
-                    <Checkbox
-                      checked={selectedTasks.size === filteredTasks.length && filteredTasks.length > 0}
-                      indeterminate={selectedTasks.size > 0 && selectedTasks.size < filteredTasks.length}
-                      onChange={(e) => {
-                        if (e.currentTarget.checked) {
-                          setSelectedTasks(new Set(filteredTasks.map(t => t.id)));
-                        } else {
-                          setSelectedTasks(new Set());
-                        }
-                      }}
-                    />
+                  <Table.Th w={90}>
+                    <Group gap={6} wrap="nowrap">
+                      <Checkbox
+                        aria-label="Select all filtered tasks for bulk actions"
+                        checked={selectedTasks.size === filteredTasks.length && filteredTasks.length > 0}
+                        indeterminate={selectedTasks.size > 0 && selectedTasks.size < filteredTasks.length}
+                        onChange={(e) => {
+                          if (e.currentTarget.checked) {
+                            setSelectedTasks(new Set(filteredTasks.map(t => t.id)));
+                          } else {
+                            setSelectedTasks(new Set());
+                          }
+                        }}
+                      />
+                      <Text size="xs" c="dimmed">Select</Text>
+                    </Group>
                   </Table.Th>
                   <Table.Th>Task</Table.Th>
                   <Table.Th>Client</Table.Th>
                   <Table.Th>Priority</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                  <Table.Th>Due Date</Table.Th>
+                  <Table.Th w={110}>Status</Table.Th>
+                  <Table.Th w={110}>Due Date</Table.Th>
                   <Table.Th>Reminders</Table.Th>
                   <Table.Th>Assigned To</Table.Th>
                   <Table.Th w={80}>Actions</Table.Th>
@@ -543,7 +553,7 @@ export default function TasksDashboard() {
               <Table.Tbody>
                 {loading ? (
                   <Table.Tr>
-                    <Table.Td colSpan={8}>
+                    <Table.Td colSpan={9}>
                       <Center py="xl">
                         <Loader size="md" />
                       </Center>
@@ -551,155 +561,161 @@ export default function TasksDashboard() {
                   </Table.Tr>
                 ) : filteredTasks.length === 0 ? (
                   <Table.Tr>
-                    <Table.Td colSpan={8}>
+                    <Table.Td colSpan={9}>
                       <Center py="xl">
                         <Text c="dimmed">No tasks found</Text>
                       </Center>
                     </Table.Td>
                   </Table.Tr>
                 ) : (
-                  filteredTasks.map((task) => (
-                    <Table.Tr
-                      key={task.id}
-                      style={{
-                        opacity: task.status === 'COMPLETE' ? 0.6 : 1,
-                      }}
-                    >
-                      <Table.Td>
-                        <Checkbox
-                          checked={selectedTasks.has(task.id)}
-                          onChange={(e) => {
-                            const newSelected = new Set(selectedTasks);
-                            if (e.currentTarget.checked) {
-                              newSelected.add(task.id);
-                            } else {
-                              newSelected.delete(task.id);
-                            }
-                            setSelectedTasks(newSelected);
+                  filteredTasks.map((task) => {
+                    const completeActionLabel = task.status === 'COMPLETE' ? 'Mark incomplete' : 'Mark complete';
+
+                    return (
+                      <Table.Tr
+                          key={task.id}
+                          style={{
+                            opacity: task.status === 'COMPLETE' ? 0.6 : 1,
                           }}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <Stack gap={0}>
-                          <Text fw={500} size="sm">
-                            {task.text}
-                          </Text>
-                          {task.description && (
-                            <Text size="xs" c="dimmed" lineClamp={1}>
-                              {task.description}
-                            </Text>
-                          )}
-                        </Stack>
-                      </Table.Td>
-                      <Table.Td>
-                        {task.client?.id ? (
-                          <Button
-                            variant="subtle"
-                            size="xs"
-                            onClick={() => navigate(`/clients/${task.client!.id}`)}
-                          >
-                            {task.client?.name || 'Client'}
-                          </Button>
-                        ) : (
-                          <Text c="dimmed" size="sm">
-                            -
-                          </Text>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge color={priorityColors[task.priority]} size="sm">
-                          {task.priority}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge
-                          color={statusColors[task.status]}
-                          variant="light"
-                          size="sm"
-                          leftSection={
-                            task.status === 'COMPLETE' ? (
-                              <IconCheck size={12} />
-                            ) : null
-                          }
-                        >
-                          {task.status.replace('_', ' ')}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap={4}>
-                          <Text size="sm">
-                            {formatDate(task.dueDate)}
-                          </Text>
-                          {isOverdue(task) && (
-                            <Tooltip label="Overdue">
-                              <IconAlertCircle
-                                size={14}
-                                color="red"
-                                style={{ display: 'block' }}
-                              />
-                            </Tooltip>
-                          )}
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>
-                        {task.reminderEnabled ? (
-                          <Tooltip label={`Reminders enabled (${task.reminderTimes?.length || 0} reminder(s))`}>
-                            <Group gap={4}>
-                              <IconBell size={16} color="blue" style={{ display: 'block' }} />
-                              <Text size="xs" c="blue">
-                                {task.reminderTimes?.length || 0}
-                              </Text>
-                            </Group>
-                          </Tooltip>
-                        ) : (
-                          <Text c="dimmed" size="sm">
-                            -
-                          </Text>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">
-                          {task.assignedTo?.name || '-'}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap={4}>
-                          <Tooltip label="Toggle Complete">
-                            <ActionIcon
-                              size="sm"
-                              variant="light"
-                              color={task.status === 'COMPLETE' ? 'yellow' : 'green'}
-                              onClick={() => handleToggleTaskStatus(task)}
-                            >
-                              <IconCheck size={16} />
-                            </ActionIcon>
-                          </Tooltip>
-                          {task.dueDate && task.status !== 'COMPLETE' && (
-                            <TaskSnoozeButton
-                              taskId={task.id}
-                              onSnooze={refreshAll}
+                      >
+                          <Table.Td>
+                            <Checkbox
+                              aria-label={`Select task for bulk actions: ${task.text}`}
+                              checked={selectedTasks.has(task.id)}
+                              onChange={(e) => {
+                                const newSelected = new Set(selectedTasks);
+                                if (e.currentTarget.checked) {
+                                  newSelected.add(task.id);
+                                } else {
+                                  newSelected.delete(task.id);
+                                }
+                                setSelectedTasks(newSelected);
+                              }}
                             />
-                          )}
-                          <Menu shadow="md" width={200} position="bottom-end">
-                            <Menu.Target>
-                              <ActionIcon size="sm" variant="subtle">
-                                <IconDots size={16} />
-                              </ActionIcon>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                              <Menu.Item
-                                leftSection={<IconTrash size={14} />}
-                                color="red"
-                                onClick={() => handleDeleteTask(task.id)}
+                          </Table.Td>
+                          <Table.Td>
+                            <Stack gap={0}>
+                              <Text fw={500} size="sm">
+                                {task.text}
+                              </Text>
+                              {task.description && (
+                                <Text size="xs" c="dimmed" lineClamp={1}>
+                                  {task.description}
+                                </Text>
+                              )}
+                            </Stack>
+                          </Table.Td>
+                          <Table.Td>
+                            {task.client?.id ? (
+                              <Button
+                                variant="subtle"
+                                size="xs"
+                                onClick={() => navigate(`/clients/${task.client!.id}`)}
                               >
-                                Delete Task
-                              </Menu.Item>
-                            </Menu.Dropdown>
-                          </Menu>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))
+                                {task.client?.name || 'Client'}
+                              </Button>
+                            ) : (
+                              <Text c="dimmed" size="sm">
+                                -
+                              </Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge color={priorityColors[task.priority]} size="sm">
+                              {task.priority}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge
+                              color={statusColors[task.status]}
+                              variant="light"
+                              size="sm"
+                              leftSection={
+                                task.status === 'COMPLETE' ? (
+                                  <IconCheck size={12} />
+                                ) : null
+                              }
+                            >
+                              {task.status.replace('_', ' ')}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap={4}>
+                              <Text size="sm">
+                                {formatDate(task.dueDate)}
+                              </Text>
+                              {isOverdue(task) && (
+                                <Tooltip label="Overdue">
+                                  <IconAlertCircle
+                                    size={14}
+                                    color="red"
+                                    style={{ display: 'block' }}
+                                  />
+                                </Tooltip>
+                              )}
+                            </Group>
+                          </Table.Td>
+                          <Table.Td>
+                            {task.reminderEnabled ? (
+                              <Tooltip label={`Reminders enabled (${task.reminderTimes?.length || 0} reminder(s))`}>
+                                <Group gap={4}>
+                                  <IconBell size={16} color="blue" style={{ display: 'block' }} />
+                                  <Text size="xs" c="blue">
+                                    {task.reminderTimes?.length || 0}
+                                  </Text>
+                                </Group>
+                              </Tooltip>
+                            ) : (
+                              <Text c="dimmed" size="sm">
+                                -
+                              </Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm">
+                              {task.assignedTo?.name || '-'}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap={4}>
+                              <Tooltip label={completeActionLabel}>
+                                <ActionIcon
+                                  aria-label={completeActionLabel}
+                                  size="sm"
+                                  variant="light"
+                                  color={task.status === 'COMPLETE' ? 'yellow' : 'green'}
+                                  onClick={() => handleToggleTaskStatus(task)}
+                                >
+                                  <IconCheck size={16} />
+                                </ActionIcon>
+                              </Tooltip>
+                              {task.dueDate && task.status !== 'COMPLETE' && (
+                                <TaskSnoozeButton
+                                  taskId={task.id}
+                                  onSnooze={refreshAll}
+                                />
+                              )}
+                              <Menu shadow="md" width={200} position="bottom-end">
+                                <Menu.Target>
+                                  <ActionIcon size="sm" variant="subtle">
+                                    <IconDots size={16} />
+                                  </ActionIcon>
+                                </Menu.Target>
+                                <Menu.Dropdown>
+                                  <Menu.Item
+                                    leftSection={<IconTrash size={14} />}
+                                    color="red"
+                                    onClick={() => handleDeleteTask(task.id)}
+                                  >
+                                    Delete Task
+                                  </Menu.Item>
+                                </Menu.Dropdown>
+                              </Menu>
+                            </Group>
+                          </Table.Td>
+                      </Table.Tr>
+                    );
+                  })
                 )}
               </Table.Tbody>
             </Table>

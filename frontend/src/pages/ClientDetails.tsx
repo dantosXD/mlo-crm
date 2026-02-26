@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Container,
@@ -9,21 +9,20 @@ import {
   Text,
   Paper,
   LoadingOverlay,
-  Badge,
-  Stack,
   Tabs,
-  Card,
   SimpleGrid,
   Center,
-  Alert,
   Breadcrumbs,
   Anchor,
   Select,
   Grid,
   ThemeIcon,
   TagsInput,
+  Tooltip,
+  ActionIcon,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import {
   IconUser,
   IconNotes,
@@ -38,6 +37,8 @@ import {
   IconTag,
   IconCheck,
   IconMail,
+  IconEye,
+  IconEyeOff,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
 import { canWriteClients } from '../utils/roleUtils';
@@ -52,15 +53,55 @@ import { useClientStatuses, useClient, useClientNotes, useClientTasks, useClient
 
 const statusColors = CLIENT_STATUS_COLORS;
 
+function maskEmail(email: string): string {
+  if (!email || !email.includes('@')) return email;
+  const [local, domain] = email.split('@');
+  if (local.length <= 2) return `${local[0]}***@${domain}`;
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
+function maskPhone(phone: string): string {
+  if (!phone) return '-';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 4) return '***';
+  return `***-***-${digits.slice(-4)}`;
+}
+
+function MaskedField({ value, maskFn, label }: { value: string; maskFn: (v: string) => string; label: string }) {
+  const [revealed, setRevealed] = useState(false);
+  if (!value || value === '-') return <Text c="dimmed">-</Text>;
+  return (
+    <Tooltip label={revealed ? `Hide ${label}` : `Click to reveal ${label}`}>
+      <Group
+        gap={4}
+        wrap="nowrap"
+        style={{ cursor: 'pointer' }}
+        onClick={() => setRevealed(!revealed)}
+        onMouseEnter={() => setRevealed(true)}
+        onMouseLeave={() => setRevealed(false)}
+      >
+        <Text>{revealed ? value : maskFn(value)}</Text>
+        <ActionIcon
+          size="xs"
+          variant="subtle"
+          color="gray"
+          aria-label={revealed ? 'Hide masked value' : 'Reveal masked value'}
+        >
+          {revealed ? <IconEyeOff size={12} aria-hidden="true" /> : <IconEye size={12} aria-hidden="true" />}
+        </ActionIcon>
+      </Group>
+    </Tooltip>
+  );
+}
+
 // Define valid tab values
 const validTabs = ['overview', 'notes', 'documents', 'tasks', 'loans', 'communications'];
 
 export default function ClientDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { accessToken, user } = useAuthStore();
+  const { user } = useAuthStore();
   const canWrite = canWriteClients(user?.role);
   const queryClient = useQueryClient();
 
@@ -79,10 +120,14 @@ export default function ClientDetails() {
   const tabFromUrl = searchParams.get('tab');
   const initialTab = tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'overview';
   const [activeTab, setActiveTab] = useState<string | null>(initialTab);
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(() => new Set([initialTab]));
 
   // Handle tab change - update URL when tab changes
   const handleTabChange = (value: string | null) => {
     setActiveTab(value);
+    if (value) {
+      setLoadedTabs((prev) => new Set(prev).add(value));
+    }
     if (value) {
       setSearchParams({ tab: value }, { replace: true });
     }
@@ -93,23 +138,38 @@ export default function ClientDetails() {
     const tabFromUrl = searchParams.get('tab');
     if (tabFromUrl && validTabs.includes(tabFromUrl) && tabFromUrl !== activeTab) {
       setActiveTab(tabFromUrl);
+      setLoadedTabs((prev) => new Set(prev).add(tabFromUrl));
     }
-  }, [searchParams]);
+  }, [searchParams, activeTab]);
   // --- Shared hooks for data fetching ---
   const { data: client = null, isLoading: loading, error: clientError } = useClient(id);
   const accessDenied = (clientError as any)?.status === 403;
   const error = clientError && !accessDenied ? (clientError as Error).message : null;
+  const isCommunicationsTab = activeTab === 'communications';
+  const hasLoadedTab = (tab: string) => loadedTabs.has(tab);
 
   const statusOptions = useClientStatuses();
-  const { data: notes = [], isLoading: loadingNotes } = useClientNotes(id);
+  const { data: notes = [], isLoading: loadingNotes } = useClientNotes(id, {
+    enabled: !!id && (activeTab === 'notes' || hasLoadedTab('notes')),
+    staleTime: 120_000,
+  });
   const existingNoteTags = useMemo(() => {
     const allTags = notes.flatMap((n: Note) => n.tags || []);
     return [...new Set(allTags)];
   }, [notes]);
-  const { data: tasks = [], isLoading: loadingTasks } = useClientTasks(id);
-  const { data: loanScenarios = [], isLoading: loadingScenarios } = useClientLoanScenarios(id);
-  const { data: documents = [], isLoading: loadingDocuments } = useClientDocuments(id);
-  const { data: activities = [], isLoading: loadingActivities } = useClientActivities(id);
+  const { data: tasks = [], isLoading: loadingTasks } = useClientTasks(id, {
+    enabled: !!id && (activeTab === 'tasks' || hasLoadedTab('tasks')),
+    staleTime: 120_000,
+  });
+  const { data: loanScenarios = [], isLoading: loadingScenarios } = useClientLoanScenarios(id, {
+    enabled: !!id && (activeTab === 'loans' || hasLoadedTab('loans')),
+    staleTime: 120_000,
+  });
+  const { data: documents = [], isLoading: loadingDocuments } = useClientDocuments(id, {
+    enabled: !!id && (activeTab === 'documents' || hasLoadedTab('documents')),
+    staleTime: 120_000,
+  });
+  const { data: activities = [], isLoading: loadingActivities } = useClientActivities(id, { staleTime: 60_000 });
 
   // Communications filter state (must be declared before communications query)
   const [communicationsTypeFilter, setCommunicationsTypeFilter] = useState<string>('all');
@@ -118,42 +178,44 @@ export default function ClientDetails() {
   // --- React Query: communications ---
   const { data: communications = [], isLoading: loadingCommunications } = useQuery({
     queryKey: ['client-communications', id, communicationsTypeFilter, communicationsStatusFilter],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams({ client_id: id! });
       if (communicationsTypeFilter !== 'all') params.append('type', communicationsTypeFilter);
       if (communicationsStatusFilter !== 'all') params.append('status', communicationsStatusFilter);
-      const response = await api.get(`/communications?${params.toString()}`);
+      const response = await api.get(`/communications?${params.toString()}`, { signal });
       if (!response.ok) throw new Error('Failed to fetch communications');
       const data = await response.json();
       return (data.data || data.communications || []) as any[];
     },
-    enabled: !!id,
+    enabled: !!id && isCommunicationsTab,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
-  // --- React Query: workflow executions ---
-  const { data: workflowExecutions = [], isLoading: loadingWorkflowExecutions } = useQuery({
-    queryKey: ['client-workflow-executions', id],
-    queryFn: async () => {
-      const response = await api.get(`/workflow-executions?client_id=${id}`);
-      if (!response.ok) throw new Error('Failed to fetch workflow executions');
+  const { data: communicationsCount = 0 } = useQuery({
+    queryKey: ['client-communications-count', id],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({
+        client_id: id!,
+        page: '1',
+        limit: '1',
+      });
+      const response = await api.get(`/communications?${params.toString()}`, { signal });
+      if (!response.ok) throw new Error('Failed to fetch communications count');
       const data = await response.json();
-      return (data.executions || data || []) as any[];
+      if (data?.pagination && typeof data.pagination.total === 'number') {
+        return data.pagination.total as number;
+      }
+      const rows = (data?.data || data?.communications || []) as any[];
+      return Array.isArray(rows) ? rows.length : 0;
     },
     enabled: !!id,
-  });
-
-  // --- React Query: team members ---
-  const { data: teamMembers = [], isLoading: loadingTeamMembers } = useQuery({
-    queryKey: ['client-team-members'],
-    queryFn: async () => {
-      const response = await api.get('/users/team');
-      if (!response.ok) throw new Error('Failed to fetch team members');
-      return response.json() as Promise<{ id: string; name: string; role: string }[]>;
-    },
+    staleTime: 120_000,
+    refetchOnWindowFocus: false,
   });
 
   // --- React Query: document packages (on-demand) ---
-  const { data: availablePackages = [], refetch: refetchPackages } = useQuery({
+  const { refetch: refetchPackages } = useQuery({
     queryKey: ['document-packages'],
     queryFn: async () => {
       const response = await api.get('/document-packages');
@@ -161,6 +223,7 @@ export default function ClientDetails() {
       return response.json() as Promise<any[]>;
     },
     enabled: false,
+    refetchOnWindowFocus: false,
   });
 
   // Helper to refresh activities after mutations
@@ -257,15 +320,9 @@ export default function ClientDetails() {
     }
   }, [editHasUnsavedChanges]);
 
-  const getCsrfToken = (): string | null => {
-    const match = document.cookie.match(/(?:^|; )csrf-token=([^;]*)/);
-    return match ? decodeURIComponent(match[1]) : null;
-  };
-
   const handleStatusChange = async (newStatus: string | null) => {
     if (!newStatus || !client || newStatus === client.status) return;
 
-    const oldStatus = client.status;
     setUpdatingStatus(true);
     setStatusUpdateSuccess(false);
 
@@ -374,34 +431,25 @@ export default function ClientDetails() {
     setEditNoteModalOpen(true);
   };
 
-  const handleDeleteNote = async (noteId: string) => {
-    if (!confirm('Are you sure you want to delete this note?')) {
-      return;
-    }
-
-    try {
-      const response = await api.delete(`/notes/${noteId}`);
-
-      if (!response.ok) {
-        throw new Error('Failed to delete note');
-      }
-
-      queryClient.setQueryData(['client-notes', id], (old: Note[] = []) => old.filter(n => n.id !== noteId));
-      refreshActivities();
-
-      notifications.show({
-        title: 'Success',
-        message: 'Note deleted successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error deleting note:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete note',
-        color: 'red',
-      });
-    }
+  const handleDeleteNote = (noteId: string) => {
+    modals.openConfirmModal({
+      title: 'Delete Note',
+      children: 'Are you sure you want to delete this note? This action cannot be undone.',
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          const response = await api.delete(`/notes/${noteId}`);
+          if (!response.ok) throw new Error('Failed to delete note');
+          queryClient.setQueryData(['client-notes', id], (old: Note[] = []) => old.filter(n => n.id !== noteId));
+          refreshActivities();
+          notifications.show({ title: 'Success', message: 'Note deleted successfully', color: 'green' });
+        } catch (error) {
+          console.error('Error deleting note:', error);
+          notifications.show({ title: 'Error', message: 'Failed to delete note', color: 'red' });
+        }
+      },
+    });
   };
 
   const handleTogglePin = async (note: Note) => {
@@ -475,34 +523,25 @@ export default function ClientDetails() {
     }
   };
 
-  const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('Are you sure you want to delete this task?')) {
-      return;
-    }
-
-    try {
-      const response = await api.delete(`/tasks/${taskId}`);
-
-      if (!response.ok) {
-        throw new Error('Failed to delete task');
-      }
-
-      queryClient.setQueryData(['client-tasks', id], (old: Task[] = []) => old.filter(t => t.id !== taskId));
-      refreshActivities();
-
-      notifications.show({
-        title: 'Success',
-        message: 'Task deleted successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error deleting task:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete task',
-        color: 'red',
-      });
-    }
+  const handleDeleteTask = (taskId: string) => {
+    modals.openConfirmModal({
+      title: 'Delete Task',
+      children: 'Are you sure you want to delete this task? This action cannot be undone.',
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          const response = await api.delete(`/tasks/${taskId}`);
+          if (!response.ok) throw new Error('Failed to delete task');
+          queryClient.setQueryData(['client-tasks', id], (old: Task[] = []) => old.filter(t => t.id !== taskId));
+          refreshActivities();
+          notifications.show({ title: 'Success', message: 'Task deleted successfully', color: 'green' });
+        } catch (error) {
+          console.error('Error deleting task:', error);
+          notifications.show({ title: 'Error', message: 'Failed to delete task', color: 'red' });
+        }
+      },
+    });
   };
 
   const handleSetPreferred = async (scenarioId: string) => {
@@ -812,34 +851,25 @@ export default function ClientDetails() {
     }
   };
 
-  const handleDeleteDocument = async (documentId: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) {
-      return;
-    }
-
-    try {
-      const response = await api.delete(`/documents/${documentId}`);
-
-      if (!response.ok) {
-        throw new Error('Failed to delete document');
-      }
-
-      queryClient.setQueryData(['client-documents', id], (old: ClientDocument[] = []) => old.filter(doc => doc.id !== documentId));
-      refreshActivities();
-
-      notifications.show({
-        title: 'Success',
-        message: 'Document deleted successfully',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error deleting document:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete document',
-        color: 'red',
-      });
-    }
+  const handleDeleteDocument = (documentId: string) => {
+    modals.openConfirmModal({
+      title: 'Delete Document',
+      children: 'Are you sure you want to delete this document? This action cannot be undone.',
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          const response = await api.delete(`/documents/${documentId}`);
+          if (!response.ok) throw new Error('Failed to delete document');
+          queryClient.setQueryData(['client-documents', id], (old: ClientDocument[] = []) => old.filter(doc => doc.id !== documentId));
+          refreshActivities();
+          notifications.show({ title: 'Success', message: 'Document deleted successfully', color: 'green' });
+        } catch (error) {
+          console.error('Error deleting document:', error);
+          notifications.show({ title: 'Error', message: 'Failed to delete document', color: 'red' });
+        }
+      },
+    });
   };
 
   const handleDownloadDocument = async (documentId: string, fileName?: string) => {
@@ -887,6 +917,11 @@ export default function ClientDetails() {
   const getSelectedScenariosData = () => {
     return loanScenarios.filter(s => selectedScenarios.includes(s.id));
   };
+
+  const notesCount = hasLoadedTab('notes') ? notes.length : (client?.notes?.length || 0);
+  const documentsCount = hasLoadedTab('documents') ? documents.length : (client?.documents?.length || 0);
+  const tasksCount = hasLoadedTab('tasks') ? tasks.length : (client?.tasks?.length || 0);
+  const loanScenariosCount = hasLoadedTab('loans') ? loanScenarios.length : (client?.loanScenarios?.length || 0);
 
   if (loading) {
     return (
@@ -1004,11 +1039,11 @@ export default function ClientDetails() {
         <SimpleGrid cols={{ base: 1, sm: 3 }} mb="md">
           <div>
             <Text size="sm" c="dimmed">Email</Text>
-            <Text>{client.email}</Text>
+            <MaskedField value={client.email} maskFn={maskEmail} label="email" />
           </div>
           <div>
             <Text size="sm" c="dimmed">Phone</Text>
-            <Text>{client.phone || '-'}</Text>
+            <MaskedField value={client.phone || '-'} maskFn={maskPhone} label="phone" />
           </div>
           <div>
             <Text size="sm" c="dimmed">Created</Text>
@@ -1036,24 +1071,24 @@ export default function ClientDetails() {
                 Overview
               </Tabs.Tab>
               <Tabs.Tab value="notes" leftSection={<IconNotes size={16} aria-hidden="true" />}>
-                Notes ({notes.length})
+                Notes ({notesCount})
               </Tabs.Tab>
               <Tabs.Tab value="documents" leftSection={<IconFiles size={16} aria-hidden="true" />}>
-                Documents ({documents.length})
+                Documents ({documentsCount})
               </Tabs.Tab>
               <Tabs.Tab value="tasks" leftSection={<IconChecklist size={16} aria-hidden="true" />}>
-                Tasks ({tasks.length})
+                Tasks ({tasksCount})
               </Tabs.Tab>
               <Tabs.Tab value="loans" leftSection={<IconCalculator size={16} aria-hidden="true" />}>
-                Loan Scenarios ({loanScenarios.length})
+                Loan Scenarios ({loanScenariosCount})
               </Tabs.Tab>
               <Tabs.Tab value="communications" leftSection={<IconMail size={16} aria-hidden="true" />}>
-                Communications ({communications.length})
+                Communications ({communicationsCount})
               </Tabs.Tab>
             </Tabs.List>
 
             <Tabs.Panel value="overview" pt="md">
-              <OverviewTab client={client} />
+              <OverviewTab client={client} onNavigateTab={handleTabChange} />
             </Tabs.Panel>
 
             <Tabs.Panel value="notes" pt="md">
@@ -1166,12 +1201,14 @@ export default function ClientDetails() {
         clientName={client.name}
       />
       {/* Add Note Modal */}
-      <AddNoteModal
-        opened={addNoteModalOpen}
-        onClose={() => setAddNoteModalOpen(false)}
-        clientId={id!}
-        existingNoteTags={existingNoteTags}
-      />
+      {addNoteModalOpen && (
+        <AddNoteModal
+          opened={addNoteModalOpen}
+          onClose={() => setAddNoteModalOpen(false)}
+          clientId={id!}
+          existingNoteTags={existingNoteTags}
+        />
+      )}
 
       {/* Edit Note Modal */}
       <EditNoteModal
@@ -1220,11 +1257,13 @@ export default function ClientDetails() {
       />
 
       {/* Add Task Modal */}
-      <AddTaskModal
-        opened={addTaskModalOpen}
-        onClose={() => setAddTaskModalOpen(false)}
-        clientId={id!}
-      />
+      {addTaskModalOpen && (
+        <AddTaskModal
+          opened={addTaskModalOpen}
+          onClose={() => setAddTaskModalOpen(false)}
+          clientId={id!}
+        />
+      )}
 
       {/* Add/Edit Loan Scenario Modal */}
       <AddScenarioModal
@@ -1250,11 +1289,13 @@ export default function ClientDetails() {
       />
 
       {/* Log Interaction Modal */}
-      <LogInteractionModal
-        opened={logInteractionModalOpen}
-        onClose={() => setLogInteractionModalOpen(false)}
-        clientId={id!}
-      />
+      {logInteractionModalOpen && (
+        <LogInteractionModal
+          opened={logInteractionModalOpen}
+          onClose={() => setLogInteractionModalOpen(false)}
+          clientId={id!}
+        />
+      )}
 
       {/* Unsaved Changes Warning Modal */}
       <UnsavedChangesModal

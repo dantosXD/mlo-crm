@@ -12,6 +12,17 @@ const mocks = vi.hoisted(() => ({
   handleOAuthCallback: vi.fn(),
   refreshProviderAccessToken: vi.fn(),
 }));
+const envState = vi.hoisted(() => ({
+  FRONTEND_URL: 'http://localhost:5173',
+  CALENDAR_OAUTH_ENABLED: true,
+  CALENDAR_OAUTH_TEST_MODE: false,
+  GOOGLE_OAUTH_CLIENT_ID: 'google-client-id',
+  GOOGLE_OAUTH_CLIENT_SECRET: 'google-client-secret',
+  GOOGLE_OAUTH_REDIRECT_URI: 'http://localhost:3002/api/calendar-sync/oauth/google/callback',
+  MICROSOFT_OAUTH_CLIENT_ID: 'microsoft-client-id',
+  MICROSOFT_OAUTH_CLIENT_SECRET: 'microsoft-client-secret',
+  MICROSOFT_OAUTH_REDIRECT_URI: 'http://localhost:3002/api/calendar-sync/oauth/outlook/callback',
+}));
 
 vi.mock('../services/calendarSyncService', () => ({
   getUserCalendarConnections: mocks.getUserCalendarConnections,
@@ -25,9 +36,7 @@ vi.mock('../services/calendarSyncService', () => ({
 }));
 
 vi.mock('../config/env.js', () => ({
-  getEnv: () => ({
-    FRONTEND_URL: 'http://localhost:5173',
-  }),
+  getEnv: () => envState,
 }));
 
 vi.mock('../middleware/auth', () => ({
@@ -56,6 +65,17 @@ async function createTestApp() {
 describe('calendarSyncRoutes OAuth callback redirects', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.assign(envState, {
+      FRONTEND_URL: 'http://localhost:5173',
+      CALENDAR_OAUTH_ENABLED: true,
+      CALENDAR_OAUTH_TEST_MODE: false,
+      GOOGLE_OAUTH_CLIENT_ID: 'google-client-id',
+      GOOGLE_OAUTH_CLIENT_SECRET: 'google-client-secret',
+      GOOGLE_OAUTH_REDIRECT_URI: 'http://localhost:3002/api/calendar-sync/oauth/google/callback',
+      MICROSOFT_OAUTH_CLIENT_ID: 'microsoft-client-id',
+      MICROSOFT_OAUTH_CLIENT_SECRET: 'microsoft-client-secret',
+      MICROSOFT_OAUTH_REDIRECT_URI: 'http://localhost:3002/api/calendar-sync/oauth/outlook/callback',
+    });
     mocks.handleOAuthCallback.mockResolvedValue({
       userId: 'user-1',
       provider: 'google',
@@ -98,3 +118,45 @@ describe('calendarSyncRoutes OAuth callback redirects', () => {
   });
 });
 
+describe('calendarSyncRoutes OAuth availability', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns available=true when oauth is configured', async () => {
+    Object.assign(envState, {
+      CALENDAR_OAUTH_ENABLED: true,
+      CALENDAR_OAUTH_TEST_MODE: false,
+      GOOGLE_OAUTH_CLIENT_ID: 'google-client-id',
+      GOOGLE_OAUTH_CLIENT_SECRET: 'google-client-secret',
+    });
+
+    const app = await createTestApp();
+    const response = await request(app).get('/api/calendar-sync/oauth/google/availability');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      provider: 'google',
+      available: true,
+    });
+  });
+
+  it('returns available=false with missing configuration reason', async () => {
+    Object.assign(envState, {
+      CALENDAR_OAUTH_ENABLED: true,
+      CALENDAR_OAUTH_TEST_MODE: false,
+      GOOGLE_OAUTH_CLIENT_ID: '',
+      GOOGLE_OAUTH_CLIENT_SECRET: '',
+    });
+
+    const app = await createTestApp();
+    const response = await request(app).get('/api/calendar-sync/oauth/google/availability');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      provider: 'google',
+      available: false,
+      reason: 'MISSING_CONFIGURATION',
+    });
+  });
+});

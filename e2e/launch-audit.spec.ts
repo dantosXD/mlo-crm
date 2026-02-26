@@ -50,7 +50,13 @@ function isCriticalApiFailure(url: string, status: number, method: string): bool
 
 async function loginUi(page: any, email: string) {
   await page.goto(`${baseUrl}/login`);
-  await page.getByTestId('email-input').fill(email);
+  const emailInput = page.getByTestId('email-input');
+  const loginFormVisible = await emailInput.isVisible({ timeout: 2_000 }).catch(() => false);
+  if (!loginFormVisible) {
+    await expect(page).not.toHaveURL(/\/login/, { timeout: 20_000 });
+    return;
+  }
+  await emailInput.fill(email);
   await page.getByTestId('password-input').fill('password123');
   await page.getByTestId('sign-in-button').click();
   await expect(page).not.toHaveURL(/\/login/, { timeout: 20000 });
@@ -283,19 +289,46 @@ test.describe('launch audit', () => {
     await page.getByRole('option', { name: clientName, exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Client', exact: true })).toHaveValue(clientName);
 
-    // Critical flow: workflow run-now response
+    // Critical flow: workflow run-with-context response
     await page.goto(`${baseUrl}/workflows`);
-    await page.getByTitle('Run Now').first().click();
-    await expect(page.getByText(/Workflow Executed|Failed to execute workflow|Error/i)).toBeVisible();
+    const runWorkflowButton = page.locator('button[aria-label^="Run workflow "]').first();
+    await expect(runWorkflowButton).toBeVisible();
+    await runWorkflowButton.click();
+    const runModal = page.getByRole('dialog', { name: 'Run Workflow With Context' });
+    await expect(runModal).toBeVisible();
+    await runModal.getByRole('textbox', { name: 'Client' }).click();
+    await page.getByRole('option', { name: new RegExp(`^${clientName}`) }).first().click();
+    await runModal.getByRole('button', { name: 'Run Workflow' }).click();
+    await expect(runModal.getByText('Workflow Executed', { exact: true }).first()).toBeVisible();
 
     // RBAC checks with viewer role
     const viewer = await browser.newContext();
     const viewerPage = await viewer.newPage();
     await loginUi(viewerPage, 'viewer@example.com');
     await viewerPage.goto(`${baseUrl}/communications/compose`);
-    const viewerComposeBlocked = (await viewerPage.locator('body').innerText()).toLowerCase().includes('access denied');
+    const viewerComposeBody = (await viewerPage.locator('body').innerText()).toLowerCase();
+    const viewerComposeUrl = viewerPage.url();
+    const viewerComposerControls =
+      (await viewerPage.getByRole('button', { name: /send|save draft/i }).count()) +
+      (await viewerPage.getByRole('textbox', { name: /subject/i }).count());
+    const viewerComposeBlocked =
+      viewerComposeBody.includes('access denied') ||
+      !viewerComposeUrl.includes('/communications/compose') ||
+      viewerComposerControls === 0;
+
     await viewerPage.goto(`${baseUrl}/admin`);
-    const viewerAdminBlocked = (await viewerPage.locator('body').innerText()).toLowerCase().includes('access denied');
+    let viewerAdminBlocked = false;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const viewerAdminBody = (await viewerPage.locator('body').innerText()).toLowerCase();
+      const viewerAdminUrl = viewerPage.url();
+      viewerAdminBlocked =
+        viewerAdminBody.includes('access denied') ||
+        !viewerAdminUrl.includes('/admin');
+      if (viewerAdminBlocked) {
+        break;
+      }
+      await viewerPage.waitForTimeout(250);
+    }
     await viewer.close();
 
     const summary = {

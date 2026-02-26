@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Title,
   Stack,
@@ -38,7 +38,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../utils/api';
-import { COMM_TYPE_CONFIG, COMM_STATUS_CONFIG } from '../utils/constants';
+import { COMM_TYPE_CONFIG, COMM_STATUS_CONFIG, COMM_STATUS_FILTER_OPTIONS } from '../utils/constants';
 import type { Communication, CommunicationsResponse } from '../types';
 
 const TYPE_CONFIG = COMM_TYPE_CONFIG;
@@ -69,6 +69,7 @@ export function Communications() {
   const navigate = useNavigate();
   const location = useLocation();
   const isReadOnly = ['VIEWER', 'PROCESSOR', 'UNDERWRITER'].includes((user?.role || '').toUpperCase());
+  const composeButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const queryClient = useQueryClient();
   const [clientSearch, setClientSearch] = useState('');
@@ -105,6 +106,25 @@ export function Communications() {
     }
   }, [location, navigate]);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    if (document.activeElement === document.body) {
+      composeButtonRef.current?.focus();
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setPage(1);
+      setSearchTerm(clientSearch.trim());
+    }, 350);
+
+    return () => clearTimeout(timeoutId);
+  }, [clientSearch]);
+
   const { data: commsData, isLoading: loading } = useQuery({
     queryKey: ['communications', page, typeFilter, statusFilter, scheduledFilter, followUpFilter, startDate?.toISOString(), endDate?.toISOString(), searchTerm],
     queryFn: async () => {
@@ -118,7 +138,7 @@ export function Communications() {
       if (followUpFilter) params.append('follow_up', 'true');
       if (startDate) params.append('start_date', startDate.toISOString());
       if (endDate) params.append('end_date', endDate.toISOString());
-      if (searchTerm) params.append('client_id', searchTerm);
+      if (searchTerm) params.append('q', searchTerm);
 
       const response = await api.get(`/communications?${params}`);
       if (!response.ok) throw new Error('Failed to fetch communications');
@@ -129,21 +149,13 @@ export function Communications() {
   const communications = commsData?.data ?? [];
   const pagination = commsData?.pagination ?? { page: 1, limit, total: 0, totalPages: 0 };
 
-  const handleSearch = () => {
-    setPage(1);
-    setSearchTerm(clientSearch);
-  };
-
-  const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter') {
-      handleSearch();
-    }
-  };
-
   const handleClearFilters = () => {
     setClientSearch('');
+    setSearchTerm('');
     setTypeFilter('all');
     setStatusFilter('all');
+    setScheduledFilter(false);
+    setFollowUpFilter(false);
     setStartDate(null);
     setEndDate(null);
     setPage(1);
@@ -309,6 +321,7 @@ export function Communications() {
           <Group>
             {!isReadOnly && (
               <Button
+                ref={composeButtonRef}
                 leftSection={<IconPlus size={16} />}
                 onClick={() => navigate('/communications/compose')}
               >
@@ -329,11 +342,17 @@ export function Communications() {
           <Stack gap="md">
             <Group gap="md">
               <TextInput
-                placeholder="Search by client ID..."
+                placeholder="Search by client name, subject, or body..."
                 leftSection={<IconSearch size={16} />}
                 value={clientSearch}
                 onChange={event => setClientSearch(event.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    setPage(1);
+                    setSearchTerm(clientSearch.trim());
+                  }
+                }}
                 style={{ flex: 1 }}
               />
 
@@ -356,15 +375,7 @@ export function Communications() {
 
               <Select
                 placeholder="Filter by status"
-                data={[
-                  { value: 'all', label: 'All Statuses' },
-                  { value: 'DRAFT', label: 'Draft' },
-                  { value: 'READY', label: 'Ready' },
-                  { value: 'PENDING', label: 'Pending' },
-                  { value: 'SENT', label: 'Sent' },
-                  { value: 'DELIVERED', label: 'Delivered' },
-                  { value: 'FAILED', label: 'Failed' },
-                ]}
+                data={COMM_STATUS_FILTER_OPTIONS}
                 value={statusFilter}
                 onChange={(value: string | null) => {
                   setStatusFilter(value || 'all');

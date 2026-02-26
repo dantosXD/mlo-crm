@@ -12,6 +12,8 @@ import {
   Stack,
   Box,
   Alert,
+  Checkbox,
+  Group,
 } from '@mantine/core';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { useAuthStore } from '../stores/authStore';
@@ -22,6 +24,7 @@ export function Login() {
   const { login, isAuthenticated, isLoading, error, clearError } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(() => localStorage.getItem('mlo-remember-me') === 'true');
 
   // Get the intended destination from location state or URL params
   const from = (location.state as { from?: string })?.from || '/';
@@ -39,6 +42,12 @@ export function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    localStorage.setItem('mlo-remember-me', String(rememberMe));
+    if (rememberMe) {
+      localStorage.setItem('mlo-session-persistent', 'true');
+    } else {
+      localStorage.removeItem('mlo-session-persistent');
+    }
     const success = await login(email, password);
     if (success) {
       navigate(from, { replace: true });
@@ -103,10 +112,17 @@ export function Login() {
                 data-testid="password-input"
               />
 
+              <Group justify="space-between" mt="xs">
+                <Checkbox
+                  label="Remember me"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.currentTarget.checked)}
+                />
+              </Group>
+
               <Button
                 type="submit"
                 fullWidth
-                mt="md"
                 loading={isLoading}
                 data-testid="sign-in-button"
               >

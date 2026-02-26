@@ -36,9 +36,24 @@ const CLIENT_WRITE_ROLES = ['ADMIN', 'MANAGER', 'MLO'];
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
-    const { sortBy, sortOrder } = req.query;
+    const { sortBy, sortOrder, q, status, tag, dateRange, page, limit } = req.query;
 
     console.log(`[API] GET /api/clients - sortBy: ${sortBy}, sortOrder: ${sortOrder}`);
+    const parsedPage = Math.max(1, Number.parseInt(String(page ?? '1'), 10) || 1);
+    const parsedLimit = Math.min(500, Math.max(1, Number.parseInt(String(limit ?? '100'), 10) || 100));
+    const offset = (parsedPage - 1) * parsedLimit;
+    const qText = typeof q === 'string' ? q.trim().toLowerCase() : '';
+    const phoneSearch = qText.replace(/\D/g, '');
+    const statusFilter = typeof status === 'string' && status.trim() !== '' ? status : null;
+    const tagFilter = typeof tag === 'string' && tag.trim() !== '' ? tag : null;
+    const dateRangeFilter = typeof dateRange === 'string' && dateRange.trim() !== '' ? dateRange : null;
+    const shouldReturnPaginated =
+      page !== undefined ||
+      limit !== undefined ||
+      q !== undefined ||
+      status !== undefined ||
+      tag !== undefined ||
+      dateRange !== undefined;
 
     // Build orderBy object based on query parameters
     let orderBy: any = { createdAt: 'desc' }; // default sort
@@ -60,12 +75,59 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       console.log(`[API] Using default orderBy:`, orderBy);
     }
 
+    const andFilters: any[] = [
+      { createdById: userId },
+      { deletedAt: null },
+    ];
+
+    if (statusFilter) {
+      andFilters.push({ status: statusFilter });
+    }
+
+    if (tagFilter) {
+      andFilters.push({ tags: { contains: `"${tagFilter}"` } });
+    }
+
+    if (dateRangeFilter) {
+      const now = Date.now();
+      const daysByRange: Record<string, number> = {
+        last7days: 7,
+        last30days: 30,
+        last90days: 90,
+      };
+      const days = daysByRange[dateRangeFilter];
+      if (days) {
+        andFilters.push({
+          createdAt: {
+            gte: new Date(now - days * 24 * 60 * 60 * 1000),
+          },
+        });
+      }
+    }
+
+    if (qText) {
+      const orFilters: any[] = [
+        { nameHash: { contains: qText } },
+        { emailHash: { contains: qText } },
+      ];
+      if (phoneSearch) {
+        orFilters.push({ phoneHash: { contains: phoneSearch } });
+      }
+      andFilters.push({ OR: orFilters });
+    }
+
+    const where = andFilters.length > 0 ? { AND: andFilters } : {};
+
     // Users can only see their own clients (data isolation)
-    const clients = await prisma.client.findMany({
-      where: { createdById: userId },
-      orderBy,
-      take: 100,
-    });
+    const findManyArgs = shouldReturnPaginated
+      ? { where, orderBy, skip: offset, take: parsedLimit }
+      : { where, orderBy, skip: 0, take: 100 };
+
+    const clients = await prisma.client.findMany(findManyArgs);
+
+    const total = shouldReturnPaginated
+      ? await prisma.client.count({ where })
+      : clients.length;
 
     // Decrypt client data would happen here in production
     const decryptedClients = clients.map(client => ({
@@ -78,6 +140,18 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
     }));
+
+    if (shouldReturnPaginated) {
+      return res.json({
+        data: decryptedClients,
+        pagination: {
+          page: parsedPage,
+          limit: parsedLimit,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / parsedLimit)),
+        },
+      });
+    }
 
     res.json(decryptedClients);
   } catch (error) {
@@ -111,6 +185,65 @@ router.get('/statuses', async (req: AuthRequest, res: Response) => {
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to fetch client statuses',
+    });
+  }
+});
+
+// GET /api/clients/statistics - Aggregate client statistics for current user
+router.get('/statistics', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Authentication required',
+      });
+    }
+
+    const { days } = req.query;
+    const parsedDays = Number.parseInt(String(days ?? ''), 10);
+
+    const andFilters: any[] = [
+      { createdById: userId },
+      { deletedAt: null },
+    ];
+
+    if (Number.isFinite(parsedDays) && parsedDays > 0) {
+      andFilters.push({
+        createdAt: {
+          gte: new Date(Date.now() - parsedDays * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+
+    const where = { AND: andFilters };
+
+    const [totalClients, groupedByStatus] = await Promise.all([
+      prisma.client.count({ where }),
+      prisma.client.groupBy({
+        by: ['status'],
+        where,
+        _count: {
+          status: true,
+        },
+      }),
+    ]);
+
+    const byStatus = groupedByStatus.reduce<Record<string, number>>((acc, row) => {
+      acc[row.status] = row._count.status;
+      return acc;
+    }, {});
+
+    res.json({
+      totalClients,
+      byStatus,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error fetching client statistics:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to fetch client statistics',
     });
   }
 });
@@ -252,6 +385,17 @@ router.post('/', authorizeRoles(...CLIENT_WRITE_ROLES), async (req: AuthRequest,
 
     // Fire CLIENT_CREATED trigger for workflows
     await fireClientCreatedTrigger(client.id, userId);
+
+    // Create an actionable in-app notification for quick follow-up.
+    await prisma.notification.create({
+      data: {
+        userId,
+        type: 'CLIENT_CREATED',
+        title: 'Client created',
+        message: `${sanitizedName} was added to your pipeline.`,
+        link: `/clients/${client.id}`,
+      },
+    });
 
     res.status(201).json({
       id: client.id,

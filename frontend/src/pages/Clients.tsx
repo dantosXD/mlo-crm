@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Container,
@@ -19,6 +19,7 @@ import {
   Box,
   Skeleton,
   Checkbox,
+  Pagination,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -75,7 +76,12 @@ function MaskedData({ value, maskFn, label }: { value: string; maskFn: (v: strin
         <Text size="sm" truncate="end" style={{ maxWidth: '150px' }}>
           {revealed ? value : maskFn(value)}
         </Text>
-        <ActionIcon size="xs" variant="subtle" color="gray" aria-label={revealed ? `Hide ${label}` : `Reveal ${label}`}>
+        <ActionIcon
+          size="xs"
+          variant="subtle"
+          color="gray"
+          aria-label={revealed ? 'Hide masked value' : 'Reveal masked value'}
+        >
           {revealed ? <IconEyeOff size={12} aria-hidden="true" /> : <IconEye size={12} aria-hidden="true" />}
         </ActionIcon>
       </Group>
@@ -153,22 +159,51 @@ export default function Clients() {
 
   const statusOptions = useClientStatuses();
 
-  // Fetch clients
-  const { data: clients = [], isLoading: loading } = useQuery({
-    queryKey: ['clients', sortColumn, sortDirection, location.key],
-    queryFn: async () => {
+  // Fetch clients with server-side search/filter/pagination to keep large datasets discoverable.
+  const { data: clientsResponse = { clients: [] as Client[], total: 0, totalPages: 1 }, isLoading: loading } = useQuery({
+    queryKey: ['clients', searchQuery, statusFilter, tagFilter, dateFilter, page, itemsPerPage, sortColumn, sortDirection],
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
+      if (searchQuery.trim()) params.append('q', searchQuery.trim());
+      if (statusFilter) params.append('status', statusFilter);
+      if (tagFilter) params.append('tag', tagFilter);
+      if (dateFilter) params.append('dateRange', dateFilter);
+      params.append('page', String(page));
+      params.append('limit', String(itemsPerPage));
       if (sortColumn) {
         params.append('sortBy', sortColumn);
         params.append('sortOrder', sortDirection);
       }
-      const queryString = params.toString() ? `?${params.toString()}` : '';
-      const response = await api.get(`/clients${queryString}`);
-      const data = await response.json();
-      return (Array.isArray(data) ? data : data.data || []) as Client[];
+      const response = await api.get(`/clients?${params.toString()}`, { signal });
+      const payload = await response.json();
+
+      if (Array.isArray(payload)) {
+        return {
+          clients: payload as Client[],
+          total: (payload as Client[]).length,
+          totalPages: Math.max(1, Math.ceil((payload as Client[]).length / itemsPerPage)),
+        };
+      }
+
+      const rows = (payload.data || payload.clients || []) as Client[];
+      const total = payload.pagination?.total ?? rows.length;
+      const totalPages = payload.pagination?.totalPages ?? Math.max(1, Math.ceil(total / itemsPerPage));
+      return { clients: rows, total, totalPages };
     },
     enabled: !!accessToken,
+    retry: 0,
+    refetchOnWindowFocus: false,
   });
+
+  const clients = clientsResponse.clients;
+  const totalClientsCount = clientsResponse.total;
+  const totalPages = clientsResponse.totalPages;
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const handleCreateClient = async () => {
     // Validate required fields with specific error messages
@@ -229,21 +264,31 @@ export default function Clients() {
   const handleBulkArchive = async () => {
     setBulkArchiving(true);
     try {
-      await Promise.all(
+      const results = await Promise.allSettled(
         selectedClientIds.map(id => api.delete(`/clients/${id}`))
       );
+      const failed = results.filter(r => r.status === 'rejected').length;
+      const succeeded = results.length - failed;
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       setSelectedClientIds([]);
       setBulkArchiveModalOpen(false);
-      notifications.show({
-        title: 'Clients Archived',
-        message: `${selectedClientIds.length} client(s) archived successfully.`,
-        color: 'green',
-      });
+      if (failed === 0) {
+        notifications.show({
+          title: 'Clients Archived',
+          message: `${succeeded} client(s) archived successfully.`,
+          color: 'green',
+        });
+      } else {
+        notifications.show({
+          title: 'Partial Success',
+          message: `${succeeded} archived, ${failed} failed. Please retry.`,
+          color: 'orange',
+        });
+      }
     } catch (error) {
       notifications.show({
         title: 'Error',
-        message: error instanceof Error ? error.message : 'Failed to archive some clients',
+        message: error instanceof Error ? error.message : 'Failed to archive clients',
         color: 'red',
       });
     } finally {
@@ -318,51 +363,63 @@ export default function Clients() {
       : <IconArrowDown size={14} aria-hidden="true" />;
   };
 
-  // Helper function to check if client matches date filter
-  const matchesDateFilter = (clientDate: string, filter: string | null): boolean => {
-    if (!filter) return true;
+  const paginatedClients = clients;
 
-    const now = new Date();
-    const clientCreatedAt = new Date(clientDate);
-    const diffTime = now.getTime() - clientCreatedAt.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    switch (filter) {
-      case 'last7days':
-        return diffDays <= 7;
-      case 'last30days':
-        return diffDays <= 30;
-      case 'last90days':
-        return diffDays <= 90;
-      default:
-        return true;
+  // Export clients to CSV — requires a confirm click to prevent accidental exports
+  const [exportConfirming, setExportConfirming] = useState(false);
+  const exportConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const exportToCSV = async () => {
+    if (!exportConfirming) {
+      setExportConfirming(true);
+      exportConfirmTimerRef.current = setTimeout(() => setExportConfirming(false), 3000);
+      return;
     }
-  };
 
-  // Filter clients by search query, status, tag, and date range
-  const filteredClients = clients.filter(client => {
-    const matchesSearch = client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = !statusFilter || client.status === statusFilter;
-    const matchesTag = !tagFilter || (client.tags && client.tags.includes(tagFilter));
-    const matchesDate = matchesDateFilter(client.createdAt, dateFilter);
-    return matchesSearch && matchesStatus && matchesTag && matchesDate;
-  });
+    setExportConfirming(false);
+    if (exportConfirmTimerRef.current) clearTimeout(exportConfirmTimerRef.current);
 
-  // NOTE: Sorting is now done server-side via API, no client-side sorting needed
-  // The clients array is already sorted when returned from the API
+    const exportParams = new URLSearchParams();
+    if (searchQuery.trim()) exportParams.append('q', searchQuery.trim());
+    if (statusFilter) exportParams.append('status', statusFilter);
+    if (tagFilter) exportParams.append('tag', tagFilter);
+    if (dateFilter) exportParams.append('dateRange', dateFilter);
+    if (sortColumn) {
+      exportParams.append('sortBy', sortColumn);
+      exportParams.append('sortOrder', sortDirection);
+    }
 
-  // Paginate filtered clients
-  const paginatedClients = filteredClients.slice(0, page * itemsPerPage);
-  const hasMore = page * itemsPerPage < filteredClients.length;
+    const fetchAllFilteredClients = async (): Promise<Client[]> => {
+      const pageSize = 250;
+      let currentPage = 1;
+      let totalPagesForExport = 1;
+      const rows: Client[] = [];
 
+      while (currentPage <= totalPagesForExport) {
+        const params = new URLSearchParams(exportParams);
+        params.set('page', String(currentPage));
+        params.set('limit', String(pageSize));
+        const response = await api.get(`/clients?${params.toString()}`);
+        const payload = await response.json();
+        if (Array.isArray(payload)) {
+          return payload as Client[];
+        }
 
-  // Export clients to CSV
-  const exportToCSV = () => {
+        const pageRows = (payload.data || payload.clients || []) as Client[];
+        rows.push(...pageRows);
+        totalPagesForExport = payload.pagination?.totalPages || 1;
+        currentPage += 1;
+      }
+
+      return rows;
+    };
+
+    const exportRows = await fetchAllFilteredClients();
     const headers = ['Name', 'Email', 'Phone', 'Status', 'Tags', 'Created'];
     const csvContent = [
       headers.join(','),
-      ...filteredClients.map(client => [
+      ...exportRows.map(client => [
         `"${client.name.replace(/"/g, '""')}"`,
         `"${client.email.replace(/"/g, '""')}"`,
         `"${(client.phone || '-').replace(/"/g, '""')}"`,
@@ -381,10 +438,12 @@ export default function Clients() {
 
     notifications.show({
       title: 'Export Complete',
-      message: `Exported ${filteredClients.length} clients to CSV`,
+      message: `Exported ${exportRows.length} clients to CSV`,
       color: 'green',
     });
   };
+
+  const hasActiveFilters = Boolean(searchQuery || statusFilter || tagFilter || dateFilter);
 
   return (
     <Box style={{ maxWidth: '100%', overflow: 'hidden' }}>
@@ -393,13 +452,16 @@ export default function Clients() {
         <Group justify="space-between" mb="lg" wrap="wrap" gap="sm">
           <Title order={2}>Clients</Title>
           <Group gap="sm">
-            <Button
-              variant="outline"
-              leftSection={<IconDownload size={16} aria-hidden="true" />}
-              onClick={exportToCSV}
-            >
-              Export CSV
-            </Button>
+            <Tooltip label={exportConfirming ? 'Click again to confirm export' : `Export ${totalClientsCount} clients to CSV`} withArrow>
+              <Button
+                variant="outline"
+                color={exportConfirming ? 'orange' : undefined}
+                leftSection={<IconDownload size={16} aria-hidden="true" />}
+                onClick={exportToCSV}
+              >
+                {exportConfirming ? 'Confirm Export?' : 'Export CSV'}
+              </Button>
+            </Tooltip>
             {canWrite && (
               <Button
                 leftSection={<IconPlus size={16} aria-hidden="true" />}
@@ -523,45 +585,57 @@ export default function Clients() {
           </Paper>
         )}
 
-        {/* Clients Table - scrollable on mobile */}
+        {/* Clients Table / Card list */}
         <Paper shadow="xs" p="md" withBorder style={{ overflow: 'hidden' }}>
           {loading ? (
-            /* Skeleton loading state that matches table layout */
-            <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <Table striped style={{ minWidth: '700px' }}>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th style={{ width: '200px' }}>Name</Table.Th>
-                    <Table.Th style={{ width: '200px' }}>Email</Table.Th>
-                    <Table.Th style={{ width: '120px' }}>Phone</Table.Th>
-                    <Table.Th style={{ width: '120px' }}>Status</Table.Th>
-                    <Table.Th style={{ width: '100px' }}>Tags</Table.Th>
-                    <Table.Th style={{ width: '100px' }}>Created</Table.Th>
-                    <Table.Th style={{ width: '80px' }}>Actions</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {[...Array(8)].map((_, index) => (
-                    <Table.Tr key={index}>
-                      <Table.Td><Skeleton height={20} width="80%" radius="sm" /></Table.Td>
-                      <Table.Td><Skeleton height={20} width="70%" radius="sm" /></Table.Td>
-                      <Table.Td><Skeleton height={20} width="90%" radius="sm" /></Table.Td>
-                      <Table.Td><Skeleton height={24} width={80} radius="xl" /></Table.Td>
-                      <Table.Td><Skeleton height={20} width={50} radius="xl" /></Table.Td>
-                      <Table.Td><Skeleton height={20} width="80%" radius="sm" /></Table.Td>
-                      <Table.Td>
-                        <Group gap="xs" wrap="nowrap">
-                          <Skeleton height={28} width={28} radius="sm" />
-                          <Skeleton height={28} width={28} radius="sm" />
-                        </Group>
-                      </Table.Td>
+            /* Skeleton loading state */
+            isMobile ? (
+              <Stack gap="sm">
+                {[...Array(5)].map((_, i) => (
+                  <Paper key={i} p="sm" withBorder radius="md">
+                    <Skeleton height={16} width="60%" mb={8} />
+                    <Skeleton height={12} width="40%" mb={6} />
+                    <Skeleton height={20} width={80} radius="xl" />
+                  </Paper>
+                ))}
+              </Stack>
+            ) : (
+              <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <Table striped style={{ minWidth: '700px' }}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th style={{ width: '200px' }}>Name</Table.Th>
+                      <Table.Th style={{ width: '200px' }}>Email</Table.Th>
+                      <Table.Th style={{ width: '120px' }}>Phone</Table.Th>
+                      <Table.Th style={{ width: '120px' }}>Status</Table.Th>
+                      <Table.Th style={{ width: '100px' }}>Tags</Table.Th>
+                      <Table.Th style={{ width: '100px' }}>Created</Table.Th>
+                      <Table.Th style={{ width: '80px' }}>Actions</Table.Th>
                     </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Box>
-          ) : filteredClients.length === 0 ? (
-            clients.length === 0 ? (
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {[...Array(8)].map((_, index) => (
+                      <Table.Tr key={index}>
+                        <Table.Td><Skeleton height={20} width="80%" radius="sm" /></Table.Td>
+                        <Table.Td><Skeleton height={20} width="70%" radius="sm" /></Table.Td>
+                        <Table.Td><Skeleton height={20} width="90%" radius="sm" /></Table.Td>
+                        <Table.Td><Skeleton height={24} width={80} radius="xl" /></Table.Td>
+                        <Table.Td><Skeleton height={20} width={50} radius="xl" /></Table.Td>
+                        <Table.Td><Skeleton height={20} width="80%" radius="sm" /></Table.Td>
+                        <Table.Td>
+                          <Group gap="xs" wrap="nowrap">
+                            <Skeleton height={28} width={28} radius="sm" />
+                            <Skeleton height={28} width={28} radius="sm" />
+                          </Group>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Box>
+            )
+          ) : totalClientsCount === 0 ? (
+            !hasActiveFilters ? (
               <EmptyState
                 iconType="clients"
                 title="No clients yet"
@@ -585,157 +659,164 @@ export default function Clients() {
             )
           ) : (
             <>
-            <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <Table striped highlightOnHover style={{ minWidth: '750px' }}>
-                <Table.Thead>
-                  <Table.Tr>
-                    {canWrite && (
-                      <Table.Th style={{ width: '50px' }}>
-                        <Checkbox
-                          checked={selectedClientIds.length === paginatedClients.length && paginatedClients.length > 0}
-                          onChange={(e) => {
-                            if (e.currentTarget.checked) {
-                              setSelectedClientIds(paginatedClients.map(c => c.id));
-                            } else {
-                              setSelectedClientIds([]);
-                            }
-                          }}
-                        />
-                      </Table.Th>
-                    )}
-                    <Table.Th
-                      onClick={() => handleSort('name')}
-                      style={{ cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <Group gap={4} wrap="nowrap">
-                        Name {getSortIcon('name')}
-                      </Group>
-                    </Table.Th>
-                    <Table.Th
-                      onClick={() => handleSort('email')}
-                      style={{ cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <Group gap={4} wrap="nowrap">
-                        Email {getSortIcon('email')}
-                      </Group>
-                    </Table.Th>
-                    <Table.Th>Phone</Table.Th>
-                    <Table.Th
-                      onClick={() => handleSort('status')}
-                      style={{ cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <Group gap={4} wrap="nowrap">
-                        Status {getSortIcon('status')}
-                      </Group>
-                    </Table.Th>
-                    <Table.Th>Tags</Table.Th>
-                    <Table.Th
-                      onClick={() => handleSort('createdAt')}
-                      style={{ cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <Group gap={4} wrap="nowrap">
-                        Created {getSortIcon('createdAt')}
-                      </Group>
-                    </Table.Th>
-                    <Table.Th>Actions</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {paginatedClients.map((client) => (
-                    <Table.Tr key={client.id}>
+            {isMobile ? (
+              /* Mobile: card-based layout */
+              <Stack gap="sm">
+                {paginatedClients.map((client) => (
+                  <Paper
+                    key={client.id}
+                    p="sm"
+                    withBorder
+                    radius="md"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigateToClient(client.id)}
+                  >
+                    <Group justify="space-between" wrap="nowrap" mb={4}>
+                      <Text fw={600} size="sm" truncate="end" style={{ flex: 1 }}>{client.name}</Text>
+                      <Badge size="sm" color={statusColors[client.status] || 'gray'} style={{ whiteSpace: 'nowrap' }}>
+                        {client.status.replace(/_/g, ' ')}
+                      </Badge>
+                    </Group>
+                    <Text size="xs" c="dimmed" mb={4}>{client.email}</Text>
+                    <Group justify="space-between" align="center">
+                      <Text size="xs" c="dimmed">
+                        Added {new Date(client.createdAt).toLocaleDateString()}
+                      </Text>
                       {canWrite && (
-                        <Table.Td>
+                        <Tooltip label="Archive">
+                          <ActionIcon
+                            size="sm"
+                            variant="subtle"
+                            color="orange"
+                            onClick={(e) => { e.stopPropagation(); handleArchiveClient(client.id, client.name); }}
+                            aria-label={`Archive ${client.name}`}
+                          >
+                            <IconTrash size={14} aria-hidden="true" />
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
+                    </Group>
+                  </Paper>
+                ))}
+              </Stack>
+            ) : (
+              /* Desktop: full table */
+              <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <Table striped highlightOnHover style={{ minWidth: '750px' }}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      {canWrite && (
+                        <Table.Th style={{ width: '50px' }}>
                           <Checkbox
-                            checked={selectedClientIds.includes(client.id)}
+                            checked={selectedClientIds.length === paginatedClients.length && paginatedClients.length > 0}
                             onChange={(e) => {
                               if (e.currentTarget.checked) {
-                                setSelectedClientIds([...selectedClientIds, client.id]);
+                                setSelectedClientIds(paginatedClients.map(c => c.id));
                               } else {
-                                setSelectedClientIds(selectedClientIds.filter(id => id !== client.id));
+                                setSelectedClientIds([]);
                               }
                             }}
                           />
-                        </Table.Td>
+                        </Table.Th>
                       )}
-                      <Table.Td style={{ maxWidth: '200px' }}>
-                        <Text fw={500} truncate="end" title={client.name}>{client.name}</Text>
-                      </Table.Td>
-                      <Table.Td style={{ maxWidth: '200px' }}>
-                        <MaskedData value={client.email} maskFn={maskEmail} label="email" />
-                      </Table.Td>
-                      <Table.Td>
-                        <MaskedData value={client.phone || ''} maskFn={maskPhone} label="phone" />
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge color={statusColors[client.status] || 'gray'}>
-                          {client.status.replace('_', ' ')}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap={4}>
-                          {client.tags && client.tags.length > 0 ? (
-                            client.tags.map((tag, index) => (
-                              <Badge key={index} size="sm" variant="outline" color="violet">
-                                {tag}
-                              </Badge>
-                            ))
-                          ) : (
-                            <Text c="dimmed" size="sm">-</Text>
-                          )}
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>
-                        {new Date(client.createdAt).toLocaleDateString()}
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs" wrap="nowrap">
-                          <Tooltip label="View Details">
-                            <ActionIcon
-                              variant="subtle"
-                              color="blue"
-                              onClick={() => navigateToClient(client.id)}
-                              aria-label={`View details for ${client.name}`}
-                            >
-                              <IconEye size={16} aria-hidden="true" />
-                            </ActionIcon>
-                          </Tooltip>
-                          {canWrite && (
-                            <Tooltip label="Archive">
-                              <ActionIcon
-                                variant="subtle"
-                                color="orange"
-                                onClick={() => handleArchiveClient(client.id, client.name)}
-                                aria-label={`Archive ${client.name}`}
-                              >
-                                <IconTrash size={16} aria-hidden="true" />
+                      <Table.Th onClick={() => handleSort('name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <Group gap={4} wrap="nowrap">Name {getSortIcon('name')}</Group>
+                      </Table.Th>
+                      <Table.Th onClick={() => handleSort('email')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <Group gap={4} wrap="nowrap">Email {getSortIcon('email')}</Group>
+                      </Table.Th>
+                      <Table.Th>Phone</Table.Th>
+                      <Table.Th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <Group gap={4} wrap="nowrap">Status {getSortIcon('status')}</Group>
+                      </Table.Th>
+                      <Table.Th>Tags</Table.Th>
+                      <Table.Th onClick={() => handleSort('createdAt')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <Group gap={4} wrap="nowrap">Created {getSortIcon('createdAt')}</Group>
+                      </Table.Th>
+                      <Table.Th>Actions</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {paginatedClients.map((client) => (
+                      <Table.Tr key={client.id}>
+                        {canWrite && (
+                          <Table.Td>
+                            <Checkbox
+                              checked={selectedClientIds.includes(client.id)}
+                              onChange={(e) => {
+                                if (e.currentTarget.checked) {
+                                  setSelectedClientIds([...selectedClientIds, client.id]);
+                                } else {
+                                  setSelectedClientIds(selectedClientIds.filter(id => id !== client.id));
+                                }
+                              }}
+                            />
+                          </Table.Td>
+                        )}
+                        <Table.Td style={{ maxWidth: '200px' }}>
+                          <Text fw={500} truncate="end" title={client.name}>{client.name}</Text>
+                        </Table.Td>
+                        <Table.Td style={{ maxWidth: '200px' }}>
+                          <MaskedData value={client.email} maskFn={maskEmail} label="email" />
+                        </Table.Td>
+                        <Table.Td>
+                          <MaskedData value={client.phone || ''} maskFn={maskPhone} label="phone" />
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge color={statusColors[client.status] || 'gray'}>
+                            {client.status.replace('_', ' ')}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Group gap={4}>
+                            {client.tags && client.tags.length > 0 ? (
+                              client.tags.map((tag, index) => (
+                                <Badge key={index} size="sm" variant="outline" color="violet">{tag}</Badge>
+                              ))
+                            ) : (
+                              <Text c="dimmed" size="sm">-</Text>
+                            )}
+                          </Group>
+                        </Table.Td>
+                        <Table.Td>{new Date(client.createdAt).toLocaleDateString()}</Table.Td>
+                        <Table.Td>
+                          <Group gap="xs" wrap="nowrap">
+                            <Tooltip label="View Details">
+                              <ActionIcon variant="subtle" color="blue" onClick={() => navigateToClient(client.id)} aria-label={`View details for ${client.name}`}>
+                                <IconEye size={16} aria-hidden="true" />
                               </ActionIcon>
                             </Tooltip>
-                          )}
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Box>
-            {hasMore && (
-              <Group justify="center" mt="md">
-                <Button
-                  variant="light"
-                  onClick={() => setPage(p => p + 1)}
-                >
-                  Load More ({filteredClients.length - paginatedClients.length} remaining)
-                </Button>
-              </Group>
+                            {canWrite && (
+                              <Tooltip label="Archive">
+                                <ActionIcon variant="subtle" color="orange" onClick={() => handleArchiveClient(client.id, client.name)} aria-label={`Archive ${client.name}`}>
+                                  <IconTrash size={16} aria-hidden="true" />
+                                </ActionIcon>
+                              </Tooltip>
+                            )}
+                          </Group>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Box>
             )}
-            {filteredClients.length > 0 && (
-              <Text c="dimmed" size="sm" ta="center" mt="sm">
-                Showing {paginatedClients.length} of {filteredClients.length} clients
-                {statusFilter && ` (filtered by ${statusFilter.replace('_', ' ')})`}
-                {tagFilter && ` (tagged: ${tagFilter})`}
-                {dateFilter && ` (${dateFilter === 'last7days' ? 'Last 7 days' : dateFilter === 'last30days' ? 'Last 30 days' : 'Last 90 days'})`}
-                {sortColumn && ` (sorted by ${sortColumn}${sortDirection === 'desc' ? ' desc' : ''})`}
-              </Text>
+            {totalClientsCount > 0 && (
+              <Group justify="space-between" align="center" mt="md" wrap="wrap" gap="sm">
+                <Text c="dimmed" size="sm">
+                  Showing {totalClientsCount === 0 ? 0 : ((page - 1) * itemsPerPage + 1)}–{Math.min(page * itemsPerPage, totalClientsCount)} of {totalClientsCount} clients
+                  {statusFilter && ` · ${statusFilter.replace('_', ' ')}`}
+                  {tagFilter && ` · ${tagFilter}`}
+                </Text>
+                {totalPages > 1 && (
+                  <Pagination
+                    value={page}
+                    onChange={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                    total={totalPages}
+                    size="sm"
+                  />
+                )}
+              </Group>
             )}
             </>
           )}

@@ -158,6 +158,12 @@ prismaClient.$use(async (params, next) => {
     return result;
   }
 
+  // Avoid extra write attempts while the parent mutation is inside a DB transaction.
+  // For SQLite this can create lock contention and degrade the primary request path.
+  if ((params as { runInTransaction?: boolean }).runInTransaction) {
+    return result;
+  }
+
   const actorUserId = getRequestContext()?.userId ?? null;
 
   try {

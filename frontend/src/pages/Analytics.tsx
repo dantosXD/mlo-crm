@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Container,
   Title,
@@ -111,6 +112,7 @@ const DATE_RANGE_OPTIONS = [
 
 export default function Analytics() {
   const { accessToken } = useAuthStore();
+  const navigate = useNavigate();
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<string>('all');
 
@@ -118,28 +120,27 @@ export default function Analytics() {
     queryKey: ['analytics', dateRange],
     queryFn: async () => {
       const days = dateRange === 'all' ? '365' : dateRange;
+      const clientStatsPath = dateRange === 'all'
+        ? '/clients/statistics'
+        : `/clients/statistics?days=${dateRange}`;
 
-      const [clientsRes, workflowRes, commsRes] = await Promise.allSettled([
-        api.get('/clients'),
+      const [clientStatsRes, workflowRes, commsRes] = await Promise.allSettled([
+        api.get(clientStatsPath),
         api.get(`/analytics/workflows?days=${days}`),
         api.get(`/analytics/communications?days=${days}&group_by=day`),
       ]);
 
       // Process clients analytics
       let data: AnalyticsData | null = null;
-      if (clientsRes.status === 'fulfilled' && clientsRes.value.ok) {
-        let clients = await clientsRes.value.json();
-        if (dateRange !== 'all') {
-          const d = parseInt(dateRange, 10);
-          const cutoffDate = new Date();
-          cutoffDate.setDate(cutoffDate.getDate() - d);
-          clients = clients.filter((client: { createdAt: string }) => new Date(client.createdAt) >= cutoffDate);
-        }
-        const clientsByStatus: Record<string, number> = {};
-        clients.forEach((client: { status: string }) => {
-          clientsByStatus[client.status] = (clientsByStatus[client.status] || 0) + 1;
-        });
-        const totalClients = clients.length;
+      if (clientStatsRes.status === 'fulfilled' && clientStatsRes.value.ok) {
+        const clientStatsPayload = await clientStatsRes.value.json();
+        const clientsByStatus = (
+          clientStatsPayload?.byStatus && typeof clientStatsPayload.byStatus === 'object'
+            ? clientStatsPayload.byStatus
+            : {}
+        ) as Record<string, number>;
+        const totalClients = Number(clientStatsPayload?.totalClients ?? 0);
+
         const pipelineData: PipelineData[] = PIPELINE_STAGES.map((stage) => ({
           stage: stage.key, label: stage.label, count: clientsByStatus[stage.key] || 0, color: stage.color,
           percentage: totalClients > 0 ? ((clientsByStatus[stage.key] || 0) / totalClients) * 100 : 0,
@@ -296,15 +297,17 @@ export default function Analytics() {
           Distribution of clients across pipeline stages
         </Text>
 
-        {/* Bar Chart */}
+        {/* Bar Chart — click any row to drill into that pipeline stage */}
         <Stack gap="xs" mb="xl">
           {data.pipelineData.map((stage) => (
             <Group
               key={stage.stage}
               gap="md"
-              style={{ cursor: 'pointer' }}
+              style={{ cursor: stage.count > 0 ? 'pointer' : 'default' }}
               onMouseEnter={() => setHoveredStage(stage.stage)}
               onMouseLeave={() => setHoveredStage(null)}
+              onClick={() => stage.count > 0 && navigate(`/clients?status=${stage.stage}`)}
+              aria-label={stage.count > 0 ? `View ${stage.count} ${stage.label} clients` : undefined}
             >
               <Text size="sm" w={120} ta="right" fw={hoveredStage === stage.stage ? 600 : 400}>
                 {stage.label}

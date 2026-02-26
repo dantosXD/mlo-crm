@@ -14,20 +14,14 @@ import {
   ActionIcon,
   Menu,
   Box,
-  Flex,
-  Progress,
   ThemeIcon,
-  Tooltip,
   Checkbox,
   ScrollArea,
   LoadingOverlay,
-  Paper,
-  Center,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
   IconBell,
-  IconBellRinging,
   IconCheck,
   IconX,
   IconClock,
@@ -37,7 +31,6 @@ import {
   IconRefresh,
   IconFilter,
   IconSearch,
-  IconTrendingUp,
   IconAlertTriangle,
   IconCircleCheck,
   IconTrash,
@@ -45,11 +38,9 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import api from '../utils/api';
 import ReminderForm from '../components/reminders/ReminderForm';
-import ReminderWidget from '../components/reminders/ReminderWidget';
-import { MobileReminderCard } from '../components/reminders/MobileReminderCard';
-import { SimpleFab } from '../components/common/MobileFloatingActionButton';
 import type { Reminder, ReminderStats } from '../types';
 
 const RemindersDashboard: React.FC = () => {
@@ -162,10 +153,17 @@ const RemindersDashboard: React.FC = () => {
     }
   };
 
-  const handleDelete = async (reminderId: string) => {
-    const confirmed = window.confirm('Are you sure you want to delete this reminder?');
-    if (!confirmed) return;
+  const handleDelete = (reminderId: string) => {
+    modals.openConfirmModal({
+      title: 'Delete Reminder',
+      children: <Text size="sm">Are you sure you want to delete this reminder? This cannot be undone.</Text>,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => doDelete(reminderId),
+    });
+  };
 
+  const doDelete = async (reminderId: string) => {
     try {
       const response = await api.delete(`/reminders/${reminderId}`);
       if (!response.ok) {
@@ -237,7 +235,12 @@ const RemindersDashboard: React.FC = () => {
     return new Date(remindAt) < new Date() && status !== 'COMPLETED' && status !== 'DISMISSED';
   };
 
-  const filteredReminders = reminders;
+  const filteredReminders = searchQuery.trim()
+    ? reminders.filter((r) =>
+        r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (r.description && r.description.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : reminders;
 
   return (
     <Container size={isMobile ? 'sm' : 'xl'} py={isMobile ? 'xs' : 'md'}>
@@ -408,6 +411,24 @@ const RemindersDashboard: React.FC = () => {
           </Group>
 
           {/* Bulk actions */}
+          {filteredReminders.some(r => isOverdue(r.remindAt, r.status)) && selectedReminders.size === 0 && (
+            <Group mt="sm" gap="sm">
+              <Button
+                size="xs"
+                variant="light"
+                color="red"
+                leftSection={<IconAlertTriangle size={14} />}
+                onClick={() => {
+                  const overdueIds = filteredReminders
+                    .filter(r => isOverdue(r.remindAt, r.status))
+                    .map(r => r.id);
+                  setSelectedReminders(new Set(overdueIds));
+                }}
+              >
+                Select All Overdue
+              </Button>
+            </Group>
+          )}
           {selectedReminders.size > 0 && (
             <Group mt="sm" gap="sm">
               <Text size="sm" c="dimmed">

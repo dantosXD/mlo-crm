@@ -47,7 +47,7 @@ export function generateCsrfToken(req: CsrfRequest, res: Response, next: NextFun
     res.cookie(CSRF_COOKIE_NAME, token, {
       httpOnly: false,
       secure: isProduction,
-      sameSite: 'strict',
+      sameSite: isProduction ? 'strict' : 'lax',
       path: '/',
       maxAge: 60 * 60 * 1000, // 1 hour
     });

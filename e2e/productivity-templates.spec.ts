@@ -5,7 +5,13 @@ const apiBaseUrl = process.env.PLAYWRIGHT_API_BASE_URL ?? 'http://127.0.0.1:3002
 
 async function loginUi(page: any, email: string) {
   await page.goto(`${baseUrl}/login`);
-  await page.getByTestId('email-input').fill(email);
+  const emailInput = page.getByTestId('email-input');
+  const loginFormVisible = await emailInput.isVisible({ timeout: 2_000 }).catch(() => false);
+  if (!loginFormVisible) {
+    await expect(page).not.toHaveURL(/\/login/, { timeout: 20_000 });
+    return;
+  }
+  await emailInput.fill(email);
   await page.getByTestId('password-input').fill('password123');
   await page.getByTestId('sign-in-button').click();
   await expect(page).not.toHaveURL(/\/login/, { timeout: 20_000 });

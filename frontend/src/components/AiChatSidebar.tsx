@@ -96,8 +96,12 @@ function MessageContent({ parts }: { parts: MessagePart[] }) {
   );
 }
 
-export function AiChatSidebar() {
-  const [opened, setOpened] = useState(false);
+interface AiChatSidebarProps {
+  autoOpenOnMount?: boolean;
+}
+
+export function AiChatSidebar({ autoOpenOnMount = false }: AiChatSidebarProps) {
+  const [opened, setOpened] = useState(autoOpenOnMount);
   const [input, setInput] = useState('');
   const { accessToken } = useAuthStore();
   const scrollRef = useRef<HTMLDivElement>(null);

@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import type { Prisma } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import prisma from '../utils/prisma.js';
 import { decodeClientPiiField } from '../utils/clientPiiCodec.js';
@@ -62,6 +63,10 @@ function parseTemplateTags(tags: NoteTemplateInput['tags']): string[] {
     return trimmed.split(',').map((tag) => tag.trim()).filter(Boolean);
   }
   return [];
+}
+
+function normalizeClientNameHashSearch(value: string): string {
+  return value.replace(/<[^>]*>/g, '').trim().toLowerCase();
 }
 
 function safeParseStringArray(value: string): string[] {
@@ -133,28 +138,55 @@ async function listVisibleNoteTemplates(userId: string) {
 // GET /api/notes - List notes (optionally filtered by client_id)
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { client_id, search } = req.query;
+    const { client_id, search, page = '1', limit = '25', paginated = 'false' } = req.query;
+    const normalizedSearch = typeof search === 'string' ? search.trim().toLowerCase() : '';
+    const normalizedClientNameSearch = normalizeClientNameHashSearch(normalizedSearch);
+    const pageNum = Math.max(parseInt(page as string, 10) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit as string, 10) || 25, 1), 100);
+    const wantsPaginated = String(paginated) === 'true';
+    const baseWhere = {
+      ...(client_id ? { clientId: client_id as string } : {}),
+    };
+    const where: Prisma.NoteWhereInput = normalizedSearch
+      ? {
+          ...baseWhere,
+          OR: [
+            { text: { contains: normalizedSearch } },
+            { client: { is: { nameHash: normalizedClientNameSearch } } },
+          ],
+        }
+      : baseWhere;
 
-    const notes = await prisma.note.findMany({
-      where: {
-        ...(client_id ? { clientId: client_id as string } : {}),
-        ...(search ? {
-          text: {
-            contains: search as string,
-          }
-        } : {}),
+    const baseInclude = {
+      createdBy: {
+        select: { id: true, name: true },
       },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: {
-        createdBy: {
-          select: { id: true, name: true },
-        },
-        client: {
-          select: { id: true, nameEncrypted: true },
-        },
+      client: {
+        select: { id: true, nameEncrypted: true },
       },
-    });
+    } satisfies Prisma.NoteInclude;
+    type NoteWithRelations = Prisma.NoteGetPayload<{ include: typeof baseInclude }>;
+
+    let totalFromDatabase = 0;
+    let notes: NoteWithRelations[] = [];
+
+    if (wantsPaginated) {
+      totalFromDatabase = await prisma.note.count({ where });
+      notes = await prisma.note.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
+        include: baseInclude,
+      });
+    } else {
+      notes = await prisma.note.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: baseInclude,
+      });
+    }
 
     const formattedNotes = notes.map(note => ({
       id: note.id,
@@ -168,7 +200,19 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       updatedAt: note.updatedAt,
     }));
 
-    res.json(formattedNotes);
+    if (!wantsPaginated) {
+      return res.json(formattedNotes.slice(0, 100));
+    }
+
+    return res.json({
+      notes: formattedNotes,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalFromDatabase,
+        totalPages: totalFromDatabase > 0 ? Math.ceil(totalFromDatabase / limitNum) : 0,
+      },
+    });
   } catch (error) {
     console.error('Error fetching notes:', error);
     res.status(500).json({

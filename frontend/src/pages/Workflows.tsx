@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Title,
   Stack,
@@ -18,6 +18,9 @@ import {
   Modal,
   Checkbox,
   FileButton,
+  Tooltip,
+  Menu,
+  Anchor,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -32,11 +35,14 @@ import {
   IconCopy,
   IconDownload,
   IconUpload,
+  IconDots,
+  IconX,
 } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
+import TestWorkflowModal from '../components/workflows/TestWorkflowModal';
 
 interface Workflow {
   id: string;
@@ -66,6 +72,11 @@ interface WorkflowResponse {
   };
 }
 
+type WorkflowModalState = {
+  mode: 'test' | 'run';
+  workflow: Workflow;
+} | null;
+
 // Trigger type labels
 const TRIGGER_LABELS: Record<string, string> = {
   CLIENT_CREATED: 'Client Created',
@@ -80,36 +91,45 @@ const TRIGGER_LABELS: Record<string, string> = {
 export function Workflows() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
-
   const queryClient = useQueryClient();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const [search, setSearch] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isActiveFilter, setIsActiveFilter] = useState<string>('all');
   const [triggerTypeFilter, setTriggerTypeFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
   const limit = 20;
   const [toggling, setToggling] = useState<string | null>(null);
+  const [toggleConfirm, setToggleConfirm] = useState<Workflow | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Workflow | null>(null);
   const [cloning, setCloning] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importAsTemplate, setImportAsTemplate] = useState(false);
+  const [workflowModalState, setWorkflowModalState] = useState<WorkflowModalState>(null);
 
   const canManageWorkflows = user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'MLO';
 
+  // Debounce search 350ms
+  useEffect(() => {
+    const id = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 350);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  // Auto-apply filters immediately on change
+  useEffect(() => { setPage(1); }, [isActiveFilter, triggerTypeFilter]);
+
   const { data: workflowData, isLoading: loading } = useQuery({
-    queryKey: ['workflows', page, isActiveFilter, triggerTypeFilter, searchTerm],
+    queryKey: ['workflows', page, isActiveFilter, triggerTypeFilter, debouncedSearch],
     queryFn: async () => {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: limit.toString(),
-      });
+      const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
       if (isActiveFilter !== 'all') params.append('is_active', isActiveFilter);
       if (triggerTypeFilter !== 'all') params.append('trigger_type', triggerTypeFilter);
-      if (searchTerm) params.append('search', searchTerm);
-
+      if (debouncedSearch) params.append('search', debouncedSearch);
       const response = await api.get(`/workflows?${params}`);
       if (!response.ok) throw new Error('Failed to fetch workflows');
       return response.json() as Promise<WorkflowResponse>;
@@ -118,163 +138,85 @@ export function Workflows() {
 
   const workflows = workflowData?.workflows ?? [];
   const pagination = workflowData?.pagination ?? { page: 1, limit, total: 0, totalPages: 0 };
+  const hasActiveFilters = !!(search || isActiveFilter !== 'all' || triggerTypeFilter !== 'all');
 
-  const handleSearch = () => {
-    setPage(1);
-    setSearchTerm(search);
+  const clearAllFilters = () => { setSearch(''); setIsActiveFilter('all'); setTriggerTypeFilter('all'); setPage(1); };
+
+  const handleToggleActive = (workflow: Workflow) => {
+    if (!canManageWorkflows) return;
+    setToggleConfirm(workflow);
   };
 
-  const handleToggleActive = async (id: string, currentStatus: boolean) => {
-    if (!canManageWorkflows) {
-      notifications.show({
-        title: 'Access Denied',
-        message: 'You do not have permission to manage workflows',
-        color: 'red',
-      });
-      return;
-    }
-
+  const confirmToggle = async () => {
+    if (!toggleConfirm) return;
+    const { id, isActive, name } = toggleConfirm;
+    setToggleConfirm(null);
     setToggling(id);
     try {
       const response = await api.patch(`/workflows/${id}/toggle`);
-
-      if (!response.ok) {
-        throw new Error('Failed to toggle workflow');
-      }
-
-      notifications.show({
-        title: 'Success',
-        message: `Workflow ${currentStatus ? 'disabled' : 'enabled'}`,
-        color: 'green',
-      });
-
+      if (!response.ok) throw new Error('Failed to toggle workflow');
+      notifications.show({ title: 'Success', message: `"${name}" ${isActive ? 'disabled' : 'enabled'}`, color: 'green' });
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
-    } catch (error) {
-      console.error('Error toggling workflow:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to toggle workflow',
-        color: 'red',
-      });
+    } catch {
+      notifications.show({ title: 'Error', message: 'Failed to toggle workflow', color: 'red' });
     } finally {
       setToggling(null);
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
+  const handleDelete = (workflow: Workflow) => {
     if (user?.role !== 'ADMIN') {
-      notifications.show({
-        title: 'Access Denied',
-        message: 'Only admins can delete workflows',
-        color: 'red',
-      });
+      notifications.show({ title: 'Access Denied', message: 'Only admins can delete workflows', color: 'red' });
       return;
     }
+    setDeleteConfirm(workflow);
+  };
 
-    if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
-      return;
-    }
-
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+    const { id } = deleteConfirm;
+    setDeleteConfirm(null);
     setDeleting(id);
     try {
       const response = await api.delete(`/workflows/${id}`);
-
-      if (!response.ok) {
-        throw new Error('Failed to delete workflow');
-      }
-
-      notifications.show({
-        title: 'Success',
-        message: 'Workflow deleted successfully',
-        color: 'green',
-      });
-
+      if (!response.ok) throw new Error('Failed to delete workflow');
+      notifications.show({ title: 'Success', message: 'Workflow deleted successfully', color: 'green' });
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
-    } catch (error) {
-      console.error('Error deleting workflow:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete workflow',
-        color: 'red',
-      });
+    } catch {
+      notifications.show({ title: 'Error', message: 'Failed to delete workflow', color: 'red' });
     } finally {
       setDeleting(null);
     }
   };
 
   const handleClone = async (id: string, name: string) => {
-    if (!canManageWorkflows) {
-      notifications.show({
-        title: 'Access Denied',
-        message: 'You do not have permission to clone workflows',
-        color: 'red',
-      });
-      return;
-    }
-
+    if (!canManageWorkflows) return;
     setCloning(id);
     try {
       const response = await api.post(`/workflows/${id}/clone`);
-
-      if (!response.ok) {
-        throw new Error('Failed to clone workflow');
-      }
-
+      if (!response.ok) throw new Error('Failed to clone workflow');
       const clonedWorkflow = await response.json();
-
-      notifications.show({
-        title: 'Success',
-        message: `Workflow "${name}" cloned successfully`,
-        color: 'green',
-      });
-
+      notifications.show({ title: 'Success', message: `"${name}" cloned`, color: 'green' });
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
-
-      // Navigate to edit the cloned workflow
       navigate(`/workflows/${clonedWorkflow.id}/edit`);
-    } catch (error) {
-      console.error('Error cloning workflow:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to clone workflow',
-        color: 'red',
-      });
+    } catch {
+      notifications.show({ title: 'Error', message: 'Failed to clone workflow', color: 'red' });
     } finally {
       setCloning(null);
     }
   };
 
-  const handleRun = async (id: string) => {
+  const openWorkflowModal = (workflow: Workflow, mode: 'test' | 'run') => {
     if (!canManageWorkflows) {
       notifications.show({
         title: 'Access Denied',
-        message: 'You do not have permission to run workflows',
+        message: 'You do not have permission to run or test workflows',
         color: 'red',
       });
       return;
     }
 
-    try {
-      const response = await api.post(`/workflows/${id}/execute`);
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to execute workflow');
-      }
-
-      notifications.show({
-        title: 'Workflow Executed',
-        message: data.message || 'Workflow execution started',
-        color: 'green',
-      });
-    } catch (error: any) {
-      console.error('Error executing workflow:', error);
-      notifications.show({
-        title: 'Error',
-        message: error.message || 'Failed to execute workflow',
-        color: 'red',
-      });
-    }
+    setWorkflowModalState({ mode, workflow });
   };
 
   const handleViewExecutions = (id: string) => {
@@ -285,15 +227,8 @@ export function Workflows() {
     setExporting(id);
     try {
       const response = await api.get(`/workflows/${id}/export`);
-
-      if (!response.ok) {
-        throw new Error('Failed to export workflow');
-      }
-
-      // Get the blob from response
+      if (!response.ok) throw new Error('Failed to export workflow');
       const blob = await response.blob();
-
-      // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -302,19 +237,9 @@ export function Workflows() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-
-      notifications.show({
-        title: 'Success',
-        message: `Workflow "${name}" exported successfully`,
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Error exporting workflow:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to export workflow',
-        color: 'red',
-      });
+      notifications.show({ title: 'Success', message: `"${name}" exported`, color: 'green' });
+    } catch {
+      notifications.show({ title: 'Error', message: 'Failed to export workflow', color: 'red' });
     } finally {
       setExporting(null);
     }
@@ -374,104 +299,142 @@ export function Workflows() {
 
   const rows = workflows.map((workflow) => (
     <Table.Tr key={workflow.id}>
+      {/* Name — clickable link */}
       <Table.Td>
-        <Stack gap={0}>
-          <Text fw={500}>{workflow.name}</Text>
+        <Stack gap={2}>
+          <Anchor
+            fw={500}
+            href={`/workflows/${workflow.id}/edit`}
+            underline="hover"
+            data-testid={`workflow-name-${workflow.id}`}
+          >
+            {workflow.name}
+          </Anchor>
           {workflow.description && (
-            <Text size="sm" c="dimmed">
-              {workflow.description}
-            </Text>
+            <Text size="xs" c="dimmed" lineClamp={1}>{workflow.description}</Text>
           )}
         </Stack>
       </Table.Td>
+
+      {/* Trigger */}
       <Table.Td>
-        <Badge color="blue" variant="light">
+        <Badge color="blue" variant="light" size="sm">
           {TRIGGER_LABELS[workflow.triggerType] || workflow.triggerType}
         </Badge>
       </Table.Td>
-      <Table.Td>
+
+      {/* Status — full text, no truncation */}
+      <Table.Td style={{ whiteSpace: 'nowrap' }}>
         <Badge
           color={workflow.isActive ? 'green' : 'gray'}
-          variant="light"
+          variant={workflow.isActive ? 'filled' : 'light'}
+          size="sm"
+          style={{ whiteSpace: 'nowrap', overflow: 'visible' }}
         >
           {workflow.isActive ? 'Active' : 'Inactive'}
         </Badge>
       </Table.Td>
+
+      <Table.Td><Text size="sm">{workflow.executionCount}</Text></Table.Td>
+      <Table.Td><Text size="sm">v{workflow.version}</Text></Table.Td>
+      <Table.Td><Text size="sm">{workflow.createdBy.name}</Text></Table.Td>
+
+      {/* Actions: 4 primary icons + overflow menu */}
       <Table.Td>
-        <Text size="sm">{workflow.executionCount}</Text>
-      </Table.Td>
-      <Table.Td>
-        <Text size="sm">{workflow.version}</Text>
-      </Table.Td>
-      <Table.Td>
-        <Text size="sm">{workflow.createdBy.name}</Text>
-      </Table.Td>
-      <Table.Td>
-        <Group gap="xs">
-          <ActionIcon
-            variant="subtle"
-            color={workflow.isActive ? 'orange' : 'green'}
-            onClick={() => handleToggleActive(workflow.id, workflow.isActive)}
-            disabled={toggling === workflow.id || !canManageWorkflows}
-            title={workflow.isActive ? 'Disable' : 'Enable'}
+        <Group gap={4} wrap="nowrap">
+          <Tooltip label={workflow.isActive ? 'Disable workflow' : 'Enable workflow'} withArrow>
+            <ActionIcon
+              variant="subtle"
+              color={workflow.isActive ? 'orange' : 'teal'}
+              onClick={() => handleToggleActive(workflow)}
+              loading={toggling === workflow.id}
+              disabled={!canManageWorkflows}
+              size="sm"
+              aria-label={workflow.isActive ? `Disable workflow ${workflow.name}` : `Enable workflow ${workflow.name}`}
+            >
+              <IconPower size={15} />
+            </ActionIcon>
+          </Tooltip>
+
+          <Tooltip label="Edit" withArrow>
+            <ActionIcon
+              variant="subtle"
+              color="blue"
+              onClick={() => navigate(`/workflows/${workflow.id}/edit`)}
+              disabled={!canManageWorkflows}
+              size="sm"
+              aria-label={`Edit workflow ${workflow.name}`}
+            >
+              <IconEdit size={15} />
+            </ActionIcon>
+          </Tooltip>
+
+          <Tooltip label="Dry-run test" withArrow>
+            <ActionIcon
+              variant="subtle"
+              color="blue"
+              onClick={() => openWorkflowModal(workflow, 'test')}
+              disabled={!canManageWorkflows}
+              size="sm"
+              aria-label={`Test workflow ${workflow.name}`}
+            >
+              <IconSearch size={15} />
+            </ActionIcon>
+          </Tooltip>
+
+          <Tooltip
+            label={!workflow.isActive ? 'Enable workflow first to run it' : 'Run with client'}
+            withArrow
           >
-            <IconPower size={16} />
-          </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color="blue"
-            onClick={() => navigate(`/workflows/${workflow.id}/edit`)}
-            disabled={!canManageWorkflows}
-            title="Edit"
-          >
-            <IconEdit size={16} />
-          </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color="cyan"
-            onClick={() => handleClone(workflow.id, workflow.name)}
-            disabled={cloning === workflow.id || !canManageWorkflows}
-            title="Clone"
-            loading={cloning === workflow.id}
-          >
-            <IconCopy size={16} />
-          </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color="green"
-            onClick={() => handleRun(workflow.id)}
-            title="Run Now"
-            disabled={!canManageWorkflows}
-          >
-            <IconPlayerPlay size={16} />
-          </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color="grape"
-            onClick={() => handleViewExecutions(workflow.id)}
-            title="View Executions"
-          >
-            <IconHistory size={16} />
-          </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color="violet"
-            onClick={() => handleExport(workflow.id, workflow.name)}
-            disabled={exporting === workflow.id}
-            title="Export"
-            loading={exporting === workflow.id}
-          >
-            <IconDownload size={16} />
-          </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color="red"
-            onClick={() => handleDelete(workflow.id, workflow.name)}
-            disabled={deleting === workflow.id || user?.role !== 'ADMIN'}
-            title="Delete"
-          >
-            <IconTrash size={16} />
-          </ActionIcon>
+            <ActionIcon
+              variant="subtle"
+              color="green"
+              onClick={() => openWorkflowModal(workflow, 'run')}
+              disabled={!canManageWorkflows || !workflow.isActive}
+              size="sm"
+              aria-label={`Run workflow ${workflow.name}`}
+            >
+              <IconPlayerPlay size={15} />
+            </ActionIcon>
+          </Tooltip>
+
+          <Menu shadow="md" width={175} position="bottom-end" withArrow>
+            <Menu.Target>
+              <Tooltip label="More actions" withArrow>
+                <ActionIcon variant="subtle" color="gray" size="sm" aria-label={`More actions for ${workflow.name}`}>
+                  <IconDots size={15} />
+                </ActionIcon>
+              </Tooltip>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item leftSection={<IconHistory size={14} />} onClick={() => handleViewExecutions(workflow.id)}>
+                View Executions
+              </Menu.Item>
+              <Menu.Item
+                leftSection={<IconCopy size={14} />}
+                onClick={() => handleClone(workflow.id, workflow.name)}
+                disabled={cloning === workflow.id || !canManageWorkflows}
+              >
+                Clone
+              </Menu.Item>
+              <Menu.Item
+                leftSection={<IconDownload size={14} />}
+                onClick={() => handleExport(workflow.id, workflow.name)}
+                disabled={exporting === workflow.id}
+              >
+                Export
+              </Menu.Item>
+              <Menu.Divider />
+              <Menu.Item
+                leftSection={<IconTrash size={14} />}
+                color="red"
+                onClick={() => handleDelete(workflow)}
+                disabled={deleting === workflow.id || user?.role !== 'ADMIN'}
+              >
+                Delete
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         </Group>
       </Table.Td>
     </Table.Tr>
@@ -512,17 +475,26 @@ export function Workflows() {
         </Group>
 
         <Paper p="md" withBorder>
-          <Group gap="sm">
+          <Group gap="sm" align="flex-end">
             <TextInput
+              ref={searchInputRef}
               placeholder="Search workflows..."
               leftSection={<IconSearch size={16} />}
+              rightSection={
+                search ? (
+                  <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => setSearch('')} aria-label="Clear search">
+                    <IconX size={14} />
+                  </ActionIcon>
+                ) : null
+              }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              onKeyDown={(e) => { if (e.key === 'Enter') { setDebouncedSearch(search); setPage(1); } }}
               style={{ flex: 1 }}
+              data-testid="workflow-search"
             />
             <Select
-              placeholder="Status"
+              label="Status"
               data={[
                 { value: 'all', label: 'All Statuses' },
                 { value: 'true', label: 'Active' },
@@ -530,25 +502,31 @@ export function Workflows() {
               ]}
               value={isActiveFilter}
               onChange={(value) => setIsActiveFilter(value || 'all')}
-              width={150}
+              w={145}
+              data-testid="workflow-status-filter"
             />
             <Select
-              placeholder="Trigger Type"
+              label="Trigger Type"
               data={[
                 { value: 'all', label: 'All Types' },
                 { value: 'CLIENT_CREATED', label: 'Client Created' },
                 { value: 'CLIENT_STATUS_CHANGED', label: 'Status Changed' },
-                { value: 'DOCUMENT_UPLOADED', label: 'Document Uploaded' },
-                { value: 'DOCUMENT_STATUS_CHANGED', label: 'Document Status Changed' },
+                { value: 'DOCUMENT_UPLOADED', label: 'Doc Uploaded' },
+                { value: 'DOCUMENT_STATUS_CHANGED', label: 'Doc Status Changed' },
                 { value: 'TASK_DUE', label: 'Task Due' },
                 { value: 'TASK_COMPLETED', label: 'Task Completed' },
                 { value: 'MANUAL', label: 'Manual' },
               ]}
               value={triggerTypeFilter}
               onChange={(value) => setTriggerTypeFilter(value || 'all')}
-              width={200}
+              w={175}
+              data-testid="workflow-trigger-filter"
             />
-            <Button onClick={handleSearch}>Search</Button>
+            {hasActiveFilters && (
+              <Button variant="subtle" color="gray" size="sm" onClick={clearAllFilters}>
+                Clear filters
+              </Button>
+            )}
           </Group>
         </Paper>
 
@@ -557,41 +535,74 @@ export function Workflows() {
           <Box pos="relative">
             {workflows.length === 0 && !loading ? (
               <Text c="dimmed" ta="center" py="xl">
-                No workflows found. Create your first workflow to get started.
+                {hasActiveFilters
+                  ? 'No workflows match your search or filters. Try clearing them.'
+                  : 'No workflows found. Create your first workflow to get started.'}
               </Text>
             ) : (
-              <Table>
+              <Table.ScrollContainer minWidth={900}>
+              <Table highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Name</Table.Th>
                     <Table.Th>Trigger</Table.Th>
-                    <Table.Th>Status</Table.Th>
+                    <Table.Th style={{ whiteSpace: 'nowrap', width: 90 }}>Status</Table.Th>
                     <Table.Th>Executions</Table.Th>
                     <Table.Th>Version</Table.Th>
                     <Table.Th>Created By</Table.Th>
-                    <Table.Th>Actions</Table.Th>
+                    <Table.Th style={{ whiteSpace: 'nowrap', width: 160 }}>Actions</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>{rows}</Table.Tbody>
               </Table>
+            </Table.ScrollContainer>
             )}
           </Box>
         </Paper>
 
-        {pagination.totalPages > 1 && (
-          <Group justify="center">
+        <Group justify="space-between" align="center" mt="xs">
+          <Text size="sm" c="dimmed">
+            Showing {workflows.length} of {pagination.total} workflow{pagination.total !== 1 ? 's' : ''}
+          </Text>
+          {pagination.totalPages > 1 && (
             <Pagination
               total={pagination.totalPages}
               value={pagination.page}
               onChange={(p) => setPage(p)}
             />
-          </Group>
-        )}
-
-        <Text size="sm" c="dimmed" ta="center">
-          Showing {workflows.length} of {pagination.total} workflows
-        </Text>
+          )}
+        </Group>
       </Stack>
+
+      {/* Toggle Confirmation Modal */}
+      <Modal opened={!!toggleConfirm} onClose={() => setToggleConfirm(null)} title={toggleConfirm?.isActive ? 'Disable Workflow?' : 'Enable Workflow?'} size="sm">
+        <Stack gap="md">
+          <Text size="sm">
+            {toggleConfirm?.isActive
+              ? `"${toggleConfirm?.name}" will stop running automatically. Scheduled executions will not fire.`
+              : `"${toggleConfirm?.name}" will become active and may begin executing automatically.`}
+          </Text>
+          <Group justify="flex-end" gap="sm">
+            <Button variant="light" onClick={() => setToggleConfirm(null)}>Cancel</Button>
+            <Button color={toggleConfirm?.isActive ? 'orange' : 'teal'} onClick={confirmToggle}>
+              {toggleConfirm?.isActive ? 'Disable' : 'Enable'}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal opened={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Workflow?" size="sm">
+        <Stack gap="md">
+          <Text size="sm">
+            Permanently delete <Text span fw={600}>"{deleteConfirm?.name}"</Text>? This cannot be undone and will also remove all associated execution history.
+          </Text>
+          <Group justify="flex-end" gap="sm">
+            <Button variant="light" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+            <Button color="red" onClick={confirmDelete} loading={!!deleting}>Delete</Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       {/* Import Workflow Modal */}
       <Modal
@@ -650,6 +661,26 @@ export function Workflows() {
           </Group>
         </Stack>
       </Modal>
+
+      {workflowModalState && (
+        <TestWorkflowModal
+          opened
+          onClose={() => setWorkflowModalState(null)}
+          workflowId={workflowModalState.workflow.id}
+          workflowName={workflowModalState.workflow.name}
+          triggerType={workflowModalState.workflow.triggerType}
+          mode={workflowModalState.mode}
+          isActive={workflowModalState.workflow.isActive}
+          onExecutionCreated={(executionId) => {
+            queryClient.invalidateQueries({ queryKey: ['workflows'] });
+            queryClient.invalidateQueries({ queryKey: ['workflow-executions'] });
+            setWorkflowModalState(null);
+            navigate(
+              `/workflows?tab=executions&workflow_id=${workflowModalState.workflow.id}&execution_id=${executionId}`
+            );
+          }}
+        />
+      )}
     </Container>
   );
 }

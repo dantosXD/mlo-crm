@@ -33,6 +33,84 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
 
+type NotificationPreferences = {
+  emailAlerts: boolean;
+  taskReminders: boolean;
+  clientUpdates: boolean;
+  weeklyDigest: boolean;
+};
+
+type AppearancePreferences = {
+  theme: 'light' | 'dark' | 'system';
+  compactMode: boolean;
+  showWelcome: boolean;
+};
+
+type UserPreferencesPayload = {
+  notifications?: NotificationPreferences;
+  appearance?: AppearancePreferences;
+  profile?: {
+    phone?: string;
+  };
+};
+
+type OAuthAvailability = {
+  available: boolean;
+  reason?: string;
+  message?: string;
+};
+
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  emailAlerts: true,
+  taskReminders: true,
+  clientUpdates: true,
+  weeklyDigest: false,
+};
+
+const DEFAULT_APPEARANCE_PREFERENCES: AppearancePreferences = {
+  theme: 'light',
+  compactMode: false,
+  showWelcome: true,
+};
+
+function normalizeNotificationPreferences(raw: unknown): NotificationPreferences {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_NOTIFICATION_PREFERENCES };
+  }
+  return {
+    emailAlerts: Boolean((raw as Record<string, unknown>).emailAlerts ?? DEFAULT_NOTIFICATION_PREFERENCES.emailAlerts),
+    taskReminders: Boolean((raw as Record<string, unknown>).taskReminders ?? DEFAULT_NOTIFICATION_PREFERENCES.taskReminders),
+    clientUpdates: Boolean((raw as Record<string, unknown>).clientUpdates ?? DEFAULT_NOTIFICATION_PREFERENCES.clientUpdates),
+    weeklyDigest: Boolean((raw as Record<string, unknown>).weeklyDigest ?? DEFAULT_NOTIFICATION_PREFERENCES.weeklyDigest),
+  };
+}
+
+function normalizeAppearancePreferences(raw: unknown): AppearancePreferences {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_APPEARANCE_PREFERENCES };
+  }
+  const rawTheme = (raw as Record<string, unknown>).theme;
+  const theme = rawTheme === 'dark' || rawTheme === 'system' ? rawTheme : 'light';
+
+  return {
+    theme,
+    compactMode: Boolean((raw as Record<string, unknown>).compactMode ?? DEFAULT_APPEARANCE_PREFERENCES.compactMode),
+    showWelcome: Boolean((raw as Record<string, unknown>).showWelcome ?? DEFAULT_APPEARANCE_PREFERENCES.showWelcome),
+  };
+}
+
+function applyThemePreference(theme: AppearancePreferences['theme']) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const resolvedTheme = theme === 'system'
+    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : theme;
+
+  document.documentElement.setAttribute('data-mantine-color-scheme', resolvedTheme);
+}
+
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, updateUser } = useAuthStore();
@@ -40,30 +118,43 @@ export default function Settings() {
     searchParams.get('tab') === 'integrations' ? 'integrations' : 'profile'
   );
   const [saving, setSaving] = useState(false);
+  const [savingNotifications, setSavingNotifications] = useState(false);
+  const [savingAppearance, setSavingAppearance] = useState(false);
   const [syncingCalendars, setSyncingCalendars] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(false);
+  const [preferencesLoading, setPreferencesLoading] = useState(false);
   const [providerConnecting, setProviderConnecting] = useState<string | null>(null);
+  const [integrationErrors, setIntegrationErrors] = useState<Record<string, string>>({});
+  const [oauthAvailability, setOauthAvailability] = useState<Record<string, OAuthAvailability>>({});
 
   // Profile settings state
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
     email: user?.email || '',
-    phone: '',
+    phone: user?.phone || '',
   });
 
+  // Track original values to detect unsaved changes
+  const profileOriginal = { name: user?.name || '', email: user?.email || '', phone: user?.phone || '' };
+  const isProfilePristine =
+    profileForm.name === profileOriginal.name &&
+    profileForm.email === profileOriginal.email &&
+    profileForm.phone === profileOriginal.phone;
+
   // Notification settings state
-  const [notifications_, setNotifications_] = useState({
-    emailAlerts: true,
-    taskReminders: true,
-    clientUpdates: true,
-    weeklyDigest: false,
+  const [notifications_, setNotifications_] = useState<NotificationPreferences>({
+    ...DEFAULT_NOTIFICATION_PREFERENCES,
+  });
+  const [savedNotifications, setSavedNotifications] = useState<NotificationPreferences>({
+    ...DEFAULT_NOTIFICATION_PREFERENCES,
   });
 
   // Appearance settings state
-  const [appearance, setAppearance] = useState({
-    theme: 'light',
-    compactMode: false,
-    showWelcome: true,
+  const [appearance, setAppearance] = useState<AppearancePreferences>({
+    ...DEFAULT_APPEARANCE_PREFERENCES,
+  });
+  const [savedAppearance, setSavedAppearance] = useState<AppearancePreferences>({
+    ...DEFAULT_APPEARANCE_PREFERENCES,
   });
 
   // Password change state
@@ -94,13 +185,87 @@ export default function Settings() {
     { key: 'apple', label: 'Apple Calendar (CalDAV planned)' },
   ];
   const oauthProviders = new Set(['google', 'outlook']);
+  const isNotificationsPristine = JSON.stringify(notifications_) === JSON.stringify(savedNotifications);
+  const isAppearancePristine = JSON.stringify(appearance) === JSON.stringify(savedAppearance);
+
+  const getPreferencesPayload = (): UserPreferencesPayload => ({
+    notifications: notifications_,
+    appearance,
+    profile: {
+      phone: profileForm.phone.trim(),
+    },
+  });
+
+  const persistPreferences = async (
+    payload: UserPreferencesPayload,
+    successTitle: string,
+    successMessage: string,
+  ) => {
+    const response = await api.put('/users/preferences', { preferences: payload });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to save preferences');
+    }
+    const normalizedNotifications = normalizeNotificationPreferences((data as UserPreferencesPayload).notifications);
+    const normalizedAppearance = normalizeAppearancePreferences((data as UserPreferencesPayload).appearance);
+    setNotifications_(normalizedNotifications);
+    setSavedNotifications(normalizedNotifications);
+    setAppearance(normalizedAppearance);
+    setSavedAppearance(normalizedAppearance);
+    applyThemePreference(normalizedAppearance.theme);
+
+    notifications.show({
+      title: successTitle,
+      message: successMessage,
+      color: 'green',
+    });
+  };
+
+  const loadUserPreferences = async () => {
+    try {
+      setPreferencesLoading(true);
+      const response = await api.get('/users/preferences');
+      if (!response.ok) {
+        return;
+      }
+
+      const prefs = (await response.json()) as UserPreferencesPayload;
+      const normalizedNotifications = normalizeNotificationPreferences(prefs.notifications);
+      const normalizedAppearance = normalizeAppearancePreferences(prefs.appearance);
+      const profilePhone =
+        prefs.profile && typeof prefs.profile.phone === 'string'
+          ? prefs.profile.phone
+          : (user?.phone || '');
+
+      setNotifications_(normalizedNotifications);
+      setSavedNotifications(normalizedNotifications);
+      setAppearance(normalizedAppearance);
+      setSavedAppearance(normalizedAppearance);
+      setProfileForm((current) => ({
+        ...current,
+        phone: profilePhone,
+      }));
+      updateUser({ phone: profilePhone });
+      applyThemePreference(normalizedAppearance.theme);
+    } catch (error) {
+      notifications.show({
+        title: 'Settings Load Warning',
+        message: error instanceof Error ? error.message : 'Failed to load saved preferences',
+        color: 'yellow',
+      });
+    } finally {
+      setPreferencesLoading(false);
+    }
+  };
 
   const loadCalendarConnections = async () => {
     try {
       setCalendarLoading(true);
-      const [connectionsResponse, statusResponse] = await Promise.all([
+      const [connectionsResponse, statusResponse, googleAvailabilityResponse, outlookAvailabilityResponse] = await Promise.all([
         api.get('/calendar-sync/connections'),
         api.get('/calendar-sync/status'),
+        api.get('/calendar-sync/oauth/google/availability'),
+        api.get('/calendar-sync/oauth/outlook/availability'),
       ]);
 
       if (connectionsResponse.ok) {
@@ -120,6 +285,22 @@ export default function Settings() {
         }, {});
         setCalendarStatus(map);
       }
+
+      const availabilityMap: Record<string, OAuthAvailability> = {};
+      const googleAvailability = await googleAvailabilityResponse.json().catch(() => ({}));
+      const outlookAvailability = await outlookAvailabilityResponse.json().catch(() => ({}));
+      availabilityMap.google = {
+        available: Boolean(googleAvailabilityResponse.ok && googleAvailability.available),
+        reason: googleAvailability.reason,
+        message: googleAvailability.message,
+      };
+      availabilityMap.outlook = {
+        available: Boolean(outlookAvailabilityResponse.ok && outlookAvailability.available),
+        reason: outlookAvailability.reason,
+        message: outlookAvailability.message,
+      };
+      setOauthAvailability(availabilityMap);
+      setIntegrationErrors({});
     } catch {
       notifications.show({
         title: 'Calendar Sync Error',
@@ -130,6 +311,22 @@ export default function Settings() {
       setCalendarLoading(false);
     }
   };
+
+  useEffect(() => {
+    setProfileForm({
+      name: user?.name || '',
+      email: user?.email || '',
+      phone: user?.phone || '',
+    });
+  }, [user?.name, user?.email, user?.phone]);
+
+  useEffect(() => {
+    void loadUserPreferences();
+  }, []);
+
+  useEffect(() => {
+    applyThemePreference(appearance.theme);
+  }, [appearance.theme]);
 
   useEffect(() => {
     if (activeTab === 'integrations') {
@@ -179,6 +376,7 @@ export default function Settings() {
       const response = await api.put('/auth/profile', {
         name: profileForm.name,
         email: profileForm.email,
+        phone: profileForm.phone.trim(),
       });
 
       const data = await response.json();
@@ -191,6 +389,12 @@ export default function Settings() {
       updateUser({
         name: data.user.name,
         email: data.user.email,
+        phone: data.user.phone || '',
+      });
+      setProfileForm({
+        name: data.user.name || '',
+        email: data.user.email || '',
+        phone: data.user.phone || '',
       });
 
       notifications.show({
@@ -267,31 +471,67 @@ export default function Settings() {
     }
   };
 
-  const handleNotificationsSave = () => {
-    notifications.show({
-      title: 'Settings Saved',
-      message: 'Your notification preferences have been updated',
-      color: 'green',
-    });
+  const handleNotificationsSave = async () => {
+    try {
+      setSavingNotifications(true);
+      await persistPreferences(
+        getPreferencesPayload(),
+        'Settings Saved',
+        'Your notification preferences have been updated',
+      );
+    } catch (error) {
+      notifications.show({
+        title: 'Save Failed',
+        message: error instanceof Error ? error.message : 'Failed to save notification preferences',
+        color: 'red',
+      });
+    } finally {
+      setSavingNotifications(false);
+    }
   };
 
-  const handleAppearanceSave = () => {
-    notifications.show({
-      title: 'Settings Saved',
-      message: 'Your appearance settings have been updated',
-      color: 'green',
-    });
+  const handleAppearanceSave = async () => {
+    try {
+      setSavingAppearance(true);
+      await persistPreferences(
+        getPreferencesPayload(),
+        'Settings Saved',
+        'Your appearance settings have been updated',
+      );
+    } catch (error) {
+      notifications.show({
+        title: 'Save Failed',
+        message: error instanceof Error ? error.message : 'Failed to save appearance settings',
+        color: 'red',
+      });
+    } finally {
+      setSavingAppearance(false);
+    }
   };
 
   const handleCalendarConnect = async (provider: string) => {
     const isOAuthProvider = oauthProviders.has(provider);
     const accessToken = (calendarTokenDrafts[provider] || '').trim();
     const calendarId = (calendarIdDrafts[provider] || '').trim();
+    const providerAvailability = oauthAvailability[provider];
 
     if (!isOAuthProvider && !accessToken) {
+      setIntegrationErrors((current) => ({
+        ...current,
+        [provider]: `Enter an access token for ${provider}`,
+      }));
+      return;
+    }
+
+    if (isOAuthProvider && providerAvailability && !providerAvailability.available) {
+      const reason = providerAvailability.message || providerAvailability.reason || 'OAuth is unavailable';
+      setIntegrationErrors((current) => ({
+        ...current,
+        [provider]: reason,
+      }));
       notifications.show({
-        title: 'Missing Access Token',
-        message: `Enter an access token for ${provider}`,
+        title: 'OAuth Unavailable',
+        message: reason,
         color: 'red',
       });
       return;
@@ -299,6 +539,11 @@ export default function Settings() {
 
     try {
       setProviderConnecting(provider);
+      setIntegrationErrors((current) => {
+        const next = { ...current };
+        delete next[provider];
+        return next;
+      });
 
       if (isOAuthProvider) {
         const response = await api.get(`/calendar-sync/oauth/${provider}/start`);
@@ -330,11 +575,21 @@ export default function Settings() {
         message: `${provider} calendar connected`,
         color: 'green',
       });
+      setIntegrationErrors((current) => {
+        const next = { ...current };
+        delete next[provider];
+        return next;
+      });
       await loadCalendarConnections();
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to connect calendar';
+      setIntegrationErrors((current) => ({
+        ...current,
+        [provider]: message,
+      }));
       notifications.show({
         title: 'Calendar Connection Failed',
-        message: error instanceof Error ? error.message : 'Failed to connect calendar',
+        message,
         color: 'red',
       });
     } finally {
@@ -437,6 +692,12 @@ export default function Settings() {
             </Tabs.Tab>
           </Tabs.List>
 
+          {preferencesLoading && (
+            <Alert mt="md" color="blue" variant="light" title="Loading Preferences">
+              Loading your saved settings...
+            </Alert>
+          )}
+
           {/* Profile Tab */}
           <Tabs.Panel value="profile" pt="xl">
             <Stack gap="lg">
@@ -474,7 +735,12 @@ export default function Settings() {
               />
 
               <Group justify="flex-end" mt="md">
-                <Button leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />} onClick={handleProfileSave} loading={saving}>
+                <Button
+                  leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />}
+                  onClick={() => void handleProfileSave()}
+                  loading={saving}
+                  disabled={isProfilePristine || preferencesLoading}
+                >
                   Save Changes
                 </Button>
               </Group>
@@ -590,6 +856,8 @@ export default function Settings() {
                 description="Receive important alerts via email"
                 checked={notifications_.emailAlerts}
                 onChange={(e) => setNotifications_({ ...notifications_, emailAlerts: e.currentTarget.checked })}
+                aria-label="Email Alerts"
+                data-testid="settings-switch-email-alerts"
               />
 
               <Switch
@@ -597,6 +865,8 @@ export default function Settings() {
                 description="Get reminded about upcoming tasks"
                 checked={notifications_.taskReminders}
                 onChange={(e) => setNotifications_({ ...notifications_, taskReminders: e.currentTarget.checked })}
+                aria-label="Task Reminders"
+                data-testid="settings-switch-task-reminders"
               />
 
               <Switch
@@ -604,6 +874,8 @@ export default function Settings() {
                 description="Notifications when client information changes"
                 checked={notifications_.clientUpdates}
                 onChange={(e) => setNotifications_({ ...notifications_, clientUpdates: e.currentTarget.checked })}
+                aria-label="Client Updates"
+                data-testid="settings-switch-client-updates"
               />
 
               <Switch
@@ -611,10 +883,17 @@ export default function Settings() {
                 description="Receive a weekly summary of activities"
                 checked={notifications_.weeklyDigest}
                 onChange={(e) => setNotifications_({ ...notifications_, weeklyDigest: e.currentTarget.checked })}
+                aria-label="Weekly Digest"
+                data-testid="settings-switch-weekly-digest"
               />
 
               <Group justify="flex-end" mt="md">
-                <Button leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />} onClick={handleNotificationsSave}>
+                <Button
+                  leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />}
+                  onClick={() => void handleNotificationsSave()}
+                  loading={savingNotifications}
+                  disabled={isNotificationsPristine || preferencesLoading}
+                >
                   Save Preferences
                 </Button>
               </Group>
@@ -640,7 +919,10 @@ export default function Settings() {
                   { value: 'system', label: 'System Default' },
                 ]}
                 value={appearance.theme}
-                onChange={(value) => setAppearance({ ...appearance, theme: value || 'light' })}
+                onChange={(value) => {
+                  const nextTheme = value === 'dark' || value === 'system' ? value : 'light';
+                  setAppearance({ ...appearance, theme: nextTheme });
+                }}
               />
 
               <Switch
@@ -648,6 +930,8 @@ export default function Settings() {
                 description="Use smaller spacing and font sizes"
                 checked={appearance.compactMode}
                 onChange={(e) => setAppearance({ ...appearance, compactMode: e.currentTarget.checked })}
+                aria-label="Compact Mode"
+                data-testid="settings-switch-compact-mode"
               />
 
               <Switch
@@ -655,10 +939,17 @@ export default function Settings() {
                 description="Display welcome message on dashboard"
                 checked={appearance.showWelcome}
                 onChange={(e) => setAppearance({ ...appearance, showWelcome: e.currentTarget.checked })}
+                aria-label="Show Welcome Message"
+                data-testid="settings-switch-show-welcome"
               />
 
               <Group justify="flex-end" mt="md">
-                <Button leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />} onClick={handleAppearanceSave}>
+                <Button
+                  leftSection={<IconDeviceFloppy size={16} aria-hidden="true" />}
+                  onClick={() => void handleAppearanceSave()}
+                  loading={savingAppearance}
+                  disabled={isAppearancePristine || preferencesLoading}
+                >
                   Save Settings
                 </Button>
               </Group>
@@ -695,8 +986,12 @@ export default function Settings() {
                   {providers.map((provider) => {
                     const connection = calendarConnections[provider.key];
                     const status = calendarStatus[provider.key];
+                    const providerAvailability = oauthAvailability[provider.key] || { available: true };
+                    const providerError = integrationErrors[provider.key];
                     const isConnected = !!connection?.hasAccessToken || !!status?.connected;
                     const isOAuthProvider = oauthProviders.has(provider.key);
+                    const manualToken = (calendarTokenDrafts[provider.key] || '').trim();
+                    const hasManualToken = manualToken.length > 0;
 
                     return (
                       <Card key={provider.key} withBorder p="md">
@@ -723,18 +1018,29 @@ export default function Settings() {
                           {!isConnected ? (
                             <Stack gap="sm">
                               {isOAuthProvider ? (
-                                <Group justify="space-between" align="flex-end">
-                                  <Text size="sm" c="dimmed">
-                                    Connect using secure OAuth authorization.
-                                  </Text>
-                                  <Button
-                                    onClick={() => void handleCalendarConnect(provider.key)}
-                                    loading={providerConnecting === provider.key}
-                                    disabled={!!providerConnecting && providerConnecting !== provider.key}
-                                  >
-                                    Connect with {provider.key === 'google' ? 'Google' : 'Microsoft'}
-                                  </Button>
-                                </Group>
+                                <>
+                                  <Group justify="space-between" align="flex-end">
+                                    <Text size="sm" c="dimmed">
+                                      Connect using secure OAuth authorization.
+                                    </Text>
+                                    <Button
+                                      onClick={() => void handleCalendarConnect(provider.key)}
+                                      loading={providerConnecting === provider.key}
+                                      disabled={
+                                        !!providerConnecting && providerConnecting !== provider.key
+                                          ? true
+                                          : !providerAvailability.available
+                                      }
+                                    >
+                                      Connect with {provider.key === 'google' ? 'Google' : 'Microsoft'}
+                                    </Button>
+                                  </Group>
+                                  {!providerAvailability.available && (
+                                    <Alert color="yellow" variant="light" title="OAuth unavailable">
+                                      {providerAvailability.message || providerAvailability.reason || 'OAuth is currently unavailable.'}
+                                    </Alert>
+                                  )}
+                                </>
                               ) : (
                                 <>
                                   <Textarea
@@ -765,12 +1071,26 @@ export default function Settings() {
                                     <Button
                                       onClick={() => void handleCalendarConnect(provider.key)}
                                       loading={providerConnecting === provider.key}
-                                      disabled={!!providerConnecting && providerConnecting !== provider.key}
+                                      disabled={
+                                        !!providerConnecting && providerConnecting !== provider.key
+                                          ? true
+                                          : !hasManualToken
+                                      }
                                     >
                                       Connect
                                     </Button>
                                   </Group>
+                                  {!hasManualToken && (
+                                    <Text size="xs" c="red">
+                                      Access token is required before connecting.
+                                    </Text>
+                                  )}
                                 </>
+                              )}
+                              {providerError && (
+                                <Alert color="red" variant="light" title="Connection issue">
+                                  {providerError}
+                                </Alert>
                               )}
                             </Stack>
                           ) : (

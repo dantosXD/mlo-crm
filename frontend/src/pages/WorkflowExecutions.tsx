@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Title,
   Stack,
@@ -19,6 +19,10 @@ import {
   Timeline,
   Alert,
   JsonInput,
+  ActionIcon,
+  Tooltip,
+  Anchor,
+  Modal,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -53,16 +57,6 @@ interface WorkflowExecution {
   completedAt: string | null;
   errorMessage: string | null;
   createdAt: string;
-}
-
-interface ExecutionLog {
-  stepIndex: number;
-  actionType: string;
-  status: string;
-  inputData: any;
-  outputData: any;
-  errorMessage: string | null;
-  executedAt: string;
 }
 
 interface ExecutionDetail {
@@ -131,12 +125,14 @@ const renderStatusIcon = (status: string) => {
 export function WorkflowExecutions() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const autoOpenedExecutionRef = useRef<string | null>(null);
 
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [workflowFilter, setWorkflowFilter] = useState<string>('all');
-  const [clientFilter, setClientFilter] = useState<string>('');
+  const [clientFilter] = useState<string>('');
   const [page, setPage] = useState(1);
   const limit = 20;
 
@@ -145,6 +141,7 @@ export function WorkflowExecutions() {
   const [selectedExecution, setSelectedExecution] = useState<ExecutionDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [pausing, setPausing] = useState<string | null>(null);
   const [resuming, setResuming] = useState<string | null>(null);
 
@@ -156,8 +153,17 @@ export function WorkflowExecutions() {
     }
   }, [searchParams]);
 
+  // Debounce search 350ms
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setAppliedSearch(searchInput);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+
   const { data: executionsData, isLoading: loading } = useQuery({
-    queryKey: ['workflow-executions', page, statusFilter, workflowFilter, clientFilter],
+    queryKey: ['workflow-executions', page, statusFilter, workflowFilter, clientFilter, appliedSearch],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: page.toString(),
@@ -166,12 +172,17 @@ export function WorkflowExecutions() {
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (workflowFilter !== 'all') params.append('workflow_id', workflowFilter);
       if (clientFilter) params.append('client_id', clientFilter);
+      if (appliedSearch.trim()) params.append('search', appliedSearch.trim());
 
       const response = await api.get(`/workflow-executions?${params}`);
       if (!response.ok) throw new Error('Failed to fetch executions');
       return response.json() as Promise<ExecutionsResponse>;
     },
   });
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, workflowFilter, clientFilter]);
 
   const executions = executionsData?.executions ?? [];
   const pagination = executionsData?.pagination ?? { page: 1, limit, total: 0, totalPages: 0 };
@@ -202,11 +213,17 @@ export function WorkflowExecutions() {
     }
   };
 
-  const cancelExecution = async (executionId: string) => {
-    if (!confirm('Are you sure you want to cancel this execution?')) {
-      return;
-    }
+  useEffect(() => {
+    const executionIdParam = searchParams.get('execution_id');
+    if (!executionIdParam) return;
+    if (autoOpenedExecutionRef.current === executionIdParam) return;
 
+    autoOpenedExecutionRef.current = executionIdParam;
+    void viewExecutionDetails(executionIdParam);
+  }, [searchParams]);
+
+  const cancelExecution = async (executionId: string) => {
+    setCancelConfirmId(null);
     setCancelling(true);
     try {
       const response = await api.post(`/workflow-executions/${executionId}/cancel`);
@@ -302,6 +319,9 @@ export function WorkflowExecutions() {
     }
   };
 
+  const hasActiveFilters = !!(searchInput || statusFilter !== 'all');
+  const clearAllFilters = () => { setSearchInput(''); setAppliedSearch(''); setStatusFilter('all'); setPage(1); };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
@@ -313,37 +333,45 @@ export function WorkflowExecutions() {
     const start = new Date(startedAt);
     const end = new Date(completedAt);
     const diffMs = end.getTime() - start.getTime();
+    if (diffMs < 1000) return '< 1s';
     const diffSecs = Math.floor(diffMs / 1000);
     const diffMins = Math.floor(diffSecs / 60);
-
-    if (diffMins > 0) {
-      return `${diffMins}m ${diffSecs % 60}s`;
-    }
+    const diffHrs = Math.floor(diffMins / 60);
+    if (diffHrs > 0) return `${diffHrs}h ${diffMins % 60}m`;
+    if (diffMins > 0) return `${diffMins}m ${diffSecs % 60}s`;
     return `${diffSecs}s`;
   };
 
-  const filteredExecutions = executions.filter(
-    (execution) =>
-      execution.workflowName.toLowerCase().includes(search.toLowerCase()) ||
-      execution.clientName?.toLowerCase().includes(search.toLowerCase()) ||
-      execution.id.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const rows = filteredExecutions.map((execution) => (
+  const rows = executions.map((execution) => (
     <Table.Tr key={execution.id}>
-      <Table.Td>{execution.workflowName}</Table.Td>
+      {/* Workflow name — link to edit + tooltip for long names */}
+      <Table.Td style={{ maxWidth: 260 }}>
+        <Tooltip label={execution.workflowName} withArrow openDelay={400} disabled={execution.workflowName.length < 30}>
+          <Anchor
+            size="sm"
+            href={`/workflows/${execution.workflowId}/edit`}
+            underline="hover"
+            style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {execution.workflowName}
+          </Anchor>
+        </Tooltip>
+      </Table.Td>
       <Table.Td>
         {execution.clientName ? (
-          <Text
-            size="sm"
-            style={{ cursor: 'pointer' }}
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/clients/${execution.clientId}`);
-            }}
-          >
-            {execution.clientName}
-          </Text>
+          <Tooltip label={execution.clientName} withArrow openDelay={400} disabled={execution.clientName.length < 25}>
+            <Text
+              size="sm"
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/clients/${execution.clientId}`);
+              }}
+              lineClamp={1}
+            >
+              {execution.clientName}
+            </Text>
+          </Tooltip>
         ) : (
           <Text size="sm" c="dimmed">
             No client
@@ -401,7 +429,7 @@ export function WorkflowExecutions() {
               color="red"
               leftSection={<IconBan size={14} />}
               loading={cancelling}
-              onClick={() => cancelExecution(execution.id)}
+              onClick={() => setCancelConfirmId(execution.id)}
             >
               Cancel
             </Button>
@@ -426,16 +454,31 @@ export function WorkflowExecutions() {
         </Group>
 
         <Paper p="md" withBorder>
-          <Group mb="md">
+          <Group gap="sm" align="flex-end" mb="md">
             <TextInput
-              placeholder="Search by workflow, client, or ID..."
+              placeholder="Search by workflow name or execution ID..."
               leftSection={<IconSearch size={14} />}
-              value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
+              rightSection={
+                searchInput ? (
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                    onClick={() => { setSearchInput(''); setAppliedSearch(''); setPage(1); }}
+                    aria-label="Clear search"
+                  >
+                    <IconX size={14} />
+                  </ActionIcon>
+                ) : null
+              }
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.currentTarget.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { setAppliedSearch(searchInput); setPage(1); } }}
               style={{ flex: 1 }}
+              data-testid="execution-search"
             />
             <Select
-              placeholder="Filter by status"
+              label="Status"
               data={[
                 { value: 'all', label: 'All Statuses' },
                 { value: 'PENDING', label: 'Pending' },
@@ -447,8 +490,13 @@ export function WorkflowExecutions() {
               ]}
               value={statusFilter}
               onChange={(value) => setStatusFilter(value || 'all')}
-              width={200}
+              w={175}
             />
+            {hasActiveFilters && (
+              <Button variant="subtle" color="gray" size="sm" onClick={clearAllFilters}>
+                Clear filters
+              </Button>
+            )}
           </Group>
 
           <Box pos="relative">
@@ -470,22 +518,41 @@ export function WorkflowExecutions() {
             </Table.ScrollContainer>
           </Box>
 
-          {filteredExecutions.length === 0 && !loading && (
+          {executions.length === 0 && !loading && (
             <Text c="dimmed" ta="center" py="xl">
               No executions found
             </Text>
           )}
-
-          {pagination.totalPages > 1 && (
-            <Group justify="center" mt="md">
-              <Pagination
-                total={pagination.totalPages}
-                value={pagination.page}
-                onChange={(p) => setPage(p)}
-              />
-            </Group>
-          )}
         </Paper>
+
+        <Group justify="space-between" align="center" mt="xs">
+          <Text size="sm" c="dimmed">
+            Showing {executions.length} of {pagination.total} execution{pagination.total !== 1 ? 's' : ''}
+          </Text>
+          {pagination.totalPages > 1 && (
+            <Pagination
+              total={pagination.totalPages}
+              value={pagination.page}
+              onChange={(p) => setPage(p)}
+            />
+          )}
+        </Group>
+
+        {/* Cancel Confirmation Modal */}
+        <Modal
+          opened={!!cancelConfirmId}
+          onClose={() => setCancelConfirmId(null)}
+          title="Cancel Execution?"
+          size="sm"
+        >
+          <Stack gap="md">
+            <Text size="sm">This will stop the execution immediately. This cannot be undone.</Text>
+            <Group justify="flex-end" gap="sm">
+              <Button variant="light" onClick={() => setCancelConfirmId(null)}>Keep running</Button>
+              <Button color="red" loading={cancelling} onClick={() => cancelConfirmId && cancelExecution(cancelConfirmId)}>Cancel execution</Button>
+            </Group>
+          </Stack>
+        </Modal>
 
         {/* Detail Drawer */}
         <Drawer
@@ -560,9 +627,13 @@ export function WorkflowExecutions() {
                     </Text>
                     <Text size="sm">
                       <Text span fw={500}>
-                        Current Step:
+                        Progress:
                       </Text>{' '}
-                      {selectedExecution.currentStep}
+                      {selectedExecution.logs && selectedExecution.logs.length > 0
+                        ? `Step ${selectedExecution.currentStep + 1} of ${selectedExecution.workflow.actions.length || 1}`
+                        : selectedExecution.status === 'COMPLETED'
+                        ? 'Completed'
+                        : `Step ${selectedExecution.currentStep + 1}`}
                     </Text>
                   </Stack>
 
@@ -572,35 +643,44 @@ export function WorkflowExecutions() {
                     </Alert>
                   )}
 
-                  {selectedExecution.status === 'RUNNING' && (
-                    <Button
-                      color="orange"
-                      leftSection={<IconPlayerPause size={14} />}
-                      loading={pausing === selectedExecution.id}
-                      onClick={() => pauseExecution(selectedExecution.id)}
-                    >
-                      Pause Execution
-                    </Button>
-                  )}
-                  {selectedExecution.status === 'PAUSED' && (
-                    <Button
-                      color="green"
-                      leftSection={<IconPlayerPlay size={14} />}
-                      loading={resuming === selectedExecution.id}
-                      onClick={() => resumeExecution(selectedExecution.id)}
-                    >
-                      Resume Execution
-                    </Button>
-                  )}
-                  {(selectedExecution.status === 'RUNNING' || selectedExecution.status === 'PENDING') && (
-                    <Button
-                      color="red"
-                      leftSection={<IconBan size={14} />}
-                      loading={cancelling}
-                      onClick={() => cancelExecution(selectedExecution.id)}
-                    >
-                      Cancel Execution
-                    </Button>
+                  {(selectedExecution.status === 'RUNNING' || selectedExecution.status === 'PAUSED' || selectedExecution.status === 'PENDING') && (
+                    <Group gap="xs" mt="xs">
+                      {selectedExecution.status === 'RUNNING' && (
+                        <Button
+                          size="sm"
+                          color="orange"
+                          variant="light"
+                          leftSection={<IconPlayerPause size={14} />}
+                          loading={pausing === selectedExecution.id}
+                          onClick={() => pauseExecution(selectedExecution.id)}
+                        >
+                          Pause
+                        </Button>
+                      )}
+                      {selectedExecution.status === 'PAUSED' && (
+                        <Button
+                          size="sm"
+                          color="green"
+                          variant="light"
+                          leftSection={<IconPlayerPlay size={14} />}
+                          loading={resuming === selectedExecution.id}
+                          onClick={() => resumeExecution(selectedExecution.id)}
+                        >
+                          Resume
+                        </Button>
+                      )}
+                      {(selectedExecution.status === 'RUNNING' || selectedExecution.status === 'PENDING') && (
+                        <Button
+                          size="sm"
+                          color="red"
+                          variant="light"
+                          leftSection={<IconBan size={14} />}
+                          onClick={() => setCancelConfirmId(selectedExecution.id)}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                    </Group>
                   )}
                 </Paper>
 
